@@ -1,5 +1,4 @@
 """Compositeur vidéo vertical : scènes, sous-titres, mixage audio et watermark."""
-
 from __future__ import annotations
 import os
 import random

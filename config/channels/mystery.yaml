@@ -1,17 +1,82 @@
 channel_name: "mystery"
 description: "Vidéos documentaires courtes sur des mystères historiques réels."
 
-# Configuration du LLM / Brain
+# Brain (LLM)
 brain:
   scene_count: 11
   voice_direction: "French premium narrator, calm, elegant, intriguing, controlled pacing"
+  language: "fr"
+  source_provider: "wikipedia"
+  factcheck: "strict"
+  default_country_hint: null
 
-# Configuration Vidéo (Composer)
+  topic_rules: |
+    Fait historique RÉEL, vérifiable, peu connu du grand public.
+    Respecter EXACTEMENT la localisation réelle du fait.
+    Jamais de lieu générique ou ambigu : toujours le nom complet et précis.
+
+  regions:
+    - "Île-de-France (hors Paris intra-muros)"
+    - "Bretagne"
+    - "Normandie"
+    - "Hauts-de-France"
+    - "Grand Est (Alsace, Lorraine, Champagne)"
+    - "Bourgogne-Franche-Comté"
+    - "Auvergne-Rhône-Alpes"
+    - "Nouvelle-Aquitaine"
+    - "Occitanie"
+    - "Provence-Alpes-Côte d'Azur"
+    - "Corse"
+    - "Pays de la Loire"
+    - "Centre-Val de Loire"
+    - "Outre-mer français (Guadeloupe, Martinique, Réunion, etc.)"
+    - "Paris intra-muros"
+  region_lookback: 3
+
+  theme_categories:
+    - "un objet ou artefact physique disparu ou volé (bijou, manuscrit, tableau, relique, instrument scientifique)"
+    - "un personnage historique réel méconnu ou une affaire judiciaire oubliée"
+    - "un événement étouffé ou censuré (incendie suspect, épidémie cachée, scandale politique, sabotage)"
+    - "une loi, un règlement ou une tradition administrative absurde et réelle"
+    - "un phénomène architectural visible en surface (façade, statue, plaque, vitrail, gargouille) avec une histoire cachée"
+    - "une découverte archéologique ou scientifique récente et peu connue"
+
+  banned_if_recent: ["tunnel", "souterrain", "passage secret", "catacombe", "salle secrète", "chambre secrète"]
+  fiction_markers: ["fiction", "fictive", "fictif", "⚠️", "#story", "#storytime", "#horror"]
+  niche_keywords: ["mystère", "secret", "histoire", "légende"]
+
+  prompts_dir: "auracontent/channels/mystery/prompts"   # script.txt, hook.txt, factcheck.txt, veracity.txt
+
+# Audio
+audio:
+  engines: [gemini, edge]
+  gemini:
+    narrator:
+      voice: "Charon"
+      style: "French documentary narrator. Calm, deep, warm and authoritative. Premium mystery-documentary style, intimate and cinematic but realistic. Clear diction, measured pacing, subtle suspense. Never theatrical, never rushed."
+    witness:
+      voice: "Orus"
+      style: "French documentary witness. Natural, credible and human. Slightly tense and intimate. Restrained emotion, conversational pacing."
+  edge:
+    narrator: {voice: "fr-FR-HenriNeural", rate: "-12%", pitch: "-4Hz"}
+    witness:  {voice: "fr-FR-HenriNeural", rate: "-8%",  pitch: "-2Hz"}
+  pronunciation:
+    '\bmythe(s?)\b': 'mite\1'
+    '\bmythique(s?)\b': 'mitique\1'
+    '\bchâteau\b': 'châto'
+    '\bchâteaux\b': 'châtos'
+    '\bchaos\b': 'kao'
+    '\bchœur(s?)\b': 'keur\1'
+    '\barchéolog': 'arkéolog'
+    '\barchétype': 'arkétype'
+    '\bpsychose\b': 'psycose'
+
+#  Vidéo (Composer)
 video_composer:
   video_width: 1080
   video_height: 1920
   fps: 30
-  transitions: ["fade", "fade", "fade", "fade"]
+  transitions: ["fade", "fade", "fade", "fade"]   # le composer doit faire un modulo (i % len)
 
   # Audio & Mix
   music_exclude_patterns: ["finance", "kids"]
@@ -20,32 +85,31 @@ video_composer:
   music_fade_duration: 2.5
   transition_duration: 0.38
 
-  # SFX (Effets sonores)
+  # SFX
   sfx_role_map:
     reveal: "reveal.mp3"
     escalation: "impact.mp3"
     hook: "impact.mp3"
   sfx_mood_map:
-    revelatory: "reveal.mp3"
     tense: "impact.mp3"
     ominous: "reveal.mp3"
+    awe: "reveal.mp3"
   sfx_gain: 0.55
   sfx_fade_out: 0.6
 
-  # Branding & Filigrane
+  # Branding & filigrane
   watermark_filename: "minute_mystere_watermark.png"
   watermark_width: 205
   watermark_opacity: 0.72
   watermark_x: 42
   watermark_y: 48
 
-  # Sous-titres & Textes
+  # Sous-titres & textes
   subtitle_style: "FontName=DejaVu Sans,FontSize=24,Bold=1,PrimaryColour=&H00FFFFFF,SecondaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H78000000,BorderStyle=3,Outline=1.5,Shadow=0,Alignment=2,MarginL=70,MarginR=70,MarginV=125"
   font_path: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
   source_credit_y: "h-520"
   source_credit_size: 18
   source_credit_alpha: 0.52
-  
   source_credit_labels:
     wiki: "Source : Wikimedia Commons"
     wikimedia: "Source : Wikimedia Commons"
@@ -56,17 +120,14 @@ video_composer:
     videvo: "Illustration : Pexels / Pixabay"
     ai: "Illustration générée par IA"
 
-
+# Visuels
 visuals:
-  # Modificateurs de génération d'images IA
   ai_composition: "wide-angle documentary shot, strictly centered subject, eye-level perspective"
   ai_lighting: "dramatic natural lighting, moody shadows, cinematic ambient light"
   ai_texture: "visible material details, realistic weathered surfaces, natural imperfections"
   ai_palette: "muted desaturated tones, dark cinematic color grading"
   ai_mood: "tense, mysterious, documentary atmosphere, photojournalistic feel"
   ai_suffix: "photorealistic, ultra-realistic, real-world photography, 8k detail."
-  
-  # Requête de fallback sur les banques de vidéos gratuites (Pexels/Pixabay)
   video_fallback_query: "mysterious historical documentary atmosphere"
   ai_base_style: "cinematic realistic documentary still, photorealistic, atmospheric depth, subtle film grain, dramatic but natural lighting, rich natural textures, high visual clarity, strictly centered subject, extreme wide shot, vertical 9:16 composition, subject kept inside the center safe zone, clean space near the top and bottom for captions"
   ai_negative_prompt: "text, logo, watermark, subtitles, borders, split screen, multiple frames, deformed hands, extra fingers, duplicate people, cropped head, blurry face, cartoon, anime"

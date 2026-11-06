@@ -52,3 +52,31 @@ class MysteryBrain(BaseBrain):
             issues.extend(geo_issues)
             
         return issues
+    
+    def build_title_vars(cfg, used_topics, stats_text=""):
+    b = cfg["brain"]
+
+    # région et catégorie : rotation, hors des dernières utilisées
+    last_regions = load_last_regions(n=b["region_lookback"])
+    region = random.choice([r for r in b["regions"] if r not in last_regions] or b["regions"])
+
+    last_cats = load_last_categories(n=2)
+    category = random.choice([c for c in b["theme_categories"] if c not in last_cats] or b["theme_categories"])
+
+    # ban temporaire du champ lexical sur-représenté
+    recent = " ".join(used_topics[-8:]).lower()
+    ban_hits = sum(recent.count(w) for w in b["banned_if_recent"])
+    ban_block = ""
+    if ban_hits >= 2:
+        ban_block = ("INTERDICTION TEMPORAIRE STRICTE : ces concepts ont été trop utilisés récemment : "
+                     + ", ".join(b["banned_if_recent"]) + ". N'utilise AUCUN de ces mots ni concepts.")
+
+    used_block = ""
+    if used_topics:
+        used_block = ("SUJETS DÉJÀ TRAITÉS (propose un univers, un vocabulaire, un format et une région "
+                      "radicalement différents) :\n- " + "\n- ".join(used_topics[-30:]))
+
+    return {
+        "forced_region": region, "forced_category": category,
+        "ban_block": ban_block, "stats_block": stats_text, "used_topics_block": used_block,
+    }, region, category, ban_hits

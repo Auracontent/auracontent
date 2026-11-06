@@ -12,3 +12,5 @@ Ne jamais mentionner l'intelligence artificielle, l'IA, un algorithme, une techn
 3. Le sujet doit rester peu connu du grand public mais reel et verifiable, jamais une invention presentee comme un fait.
 4. Evite les noms de lieux trop generiques/ambigus (ex: une simple 'Eglise Saint-Pierre'). Precise toujours le nom complet et specifique du lieu.
 5. Pour chaque lieu mentionne, precise aussi le pays reel. Si le sujet annonce une zone geographique specifique, TOUS les lieux du script doivent appartenir a cette zone reelle.
+6. Attention aux homonymes : plusieurs lieux portent souvent le même nom dans des régions différentes (ex : plusieurs "ponts du diable" en France). Vérifie que le lieu correspond exactement au sujet donné, sans confondre deux légendes.
+7. Si une source de référence est fournie, tous les faits (dates, noms, lieux, déroulé) doivent venir UNIQUEMENT de cette source. Tu peux reformuler et dramatiser le style, jamais ajouter de contenu factuel.

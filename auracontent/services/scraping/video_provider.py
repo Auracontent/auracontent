@@ -4,25 +4,22 @@ import random
 from config.settings import PEXELS_API_KEY, PIXABAY_API_KEY
 from utils.scraping_helpers import is_used, mark_used, download_file
 
+
 class VideoProvider:
     def __init__(self, history):
         self.history = history
 
     def fetch_background(self, query, output_path):
         print(f"🎥 Recherche vidéo d'ambiance pour : '{query}'...")
-        
         if self._fetch_from_pexels(query, output_path):
             return True
-            
         if self._fetch_from_pixabay(query, output_path):
             return True
-            
         return False
 
     def _fetch_from_pexels(self, query, output_path):
         if not PEXELS_API_KEY:
             return False
-            
         url = "https://api.pexels.com/videos/search"
         params = {"query": query, "orientation": "portrait", "per_page": 15}
         headers = {"Authorization": PEXELS_API_KEY}

@@ -1,6 +1,6 @@
 from types import MappingProxyType
 
-# Textes par défaut
+# Default text
 DEFAULT_SUBTITLE_STYLE = (
     "FontName=DejaVu Sans,FontSize=24,Bold=1,PrimaryColour=&H00FFFFFF"
 )
