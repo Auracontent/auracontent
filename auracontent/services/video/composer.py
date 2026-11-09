@@ -12,7 +12,7 @@ from config.settings import (
     OUTPUT_DIR,
     TEMP_DIR,
 )
-from utils.media_helpers import (
+from auracontent.utils.media_helpers import (
     cleanup_temp_files,
     ensure_pair,
     escape_drawtext,

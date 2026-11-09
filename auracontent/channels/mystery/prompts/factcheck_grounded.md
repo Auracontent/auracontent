@@ -7,8 +7,8 @@ Tu es fact-checker. Compare le SCRIPT à la SOURCE DE RÉFÉRENCE et signale UNI
 SOURCE ({source_title}) :
 """{source_extract}"""
 
-RÉSUMÉ DU SCRIPT :
-{scenes_summary}
+SCRIPT :
+{scenes_text}
 
 Ne signale PAS : les reformulations, la dramatisation, les transitions narratives, ni les généralités sans fait précis.
 

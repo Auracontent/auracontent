@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-from services.scraping.archive_provider import ArchiveProvider
-from services.scraping.video_provider import VideoProvider
-from services.visuals.ai_image import AIImageGenerator
-from utils.topic_tracker import load_topic_history
+from auracontent.services.scraping.archive_provider import ArchiveProvider
+from auracontent.services.scraping.video_provider import VideoProvider
+from auracontent.services.visuals.ai_image import AIImageGenerator
+from auracontent.utils.topic_tracker import load_topic_history
 
 # Direction artistique par défaut (surchargeable via channel_config)
 DEFAULT_AI_COMPOSITION = "cinematic shot, well composed"

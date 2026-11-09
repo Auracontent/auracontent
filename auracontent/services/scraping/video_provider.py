@@ -2,7 +2,7 @@ import time
 import requests
 import random
 from config.settings import PEXELS_API_KEY, PIXABAY_API_KEY
-from utils.scraping_helpers import is_used, mark_used, download_file
+from auracontent.utils.scraping_helpers import is_used, mark_used, download_file
 
 
 class VideoProvider:
