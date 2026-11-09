@@ -8,7 +8,7 @@ from pathlib import Path
 import requests
 from mutagen.mp3 import MP3
 from constants import GEMINI_MODEL_VOICE
-from .text_fr import normalize_fr   # chiffres romains, km, av. J.-C. (voir plus bas)
+from .text_fr import normalize_fr
 
 try:
     import edge_tts
@@ -28,7 +28,7 @@ def audio_duration(path: str) -> float:
 
 
 class AudioEngine:
-    GEMINI_MIN_INTERVAL = 12.0     # secondes entre 2 appels Gemini (quota gratuit)
+    GEMINI_MIN_INTERVAL = 12.0
 
     def __init__(self, audio_cfg: dict, output_dir="assets/audio_clips", min_scene_duration=3.0):
         self.cfg = audio_cfg
@@ -44,8 +44,8 @@ class AudioEngine:
 
     # ---------- texte ----------
     def prepare_text(self, text: str) -> str:
-        text = normalize_fr(text)                 # générique
-        for rx, repl in self.pron:                # spécifique à la chaîne
+        text = normalize_fr(text)
+        for rx, repl in self.pron:
             text = rx.sub(repl, text)
         return text
 
