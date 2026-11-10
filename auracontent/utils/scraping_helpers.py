@@ -5,7 +5,9 @@ import unicodedata
 import re
 from PIL import Image, ImageDraw, ImageFont
 
-HISTORY_FILE = "asset_history.json"
+from config.settings import ASSETS_DIR
+
+HISTORY_FILE = ASSETS_DIR / "shared" / "state" / "asset_history.json"
 _STOPWORDS_FR_EN = {
     "de", "du", "des", "la", "le", "les", "l", "d", "en", "et", "sur",
     "dans", "un", "une", "a", "au", "aux", "pour", "par", "the", "of",
@@ -25,6 +27,7 @@ def load_history():
 
 def save_history(history):
     try:
+        HISTORY_FILE.parent.mkdir(parents=True, exist_ok=True)
         with open(HISTORY_FILE, "w", encoding="utf-8") as f:
             json.dump(history, f, indent=4)
     except Exception as e:

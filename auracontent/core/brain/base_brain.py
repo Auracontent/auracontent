@@ -1,45 +1,81 @@
-import json
+import re
 from dataclasses import dataclass
-from typing import Any, dict, list
-from core.brain.llm_client import LLMClient
+from pathlib import Path
+from typing import Any
+
+from auracontent.core.brain.llm_client import LLMClient
+
+_PLACEHOLDER = re.compile(r"\{(\w+)\}")
+_SECTION_HEADER = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
 
 @dataclass
 class BaseBrain:
-    config: Any
+    config: dict[str, Any]
     llm: LLMClient
     channel_name: str = "base"
+
+    # ==========================================
+    # PROMPTS (fichiers .md de la chaîne)
+    # ==========================================
+
+    @property
+    def prompts_dir(self) -> Path:
+        raise NotImplementedError("La sous-classe doit définir prompts_dir.")
+
+    def read_prompt(self, name: str) -> str:
+        return (self.prompts_dir / name).read_text(encoding="utf-8").strip()
+
+    def read_sections(self, name: str) -> dict[str, str]:
+        """Découpe un .md en sections '# Titre' -> {'titre en minuscules': contenu}."""
+        text = self.read_prompt(name)
+        headers = list(_SECTION_HEADER.finditer(text))
+        sections = {}
+        for i, h in enumerate(headers):
+            end = headers[i + 1].start() if i + 1 < len(headers) else len(text)
+            sections[h.group(1).strip().lower()] = text[h.end():end].strip()
+        missing = {"system", "user"} - sections.keys()
+        if missing:
+            raise KeyError(f"{name} : section(s) manquante(s) {sorted(missing)} (attendu '# System' et '# User').")
+        return sections
+
+    @staticmethod
+    def fill(template: str, **values) -> str:
+        """Remplace {cle} par sa valeur. Les accolades inconnues (exemples JSON) restent intactes."""
+        return _PLACEHOLDER.sub(
+            lambda m: str(values[m.group(1)]) if m.group(1) in values else m.group(0), template
+        )
 
     # ==========================================
     # MÉTHODES GÉNÉRIQUES (Communes à tous)
     # ==========================================
 
     def is_duplicate_topic_llm(self, candidate, history):
-        """Vérifie si le concept du sujet existe déjà dans l'historique."""
+        """Vérifie si le sujet raconte la même histoire qu'un sujet déjà publié."""
         if not history:
             return False, None
         recent = history[-15:]
-        prompt = f"""Voici un nouveau sujet de video : "{candidate}"
+        prompt = f"""Voici un nouveau sujet de vidéo : "{candidate}"
 
-Voici les 15 derniers sujets deja publies :
+Voici les 15 derniers sujets déjà publiés :
 {chr(10).join(f"- {t}" for t in recent)}
 
-Le nouveau sujet reprend-il le meme TYPE de concept qu'un des sujets deja publies ?
-Reponds uniquement en JSON : {{"is_duplicate_type": true/false, "matched_topic": "..." ou null}}"""
+Le nouveau sujet raconte-t-il le MÊME événement, la même personne, le même objet ou le même lieu
+qu'un des sujets déjà publiés ? Un simple thème commun (mystère, disparition, histoire de France)
+ne suffit PAS à en faire un doublon.
+Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..." ou null}}"""
 
-        # Appel au client LLM
         data = self.llm.call_json_with_retry(
             [{"role": "user", "content": prompt}],
             temperature=0.1,
             max_completion_tokens=300
         )
-        if data.get("is_duplicate_type"):
+        if data.get("is_duplicate"):
             return True, data.get("matched_topic")
         return False, None
 
     def generate_hook_variants(self, topic, n=5, previous_stats_list=None):
         """Génère N variantes d'accroches de façon générique."""
-        # On peut imaginer une méthode self.get_hook_system_prompt() surchargeable
         prompt = f"""SUJET:\n{topic}\n\nGENERE {n} hooks viraux en francais.\n
         RETURNS JSON:
         {{
@@ -54,18 +90,15 @@ Reponds uniquement en JSON : {{"is_duplicate_type": true/false, "matched_topic":
         ]
 
         data = self.llm.call_json_with_retry(messages, temperature=1.1, max_completion_tokens=2000)
-        hooks = data.get("hooks", [])
-        if not isinstance(hooks, list) or len(hooks) == 0:
-            return [{"text": topic, "pattern": "default", "raison": ""}]
-        return hooks[:n]
+        hooks = [h for h in data.get("hooks", []) if isinstance(h, dict) and h.get("text")]
+        return hooks[:n] or [{"text": topic, "pattern": "default", "raison": ""}]
 
     def generate_script(self, topic, chosen_hook=None):
         """Point d'entrée standard pour générer un script."""
-        # On lit le nombre de scènes cible depuis la config de la chaîne
-        target_scenes = getattr(self.config, 'DEFAULT_SCENE_COUNT', 11)
+        target_scenes = int(self.config.get("brain", {}).get("scene_count", 11))
         return self.generate_script_with_target(
             topic, scene_count=target_scenes, chosen_hook=chosen_hook
-            )
+        )
 
     def generate_script_with_target(self, topic, scene_count=11, chosen_hook=None, max_retries=2):
         """
@@ -74,7 +107,7 @@ Reponds uniquement en JSON : {{"is_duplicate_type": true/false, "matched_topic":
         """
         candidate_counts = []
         sc = scene_count
-        while sc >= 6 and len(candidate_counts) < 3:
+        while sc >= 5 and len(candidate_counts) < 3:
             candidate_counts.append(sc)
             sc -= 3
         if not candidate_counts:
@@ -83,31 +116,21 @@ Reponds uniquement en JSON : {{"is_duplicate_type": true/false, "matched_topic":
         last_error = None
         for idx, candidate_count in enumerate(candidate_counts):
             if idx > 0:
-                print(
-                    f"⚠️️ Nouvelle tentative avec {candidate_count} scenes pour respecter le budget."
-                    )
+                print(f"⚠️ Nouvelle tentative avec {candidate_count} scènes pour respecter le budget.")
             try:
-                return self._generate_script_attempt(
-                    topic, candidate_count, chosen_hook, max_retries
-                    )
+                return self._generate_script_attempt(topic, candidate_count, chosen_hook, max_retries)
             except (RuntimeError, ValueError) as e:
                 last_error = e
-                print(f"❌ Echec de generation avec {candidate_count} scenes : {e}")
-                continue
+                print(f"❌ Échec de génération avec {candidate_count} scènes : {e}")
 
-        raise RuntimeError(f"Impossible de generer un script. Derniere erreur : {last_error}")
+        raise RuntimeError(f"Impossible de générer un script. Dernière erreur : {last_error}")
 
     def _generate_script_attempt(self, topic, scene_count, chosen_hook, max_retries):
-        """
-        Gère la boucle de correction (fact-check & validation de structure).
-        """
+        """Boucle de correction (validation de structure puis fact-check)."""
         correction_feedback = ""
         for attempt in range(max_retries + 1):
-            # On demande à la classe enfant de construire le prompt spécifique
-            messages = self.build_script_prompt(
-                topic, scene_count, chosen_hook, correction_feedback
-                )
-            # Appel au LLM
+            last = attempt == max_retries
+            messages = self.build_script_prompt(topic, scene_count, chosen_hook, correction_feedback)
             data = self.llm.call_json_with_retry(
                 messages,
                 temperature=0.7,
@@ -115,42 +138,38 @@ Reponds uniquement en JSON : {{"is_duplicate_type": true/false, "matched_topic":
             )
 
             scenes = data.get("scenes", [])
-            # Validation de base (nombre de scènes)
             if len(scenes) != scene_count:
-                if attempt < max_retries:
-                    correction_feedback = f"\nCORRECTION OBLIGATOIRE: Genere EXACTEMENT {scene_count} scenes. Tu en as fait {len(scenes)}."
-                    continue
-                else:
-                    raise ValueError(f"Echec du comptage des scènes après {max_retries} tentatives.")
+                if last:
+                    raise ValueError(f"Échec du comptage des scènes après {max_retries + 1} tentatives.")
+                correction_feedback = (f"CORRECTION OBLIGATOIRE : génère EXACTEMENT {scene_count} scènes. "
+                                       f"Tu en as fait {len(scenes)}.")
+                continue
 
-            # Validation structurelle commune
             try:
-                self._validate_script_base(data, scene_count)
-                # Validation spécifique à la chaîne (optionnelle)
+                self._validate_script_base(data)
                 self.validate_script_specifics(data, topic)
             except ValueError as e:
-                if attempt < max_retries:
-                    correction_feedback = f"\nCORRECTION OBLIGATOIRE: {e}"
-                    continue
-                else:
+                if last:
                     raise
+                correction_feedback = f"CORRECTION OBLIGATOIRE : {e}"
+                continue
 
-            # 5. Vérifications "Métier" (Fact-checking, géo, etc.) déléguées à la sous-classe
             issues = self.check_script_logic(topic, data)
             if issues:
-                if attempt < max_retries:
-                    correction_feedback = "\nCORRECTION: " + "\n- ".join(issues)
+                if not last:
+                    correction_feedback = "CORRECTIONS OBLIGATOIRES :\n" + "\n".join(f"- {i}" for i in issues)
                     continue
-                else:
-                    print("⚠️ Script généré avec des avertissements ignorés (limite d'essais atteinte).")
+                print("⚠️ Script généré avec des avertissements ignorés (limite d'essais atteinte) :")
+                for i in issues:
+                    print(f"   - {i}")
+                data["unresolved_issues"] = issues
             return data
 
-    def _validate_script_base(self, data, expected_scene_count):
+    def _validate_script_base(self, data):
         """Applique les valeurs par défaut et vérifie les clés critiques."""
         for idx, scene in enumerate(data.get("scenes", []), start=1):
-            if not scene.get("text"):
-                raise ValueError(f"Scene {idx} : champ 'text' manquant.")
-            # Valeurs par défaut génériques
+            if not isinstance(scene, dict) or not scene.get("text"):
+                raise ValueError(f"scène {idx} : champ 'text' manquant.")
             scene.setdefault("id", idx)
             scene.setdefault("pause_after_ms", 800)
             scene.setdefault("voice_type", "narrator")
@@ -159,27 +178,20 @@ Reponds uniquement en JSON : {{"is_duplicate_type": true/false, "matched_topic":
             data["title"] = "Titre généré"
 
     # ==========================================
-    # MÉTHODES ABSTRAITES (À surcharger)
+    # MÉTHODES À SURCHARGER
     # ==========================================
 
     def pick_topic(self):
-        """À implémenter dans les sous-classes (Viral, Stats, etc.)"""
+        """Retourne un sujet inédit. Doit gérer lui-même l'anti-doublon (is_duplicate_topic_llm)."""
         raise NotImplementedError
 
     def build_script_prompt(self, topic, scene_count, chosen_hook, correction_feedback):
-        """
-        Doit retourner la liste d'objets 'messages' pour l'API.
-        À implémenter dans MysteryBrain, FinanceBrain...
-        """
+        """Retourne la liste 'messages' pour l'API."""
         raise NotImplementedError
 
     def validate_script_specifics(self, data, topic):
-        """Pour ajouter des règles de validation propres à la chaîne (ex: interdire certains mots)."""
-        pass
+        """Règles de validation propres à la chaîne. Lever ValueError pour demander une correction."""
 
     def check_script_logic(self, topic, data):
-        """
-        Retourne une liste de strings contenant les erreurs factuelles/logiques. 
-        Si vide, le script est validé.
-        """
+        """Liste des erreurs factuelles/logiques. Vide = script validé."""
         return []

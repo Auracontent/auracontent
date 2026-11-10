@@ -12,7 +12,7 @@ from config.settings import (
     OUTPUT_DIR,
     TEMP_DIR,
 )
-from utils.media_helpers import (
+from auracontent.utils.media_helpers import (
     cleanup_temp_files,
     ensure_pair,
     escape_drawtext,
@@ -59,12 +59,15 @@ class Composer:
     Applique le pipeline visuel : scènes -> sous-titres -> watermark -> mixage audio.
     """
 
-    def __init__(self, channel_config: dict | None = None):
+    def __init__(self, channel_config: dict | None = None, channel_name: str | None = None):
+        # assets/<chaîne>/{music,images} propres à la chaîne, assets/shared/ pour le commun
+        shared_dir = os.path.join(str(ASSETS_DIR), "shared")
+        channel_dir = os.path.join(str(ASSETS_DIR), channel_name) if channel_name else shared_dir
         self.temp_dir = str(TEMP_DIR)
         self.final_dir = str(OUTPUT_DIR)
-        self.music_dir = os.path.join(str(ASSETS_DIR), "music")
-        self.images_dir = os.path.join(str(ASSETS_DIR), "images")
-        self.sfx_dir = os.path.join(str(ASSETS_DIR), "sfx")
+        self.music_dir = os.path.join(channel_dir, "music")
+        self.images_dir = os.path.join(channel_dir, "images")
+        self.sfx_dir = os.path.join(shared_dir, "sfx")
 
         for directory in (
             self.temp_dir,
@@ -204,8 +207,11 @@ class Composer:
     def _zoompan_clip(self, path: str, duration: float, zoom_expr: str):
         """Image fixe animée (effet Ken Burns) pendant `duration` secondes."""
         frames = max(int(duration * self.fps), 1)
+        # UNE seule image en entrée : zoompan émet `d` frames PAR frame d'entrée.
+        # (avec loop=1 l'image était répétée à 25 fps -> durée ~ au carré : 417 s pour une scène de 5 s)
         return (
-            ffmpeg.input(path, loop=1, t=duration)
+            ffmpeg.input(path, loop=1, framerate=1, t=duration)  # t distinct par segment : évite la fusion des noeuds A/B
+            .filter("trim", end_frame=1)
             .filter("scale", KEN_BURNS_SOURCE_WIDTH, -1)
             .filter(
                 "zoompan",
@@ -214,6 +220,7 @@ class Composer:
                 s=f"{self.video_width}x{self.video_height}",
                 fps=self.fps,
             )
+            .filter("trim", duration=duration)   # garde-fou sur la durée
             .setpts("PTS-STARTPTS")
         )
 

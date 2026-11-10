@@ -3,9 +3,9 @@ import time
 import json
 from openai import OpenAI
 from dataclasses import dataclass
-from typing import list, dict, Any
+from typing import Any
 from config import settings
-from utils.text_utils import _estimate_prompt_tokens, _clean_json_response
+from auracontent.utils.text_utils import _estimate_prompt_tokens, _clean_json_response
 
 
 SAFETY_MARGIN_TOKENS = 400
@@ -23,7 +23,7 @@ class LLMClient:
         return cls(providers=cls._build_providers_list())
 
     @classmethod
-    def _build_providers_list(cls) -> list[dict[str, any]]:
+    def _build_providers_list(cls) -> list[dict[str, Any]]:
         providers = []
         groq_key = os.getenv("GROQ_API_KEY")
         if groq_key:
@@ -53,7 +53,9 @@ class LLMClient:
         choices = getattr(response, "choices", None) or response.get("choices")
         choice0 = choices[0]
         message = getattr(choice0, "message", None) or choice0.get("message")
-        content = getattr(message, "content", None) or message.get("content")
+        content = getattr(message, "content", None) if not isinstance(message, dict) else message.get("content")
+        if not content:
+            raise ValueError("réponse vide du modèle")
         return content.strip()
 
     def call_with_fallback(self, messages, temperature=1.0, json_mode=False,
@@ -85,10 +87,12 @@ class LLMClient:
                     return self._extract_content(response)
 
                 except Exception as e:
-                    # Gestion des erreurs (Rate limit, tokens, etc.)
                     last_error = e
                     print(f"⚠️ Échec {provider['name']} ({provider['model']}) : {e}")
-                    time.sleep(2)
+                    # Rate limit : on réessaie le même modèle ; sinon on passe au suivant
+                    if "429" in str(e) or "rate" in str(e).lower():
+                        time.sleep(2 * (attempt + 1))
+                        continue
                     break
         raise RuntimeError(
             f"Échec total après utilisation de tous les modèles (Groq + OpenRouter).Dernière erreur:{last_error}"

@@ -1,10 +1,10 @@
-# Prompt Système
+# System
 Tu produis uniquement du JSON valide. La cle 'scenes' contient EXACTEMENT {scene_count} scenes, ni plus ni moins -- c'est une contrainte absolue et non negociable. Ne montre jamais ton raisonnement, reponds directement avec le JSON final.
 
-# Prompt Utilisateur (Template)
+# User
 SUJET : {topic}
 ACCROCHE OBLIGATOIRE : {chosen_hook}
-SOURCE VERIFIEE : {grounding_block}
+{grounding_block}
 
 REGLES STRICTES DE NARRATION ET VISUEL :
 1. Interdiction de faire de longs discours d'introduction ("Nous allons vous raconter...").
@@ -15,7 +15,7 @@ REGLES STRICTES DE NARRATION ET VISUEL :
 6. LECTURE AUDIO : N'utilise JAMAIS de chiffres romains. Écris-les obligatoirement EN TOUTES LETTRES (ex: "vingtième siècle").
 7. 'stock_search' : OBLIGATOIREMENT EN ANGLAIS. Ne demande JAMAIS de lieux géographiques précis. Fournis TOUJOURS un mot-clé très générique et d'ambiance.
 8. RYTHME : Le 'text' de chaque scène doit contenir 2 phrases (environ 20 à 30 mots) pour laisser la narration respirer (5 à 7 secondes par scène).
-9. RE-HOOK OBLIGATOIRE : La scène située au tiers du script doit contenir une phrase de rupture qui relance la curiosité (ex: 'Mais ce n'est pas la le plus troublant...').
+9. RE-HOOK OBLIGATOIRE : La scène {rehook_scene} doit contenir une phrase de rupture qui relance la curiosité (ex: 'Mais ce n'est pas la le plus troublant...').
 10. CTA FINAL : Génère un champ 'closing_cta' indépendant dans le JSON, une phrase courte (8-10 mots) qui invite à s'abonner en créant une attente spécifique pour la prochaine vidéo.
 11. Les clés 'mood' doivent être choisies parmi : "ominous", "intriguing", "tense", "awe", "scientific", "investigation".
 12. Les clés 'role' doivent être choisies parmi : "hook", "tension", "context", "value", "escalation", "reveal", "cta".

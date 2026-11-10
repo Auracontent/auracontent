@@ -1,25 +1,31 @@
-# core/global_brain.py
+# auracontent/core/brain/global_brain.py
+import json
 from dataclasses import dataclass, field
-from typing import Any
-from channels.registry import CHANNEL_REGISTRY
-from core.brain.llm_client import LLMClient
-from utils.topic_tracker import load_global_history, save_global_history
+from datetime import datetime
+from pathlib import Path
+
+from auracontent.channels.base_channel import BaseChannel
+from auracontent.channels.registry import CHANNEL_REGISTRY
+from auracontent.core.brain.llm_client import LLMClient
+import os
+
+from auracontent.services.publishing.zernio import get_latest_videos_stats
+from auracontent.utils.hook_tracker import compute_pattern_scores, load_hook_history, select_hook
+from auracontent.utils.topic_tracker import save_global_history
+from config import settings
 
 
 @dataclass
 class GlobalBrain:
-    config: Any
     llm_client: LLMClient
-    channels: dict[str, Any] = field(default_factory=dict, init=False)
+    output_dir: Path = settings.OUTPUT_DIR / "scripts"
+    channels: dict[str, BaseChannel] = field(default_factory=dict, init=False)
 
     def __post_init__(self):
-        """
-        Instancie dynamiquement toutes les chaînes déclarées dans le registre
-        en leur passant la configuration et le client LLM partagés.
-        """
+        """Instancie chaque chaîne du registre avec SA config YAML et le client LLM partagé."""
         self.channels = {
-            name: BrainClass(config=self.config, llm=self.llm_client)
-            for name, BrainClass in CHANNEL_REGISTRY.items()
+            name: BaseChannel(name, brain_cls, self.llm_client)
+            for name, brain_cls in CHANNEL_REGISTRY.items()
         }
         print(f"🌍 GlobalBrain initialisé avec {len(self.channels)} chaîne(s) active(s).")
 
@@ -27,46 +33,70 @@ class GlobalBrain:
     # MÉTHODES D'ORCHESTRATION
     # ==========================================
 
-    def run_channel(self, channel_name: str) -> bool:
-        """Exécute le pipeline de génération pour une seule chaîne."""
+    def run_channel(self, channel_name: str, previous_stats_list=None) -> Path:
+        """Sujet -> hooks -> script pour une chaîne. Retourne le chemin du script JSON sauvegardé."""
         if channel_name not in self.channels:
-            raise ValueError(f"Chaîne inconnue: {channel_name}. Vérifiez channels/registry.py.")
-        brain = self.channels[channel_name]
+            raise ValueError(f"Chaîne inconnue : {channel_name}. Vérifiez channels/registry.py.")
+        channel = self.channels[channel_name]
+        brain = channel.brain
         print(f"\n🚀 Démarrage de la chaîne : {channel_name.upper()}")
-        # Selection du sujet par le cerveau spécifique
+
+        # 0. Boucle de feedback : performances des dernières vidéos de la chaîne
+        if previous_stats_list is None:
+            previous_stats_list = self._fetch_stats(channel.section("publish"))
+
+        # 1. Sujet (l'anti-doublon sur l'historique global est fait dans pick_topic)
         topic = brain.pick_topic()
         print(f"🎯 Sujet retenu : {topic}")
-        # Vérification anti-doublon inter-chaînes
-        if self._is_global_duplicate(topic):
-            print(f"⚠️ Annulation : Le sujet '{topic}' a déjà été traité par une autre chaîne.")
-            return False
-        # Génération du script via le BaseBrain
-        brain.generate_script(topic)
-        # Enregistrement du succès dans l'historique global
-        save_global_history(topic, channel_name)
-        print(f"✅ Script validé et sauvegardé pour la chaîne {channel_name.upper()}.")
-        return True
 
-    def run_all(self) -> dict[str, bool]:
+        # 2. Accroche choisie par le bandit (pattern le plus performant, 20 % d'exploration)
+        hooks = brain.generate_hook_variants(topic, n=5, previous_stats_list=previous_stats_list)
+        scores = compute_pattern_scores(previous_stats_list, load_hook_history(channel_name))
+        if scores:
+            print(f"📈 Scores des patterns : {scores}")
+        chosen_hook = select_hook(hooks, pattern_scores=scores) or hooks[0]
+        print(f"🪝 Accroche : {chosen_hook.get('text')}")
+
+        # 3. Script
+        script = brain.generate_script(topic, chosen_hook=chosen_hook)
+        pick = dict(getattr(brain, "last_pick", {}) or {})
+        script.update({"topic": topic, "channel": channel_name, "hook": chosen_hook,
+                       "hook_variants": hooks, "pick": pick})
+
+        # 4. Sauvegarde du script puis de l'historique (seulement si tout a réussi)
+        path = self._save_script(channel_name, script)
+        save_global_history(topic, channel_name, script_path=str(path), **pick)
+        print(f"✅ Script sauvegardé : {path}")
+        return path
+
+    def run_all(self) -> dict[str, Path | None]:
         """Lance séquentiellement toutes les chaînes actives."""
         print("\n🌍 Lancement de la production multi-chaînes")
         results = {}
-        for name in self.channels.key():
+        for name in self.channels:
             try:
                 results[name] = self.run_channel(name)
             except Exception as e:
-                print(f" Échec critique sur la chaîne {name} : {e}")
-                results[name] = False
+                print(f"❌ Échec critique sur la chaîne {name} : {e}")
+                results[name] = None
         return results
 
-    def _is_global_duplicate(self, topic: str) -> bool:
-        """Demande au LLM si le sujet croise l'historique global des autres chaînes."""
-        global_history = load_global_history()
-        if not global_history or not self.channels:
-            return False
-        # On emprunte le premier cerveau disponible pour utiliser sa méthode LLM
-        dummy_brain = next(iter(self.channels.values()))
-        is_dup, matched_topic = dummy_brain.is_duplicate_topic_llm(topic, global_history)
-        if is_dup:
-            print(f"🔍 Collision détectée avec l'ancien sujet : '{matched_topic}'")
-        return is_dup
+    @staticmethod
+    def _fetch_stats(publish_cfg: dict):
+        """Stats Zernio du compte de la chaîne (noms des variables dans la section `publish` du YAML)."""
+        api_key = os.getenv(publish_cfg.get("zernio_key_env", "ZERNIO_API_KEY"))
+        stats_cfg = publish_cfg.get("stats", {})
+        account_env = stats_cfg.get("account_env")
+        return get_latest_videos_stats(
+            api_key,
+            platform=stats_cfg.get("platform"),
+            account_id=os.getenv(account_env) if account_env else None,
+            limit=stats_cfg.get("limit", 20),
+        )
+
+    def _save_script(self, channel_name: str, script: dict) -> Path:
+        self.output_dir.mkdir(parents=True, exist_ok=True)
+        stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        path = self.output_dir / f"{channel_name}_{stamp}.json"
+        path.write_text(json.dumps(script, ensure_ascii=False, indent=2), encoding="utf-8")
+        return path

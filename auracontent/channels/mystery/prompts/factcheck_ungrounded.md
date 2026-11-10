@@ -6,8 +6,8 @@ Tu es fact-checker STRICT. Tu ne signales QUE des erreurs objectives et vérifia
 
 SUJET : {topic}
 
-RÉSUMÉ DES SCÈNES :
-{scenes_summary}
+SCÈNES DU SCRIPT :
+{scenes_text}
 
 Signale UNIQUEMENT :
 - un nom de lieu, personnage ou organisation manifestement inventé

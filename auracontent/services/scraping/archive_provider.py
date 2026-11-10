@@ -7,7 +7,7 @@ from typing import NamedTuple
 
 import requests
 from config.settings import WIKIMEDIA_CONTACT
-from utils.scraping_helpers import (
+from auracontent.utils.scraping_helpers import (
     calculate_relevance,
     download_file,
     is_used,

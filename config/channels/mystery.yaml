@@ -15,37 +15,45 @@ brain:
     Respecter EXACTEMENT la localisation réelle du fait.
     Jamais de lieu générique ou ambigu : toujours le nom complet et précis.
 
+  country: "France"          # tous les lieux du script doivent être dans ce pays
+
+  # name : envoyé au LLM et stocké dans l'historique ; search : mots-clés de recherche Wikipédia
   regions:
-    - "Île-de-France (hors Paris intra-muros)"
-    - "Bretagne"
-    - "Normandie"
-    - "Hauts-de-France"
-    - "Grand Est (Alsace, Lorraine, Champagne)"
-    - "Bourgogne-Franche-Comté"
-    - "Auvergne-Rhône-Alpes"
-    - "Nouvelle-Aquitaine"
-    - "Occitanie"
-    - "Provence-Alpes-Côte d'Azur"
-    - "Corse"
-    - "Pays de la Loire"
-    - "Centre-Val de Loire"
-    - "Outre-mer français (Guadeloupe, Martinique, Réunion, etc.)"
-    - "Paris intra-muros"
+    - {name: "Île-de-France (hors Paris intra-muros)", search: ["Yvelines", "Essonne", "Seine-et-Marne", "Val-d'Oise", "Hauts-de-Seine"]}
+    - {name: "Bretagne", search: ["Bretagne", "Finistère", "Morbihan", "Côtes-d'Armor", "Ille-et-Vilaine"]}
+    - {name: "Normandie", search: ["Normandie", "Calvados", "Manche", "Seine-Maritime", "Orne", "Eure"]}
+    - {name: "Hauts-de-France", search: ["Nord", "Pas-de-Calais", "Somme", "Picardie", "Aisne", "Oise"]}
+    - {name: "Grand Est (Alsace, Lorraine, Champagne)", search: ["Alsace", "Lorraine", "Champagne", "Vosges", "Ardennes"]}
+    - {name: "Bourgogne-Franche-Comté", search: ["Bourgogne", "Franche-Comté", "Jura", "Doubs", "Yonne"]}
+    - {name: "Auvergne-Rhône-Alpes", search: ["Auvergne", "Lyon", "Savoie", "Isère", "Ardèche", "Cantal"]}
+    - {name: "Nouvelle-Aquitaine", search: ["Gironde", "Dordogne", "Limousin", "Charente", "Pays basque", "Poitou"]}
+    - {name: "Occitanie", search: ["Occitanie", "Languedoc", "Toulouse", "Ariège", "Aveyron", "Hérault"]}
+    - {name: "Provence-Alpes-Côte d'Azur", search: ["Provence", "Marseille", "Var", "Vaucluse", "Alpes-Maritimes"]}
+    - {name: "Corse", search: ["Corse", "Ajaccio", "Bastia"]}
+    - {name: "Pays de la Loire", search: ["Nantes", "Vendée", "Anjou", "Sarthe", "Mayenne"]}
+    - {name: "Centre-Val de Loire", search: ["Touraine", "Orléans", "Berry", "Loir-et-Cher", "Sologne"]}
+    - {name: "Outre-mer français (Guadeloupe, Martinique, Réunion, etc.)", search: ["Guadeloupe", "Martinique", "La Réunion", "Guyane", "Mayotte"]}
+    - {name: "Paris intra-muros", search: ["Paris"]}
   region_lookback: 3
 
   theme_categories:
-    - "un objet ou artefact physique disparu ou volé (bijou, manuscrit, tableau, relique, instrument scientifique)"
-    - "un personnage historique réel méconnu ou une affaire judiciaire oubliée"
-    - "un événement étouffé ou censuré (incendie suspect, épidémie cachée, scandale politique, sabotage)"
-    - "une loi, un règlement ou une tradition administrative absurde et réelle"
-    - "un phénomène architectural visible en surface (façade, statue, plaque, vitrail, gargouille) avec une histoire cachée"
-    - "une découverte archéologique ou scientifique récente et peu connue"
+    - name: "un objet ou artefact physique disparu ou volé (bijou, manuscrit, tableau, relique, instrument scientifique)"
+      search: ["vol trésor", "manuscrit disparu", "relique volée", "tableau volé", "trésor perdu"]
+    - name: "un personnage historique réel méconnu ou une affaire judiciaire oubliée"
+      search: ["affaire criminelle", "procès", "affaire judiciaire", "imposteur", "disparition"]
+    - name: "un événement étouffé ou censuré (incendie suspect, épidémie cachée, scandale politique, sabotage)"
+      search: ["incendie", "épidémie", "scandale", "sabotage", "catastrophe"]
+    - name: "une loi, un règlement ou une tradition administrative absurde et réelle"
+      search: ["ordonnance", "coutume", "privilège", "arrêté", "tradition"]
+    - name: "un phénomène architectural visible en surface (façade, statue, plaque, vitrail, gargouille) avec une histoire cachée"
+      search: ["statue", "vitrail", "gargouille", "monument historique", "façade"]
+    - name: "une découverte archéologique ou scientifique récente et peu connue"
+      search: ["fouilles archéologiques", "découverte archéologique", "site archéologique", "épave", "nécropole"]
 
   banned_if_recent: ["tunnel", "souterrain", "passage secret", "catacombe", "salle secrète", "chambre secrète"]
   fiction_markers: ["fiction", "fictive", "fictif", "⚠️", "#story", "#storytime", "#horror"]
   niche_keywords: ["mystère", "secret", "histoire", "légende"]
 
-  prompts_dir: "auracontent/channels/mystery/prompts"   # script.txt, hook.txt, factcheck.txt, veracity.txt
 
 # Audio
 audio:
@@ -79,7 +87,6 @@ video_composer:
   transitions: ["fade", "fade", "fade", "fade"]   # le composer doit faire un modulo (i % len)
 
   # Audio & Mix
-  music_exclude_patterns: ["finance", "kids"]
   voice_gain: 1.08
   music_gain: 0.085
   music_fade_duration: 2.5
@@ -133,3 +140,17 @@ visuals:
   ai_negative_prompt: "text, logo, watermark, subtitles, borders, split screen, multiple frames, deformed hands, extra fingers, duplicate people, cropped head, blurry face, cartoon, anime"
   ai_primary_model: "flux"
   ai_fallback_model: "turbo"
+# Publication (publish.py) — uniquement des NOMS de variables d'environnement, jamais les valeurs
+publish:
+  hf_repo: "soradata/AIShortvideos"   # dataset HF où le générateur dépose les vidéos
+  hf_folder: "videos"                 # dossier historique de Minute Mystère
+  zernio_key_env: "ZERNIO_API_KEY"
+  platforms:                          # publiées dans cet ordre
+    - {platform: youtube, account_env: YOUTUBE_ACCOUNT_ID}
+    - {platform: tiktok,  account_env: TIKTOK_ACCOUNT_ID}
+  delay_between_platforms: 15
+  stats:                              # boucle de feedback Zernio (bandit des hooks)
+    platform: null                    # tiktok | youtube | null = toutes
+    account_env: null                 # ex : TIKTOK_ACCOUNT_ID pour ne lire qu'un compte
+    limit: 20
+  fallback_hashtags: "🧠✨ #IA #MinuteMystère #Decouverte #PourToi"

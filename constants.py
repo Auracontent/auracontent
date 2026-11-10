@@ -35,3 +35,4 @@ SECOND_IMAGE_EXTRA_DURATION = 0.35
 MIN_SEGMENT_DURATION = 0.1
 
 WIKI_API_URL = "https://www.wikidata.org/w/api.php"
+WIKIPEDIA_API_URL = "https://fr.wikipedia.org/w/api.php"
