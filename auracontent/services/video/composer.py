@@ -207,8 +207,11 @@ class Composer:
     def _zoompan_clip(self, path: str, duration: float, zoom_expr: str):
         """Image fixe animée (effet Ken Burns) pendant `duration` secondes."""
         frames = max(int(duration * self.fps), 1)
+        # UNE seule image en entrée : zoompan émet `d` frames PAR frame d'entrée.
+        # (avec loop=1 l'image était répétée à 25 fps -> durée ~ au carré : 417 s pour une scène de 5 s)
         return (
-            ffmpeg.input(path, loop=1, t=duration)
+            ffmpeg.input(path, loop=1, framerate=1, t=duration)  # t distinct par segment : évite la fusion des noeuds A/B
+            .filter("trim", end_frame=1)
             .filter("scale", KEN_BURNS_SOURCE_WIDTH, -1)
             .filter(
                 "zoompan",
@@ -217,6 +220,7 @@ class Composer:
                 s=f"{self.video_width}x{self.video_height}",
                 fps=self.fps,
             )
+            .filter("trim", duration=duration)   # garde-fou sur la durée
             .setpts("PTS-STARTPTS")
         )
 
