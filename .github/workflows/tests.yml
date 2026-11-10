@@ -1,0 +1,31 @@
+name: Tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - name: 📥 Cloner le dépôt
+        uses: actions/checkout@v7
+
+      - name: ⚙️ Installer ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg
+
+      - name: ⚡ Installer uv
+        uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+
+      - name: 📦 Installer les dépendances (versions figées par uv.lock)
+        run: uv sync --locked --group default --group media --group dev
+
+      - name: 🔍 Lint (erreurs bloquantes uniquement)
+        run: uv run ruff check --select F821,F811,F823 --exclude auracontent/channels/kids/legacy .
+
+      - name: 🧪 Tests
+        run: uv run pytest -q

@@ -1,9 +1,11 @@
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 from auracontent.core.brain.llm_client import LLMClient
+from auracontent.utils.text_utils import _title_tokens
 
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 _SECTION_HEADER = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
@@ -55,6 +57,12 @@ class BaseBrain:
         if not history:
             return False, None
         recent = history[-15:]
+        # Filtre local gratuit : sans au moins 2 mots significatifs (> 3 lettres) en commun avec un sujet
+        # récent, ce ne peut pas être la même histoire -> pas d'appel LLM
+        cand = {t for t in _title_tokens(candidate) if len(t) > 3}
+        overlap = max((len(cand & {t for t in _title_tokens(h) if len(t) > 3}) for h in recent), default=0)
+        if overlap < 2:
+            return False, None
         prompt = f"""Voici un nouveau sujet de vidéo : "{candidate}"
 
 Voici les 15 derniers sujets déjà publiés :
@@ -93,9 +101,24 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
         hooks = [h for h in data.get("hooks", []) if isinstance(h, dict) and h.get("text")]
         return hooks[:n] or [{"text": topic, "pattern": "default", "raison": ""}]
 
+    def target_scene_count(self) -> int:
+        """Nombre de scènes déduit de la durée visée (env VIDEO_DURATION ou brain.target_duration).
+
+        La narration Gemini tourne autour de 8 s par scène : 45 s -> 6 scènes. `scene_count` reste le plafond.
+        """
+        brain_cfg = self.config.get("brain", {})
+        max_scenes = int(brain_cfg.get("scene_count", 11))
+        try:
+            duration = float(os.getenv("VIDEO_DURATION") or brain_cfg.get("target_duration", 45))
+        except ValueError:
+            duration = 45.0
+        per_scene = float(brain_cfg.get("seconds_per_scene", 8))
+        return max(5, min(max_scenes, round(duration / per_scene)))
+
     def generate_script(self, topic, chosen_hook=None):
         """Point d'entrée standard pour générer un script."""
-        target_scenes = int(self.config.get("brain", {}).get("scene_count", 11))
+        target_scenes = self.target_scene_count()
+        print(f"⏱️ {target_scenes} scènes visées")
         return self.generate_script_with_target(
             topic, scene_count=target_scenes, chosen_hook=chosen_hook
         )

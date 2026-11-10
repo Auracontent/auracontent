@@ -66,6 +66,13 @@ class AIImageGenerator:
         self.fallback_model = config.get("ai_fallback_model", DEFAULT_FALLBACK_MODEL)
 
         self.headers = {"User-Agent": f"AuraContentPipeline/2.0 ({WIKIMEDIA_CONTACT})"}
+        self.quota_exhausted = False
+        # Sans jeton, Pollinations bascule vite en 402 (quota anonyme) : on s'authentifie si possible
+        token = os.getenv("POLLINATIONS_TOKEN")
+        if token:
+            self.headers["Authorization"] = f"Bearer {token}"
+        else:
+            print("ℹ️ POLLINATIONS_TOKEN absent : quota anonyme Pollinations (erreurs 402 probables).")
         print("🤖 Initialisation du générateur d'images IA (Pollinations)")
 
     # Prompt et URL
@@ -160,8 +167,10 @@ class AIImageGenerator:
             else:
                 print(
                     f"    ❌ Erreur Pollinations ({model}) : "
-                    f"{response.status_code}, type={content_type}"
+                    f"{response.status_code}, type={content_type} {response.text[:150] if 'json' in content_type else ''}"
                 )
+                if response.status_code == 402:
+                    self.quota_exhausted = True  # inutile de retenter ce run
             return False
 
         except requests.RequestException as error:
@@ -186,6 +195,9 @@ class AIImageGenerator:
         seed: int | None = None,
         variant: str | None = None,
     ) -> bool:
+        if self.quota_exhausted:
+            print("    ⏭️ Quota Pollinations épuisé (402) : génération IA ignorée pour ce run.")
+            return False
         print(f"🎨 Génération d'une image IA pour : '{prompt_text}'")
 
         if self._file_is_valid(output_path):
@@ -222,6 +234,8 @@ class AIImageGenerator:
                     f"seed={attempt.seed}) : {output_path}"
                 )
                 return True
+            if self.quota_exhausted:
+                break
 
         print(f"    ❌ Échec définitif pour la génération de l'image : {output_path}")
         return False

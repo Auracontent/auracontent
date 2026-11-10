@@ -1,10 +1,10 @@
-"""Point d'entrée unique. À lancer depuis la racine du dépôt :
+"""Point d'entrée de la génération. À lancer depuis la racine du dépôt :
 
-    python main.py                      # toutes les chaînes du registre, script + vidéo
-    python main.py mystery              # une seule chaîne
-    python main.py mystery --script-only
-    python main.py mystery --upload     # dépose la vidéo + légende sur Hugging Face (CI)
-    python main.py mystery --sync-state # historiques (sujets, hooks) lus/sauvés sur HF (CI)
+    python -m auracontent.cli.generate                # toutes les chaînes du registre, script + vidéo
+    python -m auracontent.cli.generate mystery              # une seule chaîne
+    python -m auracontent.cli.generate mystery --script-only
+    python -m auracontent.cli.generate mystery --upload     # dépose la vidéo + légende sur Hugging Face (CI)
+    python -m auracontent.cli.generate mystery --sync-state # historiques (sujets, hooks) lus/sauvés sur HF (CI)
 """
 import argparse
 import sys

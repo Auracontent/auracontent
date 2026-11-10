@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 from auracontent.services.scraping.archive_provider import ArchiveProvider
+from auracontent.services.scraping.europeana_provider import EuropeanaProvider
 from auracontent.services.scraping.video_provider import VideoProvider
 from auracontent.services.visuals.ai_image import AIImageGenerator
+from auracontent.services.visuals.cloudflare_image import CloudflareImageGenerator
 from auracontent.utils.scraping_helpers import load_history
 
 # Direction artistique par défaut (surchargeable via channel_config)
@@ -34,7 +36,9 @@ class AssetManager:
         self.history = load_history()
         self.videos = VideoProvider(self.history)
         self.archives = ArchiveProvider(self.history)
+        self.europeana = EuropeanaProvider(self.history)
         self.ai = AIImageGenerator()
+        self.cloudflare = CloudflareImageGenerator()
 
         # Direction artistique (IA)
         self.ai_composition = self.config.get("ai_composition", DEFAULT_AI_COMPOSITION)
@@ -81,6 +85,10 @@ class AssetManager:
             ]
         )
 
+    def _generate_ai(self, prompt: str, output_path: str) -> bool:
+        """Cloudflare FLUX (stable) puis Pollinations en secours."""
+        return self.cloudflare.generate_image(prompt, output_path) or self.ai.generate_image(prompt, output_path)
+
     @staticmethod
     def _failure(query: str) -> AssetResult:
         print(f"❌ Échec total de la récupération d'asset pour : '{query}'")
@@ -94,7 +102,7 @@ class AssetManager:
         event_context: str | None = None,
         image_prompt: str | None = None,
     ) -> AssetResult:
-        """Retourne (succès, source) avec source dans {wiki, openverse, ai, video, none}."""
+        """Retourne (succès, source) : wiki, openverse, europeana, pexels_photo, ai, video ou none."""
         if scene_type == "specific":
             return self._get_specific_asset(
                 query, output_path, event_context, image_prompt
@@ -119,6 +127,9 @@ class AssetManager:
             print("🏛️ Archive Openverse trouvée (tentative directe) !")
             return True, "openverse"
 
+        if self.europeana.get_image(query, output_path):
+            return True, "europeana"
+
         ai_prompt = self._build_structured_prompt(
             query, event_context=event_context, image_prompt=image_prompt
         )
@@ -133,7 +144,7 @@ class AssetManager:
                 f"Tentative IA-First pour : '{query}' (prompt structuré)."
             )
 
-        if self.ai.generate_image(ai_prompt, output_path):
+        if self._generate_ai(ai_prompt, output_path):
             return True, "ai"
 
         print(f"🎬 IA échouée pour '{query}', tentative de secours vidéo générique...")
@@ -154,11 +165,14 @@ class AssetManager:
         if self.videos.fetch_background(query, output_path):
             return True, "video"
 
+        if self.videos.fetch_photo(query, output_path):
+            return True, "pexels_photo"
+
         fallback_prompt = self._build_structured_prompt(
             query, event_context=event_context, image_prompt=image_prompt
         )
         print("🎨 Génération IA de secours (prompt structuré)...")
-        if self.ai.generate_image(fallback_prompt, output_path):
+        if self._generate_ai(fallback_prompt, output_path):
             return True, "ai"
 
         return self._failure(query)

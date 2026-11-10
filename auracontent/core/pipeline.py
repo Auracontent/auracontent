@@ -40,11 +40,22 @@ class VideoPipeline:
         assets_dir = self.work_dir / "assets"
         assets_dir.mkdir(parents=True, exist_ok=True)
         fallbacks = sorted(glob.glob(SHARED_FALLBACK_IMAGES))
-        paths = []
+        paths: list[str | None] = []
+        query_counts: dict[str, int] = {}
 
         for scene in scenes:
+            if scene.get("reuse_previous_asset") and paths:  # scène CTA : on garde le dernier visuel
+                paths.append(paths[-1])
+                continue
             sid = scene["id"]
             scene_type = scene.get("scene_type", "generic")
+            location = (scene.get("location_name") or "").strip().lower()
+            # Variété : un même lieu au-delà de 2 scènes -> plan d'ambiance (vidéo Pexels de préférence)
+            if scene_type == "specific" and location and query_counts.get(location, 0) >= 2 and scene.get("stock_search"):
+                print(f"  🔀 Scène {sid} : '{location}' déjà utilisé 2 fois, plan d'ambiance à la place.")
+                scene_type = "generic"
+            if location:
+                query_counts[location] = query_counts.get(location, 0) + 1
             query = (scene.get("location_name") if scene_type == "specific" else scene.get("stock_search")) or ""
             query = query.strip() or scene.get("image_prompt", "") or self.channel.section("visuals").get(
                 "video_fallback_query", "cinematic atmosphere"
@@ -85,10 +96,25 @@ class VideoPipeline:
                 output_path=str(self.work_dir / "subs" / f"scene_{scene['id']}.srt"),
             )
 
+    # ---------- Audience ----------
+    def _enrich_for_audience(self, script: dict, scenes: list[dict], title: str) -> None:
+        """Titre accrocheur à l'écran sur la scène 1 + CTA final lu par le narrateur."""
+        if scenes:
+            scenes[0]["overlay_text"] = script.get("on_screen_title") or title
+        cta = str(script.get("closing_cta") or "").strip()
+        if cta and not any(s.get("role") == "cta" and cta in str(s.get("text", "")) for s in scenes):
+            last = scenes[-1] if scenes else {}
+            scenes.append({
+                "id": len(scenes) + 1, "text": cta, "role": "cta", "mood": last.get("mood", "intriguing"),
+                "voice_type": "narrator", "scene_type": last.get("scene_type", "generic"),
+                "reuse_previous_asset": True,
+            })
+
     # ---------- Orchestration ----------
     def run(self, script: dict, upload: bool = False) -> Path | None:
         scenes = script["scenes"]
         title = script.get("title") or script.get("topic") or self.name
+        self._enrich_for_audience(script, scenes, title)
         shutil.rmtree(self.work_dir, ignore_errors=True)
 
         print("🔄 Recherche des assets...")

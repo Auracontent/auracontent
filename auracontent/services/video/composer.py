@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import random
 import shutil
+import textwrap
 import ffmpeg
 from config.settings import (
     ASSETS_DIR,
@@ -26,7 +27,6 @@ from constants import (
     DEFAULT_FONT_PATH,
     DEFAULT_SUBTITLE_STYLE,
     H264_AAC,
-    KEN_BURNS_SOURCE_WIDTH,
     LOUDNORM,
     MIN_SEGMENT_DURATION,
     SECOND_IMAGE_EXTRA_DURATION,
@@ -120,6 +120,13 @@ class Composer:
         self.source_credit_alpha = config.get("source_credit_alpha", 0.52)
         self.source_credit_labels = config.get("source_credit_labels", {})
 
+        # Titre accrocheur à l'écran (scène 1)
+        self.overlay_duration = config.get("overlay_duration", 3.0)
+        self.overlay_font_size = config.get("overlay_font_size", 72)
+        self.overlay_chars_per_line = config.get("overlay_chars_per_line", 18)
+        self.overlay_max_lines = config.get("overlay_max_lines", 3)
+        self.overlay_y = config.get("overlay_y", 300)
+
     # Musique et effets sonores
     def set_background_music(self, mood: str = "intriguing") -> None:
         self.current_bg_music_path = self._pick_music_track(mood)
@@ -204,18 +211,55 @@ class Composer:
             .setpts("PTS-STARTPTS")
         )
 
+    @staticmethod
+    def _image_aspect(path: str) -> float:
+        try:
+            from PIL import Image
+
+            with Image.open(path) as img:
+                return img.width / img.height
+        except Exception:
+            return 9 / 16
+
+    def _vertical_frame(self, stream, path: str):
+        """Ramène l'image au format 9:16 SANS la déformer (zoompan étire sinon l'image à la taille de sortie).
+
+        - image verticale : recadrage centré ;
+        - image horizontale (photos d'archives) : image entière centrée sur un fond flouté d'elle-même.
+        Marge de 15 % pour que le zoom Ken Burns ne montre jamais de bord.
+        """
+        w, h = int(self.video_width * 1.15) // 2 * 2, int(self.video_height * 1.15) // 2 * 2
+        target = w / h
+        if self._image_aspect(path) <= target * 1.25:  # déjà (presque) vertical : on recadre
+            return (
+                stream.filter("scale", w, h, force_original_aspect_ratio="increase")
+                .filter("crop", w, h)
+                .filter("setsar", 1)
+            )
+        split = stream.filter_multi_output("split", 2)
+        background = (
+            split[0]
+            .filter("scale", w, h, force_original_aspect_ratio="increase")
+            .filter("crop", w, h)
+            .filter("boxblur", 30, 2)
+            .filter("eq", brightness=-0.12)
+        )
+        foreground = split[1].filter("scale", w, -2)
+        return ffmpeg.overlay(background, foreground, x="(W-w)/2", y="(H-h)/2").filter("setsar", 1)
+
     def _zoompan_clip(self, path: str, duration: float, zoom_expr: str):
         """Image fixe animée (effet Ken Burns) pendant `duration` secondes."""
         frames = max(int(duration * self.fps), 1)
         # UNE seule image en entrée : zoompan émet `d` frames PAR frame d'entrée.
         # (avec loop=1 l'image était répétée à 25 fps -> durée ~ au carré : 417 s pour une scène de 5 s)
+        source = ffmpeg.input(path, loop=1, framerate=1, t=duration).filter("trim", end_frame=1)  # t distinct par segment
         return (
-            ffmpeg.input(path, loop=1, framerate=1, t=duration)  # t distinct par segment : évite la fusion des noeuds A/B
-            .filter("trim", end_frame=1)
-            .filter("scale", KEN_BURNS_SOURCE_WIDTH, -1)
+            self._vertical_frame(source, path)
             .filter(
                 "zoompan",
                 z=zoom_expr,
+                x="iw/2-(iw/zoom/2)",
+                y="ih/2-(ih/zoom/2)",
                 d=frames,
                 s=f"{self.video_width}x{self.video_height}",
                 fps=self.fps,
@@ -255,6 +299,26 @@ class Composer:
         stream_b = self._zoompan_clip(path_b, duration_b, ZOOM_OUT_EXPR)
         return ffmpeg.concat(stream_a, stream_b, v=1, a=0), path_a
 
+    def _add_overlay_title(self, video_stream, text: str, duration: float):
+        """Titre en gros en haut de l'écran pendant les premières secondes (beaucoup regardent sans le son)."""
+        lines = textwrap.wrap(str(text).upper(), width=self.overlay_chars_per_line)[: self.overlay_max_lines]
+        size = self.overlay_font_size
+        for i, line in enumerate(lines):
+            video_stream = video_stream.filter(
+                "drawtext",
+                text=escape_drawtext(line),
+                fontfile=self.watermark_font_path,
+                fontcolor="white",
+                fontsize=size,
+                box=1,
+                boxcolor="black@0.65",
+                boxborderw=18,
+                x="(w-text_w)/2",
+                y=f"{self.overlay_y}+{i}*{int(size * 1.45)}",
+                enable=f"lt(t,{min(duration, self.overlay_duration)})",
+            )
+        return video_stream
+
     def _add_source_credit(self, video_stream, text: str):
         return video_stream.filter(
             "drawtext",
@@ -293,6 +357,9 @@ class Composer:
                 source_text = self._resolve_source_credit(source_path)
             if source_text:
                 video_stream = self._add_source_credit(video_stream, source_text)
+
+            if scene.get("overlay_text"):
+                video_stream = self._add_overlay_title(video_stream, scene["overlay_text"], total_duration)
 
             srt_path = scene.get("srt_path")
             if srt_path and os.path.exists(srt_path):
@@ -394,6 +461,7 @@ class Composer:
                     output_video_path,
                     vcodec="copy",
                     acodec="aac",
+                    ar=48000,
                     audio_bitrate=H264_AAC["audio_bitrate"],
                     movflags="faststart",
                 )
@@ -468,7 +536,8 @@ class Composer:
                 normalize=0,
             ).filter("loudnorm", **LOUDNORM)
 
-            _run(ffmpeg.output(voice.video, mixed_audio, output_path, **H264_AAC))
+            # loudnorm suréchantillonne (96-192 kHz) : on revient au 48 kHz standard des plateformes
+            _run(ffmpeg.output(voice.video, mixed_audio, output_path, ar=48000, **H264_AAC))
             return True
         except Exception:
             return False

@@ -1,7 +1,7 @@
-"""Test manuel du rendu d'une scène avec une vidéo comme source.
+"""Script manuel : rend une scène à partir d'une vidéo pour juger le cadrage à l'œil.
 
-    python -m auracontent.tests.test_video_scene              # utilise assets/shared/backgrounds/test_bg.mp4
-    python -m auracontent.tests.test_video_scene clip.mp4     # ta propre vidéo
+    python -m scripts.render_scene            # utilise assets/shared/backgrounds/test_bg.mp4
+    python -m scripts.render_scene clip.mp4    # ta propre vidéo
 """
 import os
 import sys

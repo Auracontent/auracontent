@@ -94,7 +94,18 @@ def select_hook(hooks: list[dict], pattern_scores: dict[str, float] | None = Non
             best, score = max(scored, key=lambda x: x[1])
             print(f"🎯 Hook par exploitation (pattern {best.get('pattern')}, score {score:.3f})")
             return best
-    chosen = random.choice(hooks)
-    reason = "exploration" if explore else "aucun score historique"
-    print(f"🎲 Hook aléatoire ({reason}), pattern {chosen.get('pattern', '?')}")
+    if explore:
+        chosen = random.choice(hooks)
+        print(f"🎲 Hook aléatoire (exploration), pattern {chosen.get('pattern', '?')}")
+        return chosen
+    # Pas encore de stats : on prend le hook le mieux noté par le LLM
+    chosen = max(hooks, key=_llm_score)
+    print(f"⭐ Hook le mieux noté par le LLM ({_llm_score(chosen):g}/10), pattern {chosen.get('pattern', '?')}")
     return chosen
+
+
+def _llm_score(hook: dict) -> float:
+    try:
+        return float(hook.get("score", 0))
+    except (TypeError, ValueError):
+        return 0.0
