@@ -192,3 +192,31 @@ def test_groq_tpm_message_with_used_field():
 
     m = _RATE_LIMIT_NUMS_RE.search("Limit 8000, Used 4521, Requested 9100")
     assert (m.group(1), m.group(2)) == ("8000", "9100")
+
+
+def test_duplicate_check_skips_llm_when_no_overlap():
+    from auracontent.core.brain.base_brain import BaseBrain
+
+    class NoCallLLM:
+        def call_json_with_retry(self, *a, **k):
+            raise AssertionError("le LLM ne doit pas être appelé")
+
+    brain = BaseBrain.__new__(BaseBrain)
+    brain.llm = NoCallLLM()
+    history = ["Le trésor perdu de Rennes-le-Château", "La cloche fantôme de Bretagne"]
+    assert brain.is_duplicate_topic_llm("Un médecin empoisonneur à Besançon", history) == (False, None)
+
+
+def test_llm_registry_skips_providers_without_key(monkeypatch):
+    from auracontent.core.brain import llm_client
+
+    for spec in llm_client.PROVIDER_SPECS.values():
+        for var in spec["key_env"]:
+            monkeypatch.delenv(var, raising=False)
+    for var in ("LLM_PROVIDERS",):
+        monkeypatch.delenv(var, raising=False)
+    monkeypatch.setenv("MISTRAL_API_KEY", "k")
+    monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")  # sans CLOUDFLARE_ACCOUNT_ID -> ignoré
+    monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
+    client = llm_client.LLMClient.create_default()
+    assert {p["name"] for p in client.providers} == {"Mistral"}

@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Any
 
 from auracontent.core.brain.llm_client import LLMClient
+from auracontent.utils.text_utils import _title_tokens
 
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 _SECTION_HEADER = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
@@ -56,6 +57,12 @@ class BaseBrain:
         if not history:
             return False, None
         recent = history[-15:]
+        # Filtre local gratuit : sans au moins 2 mots significatifs (> 3 lettres) en commun avec un sujet
+        # récent, ce ne peut pas être la même histoire -> pas d'appel LLM
+        cand = {t for t in _title_tokens(candidate) if len(t) > 3}
+        overlap = max((len(cand & {t for t in _title_tokens(h) if len(t) > 3}) for h in recent), default=0)
+        if overlap < 2:
+            return False, None
         prompt = f"""Voici un nouveau sujet de vidéo : "{candidate}"
 
 Voici les 15 derniers sujets déjà publiés :
