@@ -2,20 +2,25 @@ name: Publisher [Bot]
 
 on:
   workflow_dispatch:
+    inputs:
+      channels:
+        description: "Chaînes à publier, séparées par des espaces (ex : mystery finance)"
+        required: false
+        default: "mystery"
 
 jobs:
   publier_video:
     runs-on: ubuntu-latest
     timeout-minutes: 20
     env:
-      ACTIVER_FINANCE: "false"
+      CHANNELS: ${{ github.event.inputs.channels || 'mystery' }}
     steps:
       - name: 📥 Récupérer le code
         uses: actions/checkout@v7
-        
+
       - name: ⚙️ Installer FFmpeg
         run: sudo apt-get update && sudo apt-get install -y ffmpeg
-        
+
       - name: ⚡ Installer uv
         uses: astral-sh/setup-uv@v10.1.0
         with:
@@ -24,36 +29,26 @@ jobs:
 
       - name: 🐍 Configurer Python 3.12
         run: uv python install 3.12
-        
-      - name: 📦 Installer les dépendances minimales
-        run: uv sync --all-groups
-        
-      - name: 🚀 Lancer les scripts de publication
+
+      - name: 📦 Installer les dépendances
+        run: uv sync --group default
+
+      # Les noms des variables utilisées par chaque chaîne sont dans config/channels/<chaîne>.yaml (section publish)
+      - name: 🚀 Publier
         env:
+          HF_TOKEN: ${{ secrets.HF_TOKEN }}
           ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY }}
           TIKTOK_ACCOUNT_ID: ${{ secrets.TIKTOK_ACCOUNT_ID }}
           YOUTUBE_ACCOUNT_ID: ${{ secrets.YOUTUBE_ACCOUNT_ID }}
           ZERNIO_API_KEYS_FINANCE: ${{ secrets.ZERNIO_API_KEYS_FINANCE }}
           TIKTOK_CAPITAL_SIMPLE_ID: ${{ secrets.TIKTOK_CAPITAL_SIMPLE_ID }}
           YOUTUBE_CAPITAL_SIMPLE_ID: ${{ secrets.YOUTUBE_CAPITAL_SIMPLE_ID }}
-        run: |
-          # 1. On lance toujours le premier script
-          uv run python publish.py
-          mv loudness_report.txt loudness_report_standard.txt || true
-          
-          # 2. On lance publish_finance.py uniquement si la variable d'environnement est à "true"
-          if [ "$ACTIVER_FINANCE" = "true" ]; then
-            echo "Lancement de publish_finance.py..."
-            uv run python publish_finance.py
-            mv loudness_report.txt loudness_report_finance.txt || true
-          else
-            echo "publish_finance.py ignoré (désactivé par configuration)."
-          fi
+        run: uv run python publish.py $CHANNELS
 
       - name: 💾 Sauvegarder les rapports de loudness
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: Loudness-Reports-Publish-${{ github.run_id }}
-          path: loudness_report_*.txt 
+          path: loudness_report_*.txt
           if-no-files-found: ignore

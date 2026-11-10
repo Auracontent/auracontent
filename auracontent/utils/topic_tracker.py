@@ -1,13 +1,13 @@
 """Historique des sujets publiés, partagé par toutes les chaînes.
 
-Stocké dans assets/state/global_history.json, sous forme de liste d'entrées :
+Stocké dans assets/shared/state/global_history.json, sous forme de liste d'entrées :
 {"topic", "channel", "date", + métadonnées libres (region, category, source_title, source_url...)}.
 """
 import json
 from datetime import datetime, timezone
 from pathlib import Path
 
-HISTORY_PATH = Path(__file__).resolve().parents[2] / "assets" / "state" / "global_history.json"
+HISTORY_PATH = Path(__file__).resolve().parents[2] / "assets" / "shared" / "state" / "global_history.json"
 
 
 def _load_entries() -> list[dict]:

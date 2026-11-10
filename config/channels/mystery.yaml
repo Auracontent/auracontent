@@ -87,7 +87,6 @@ video_composer:
   transitions: ["fade", "fade", "fade", "fade"]   # le composer doit faire un modulo (i % len)
 
   # Audio & Mix
-  music_exclude_patterns: ["finance", "kids"]
   voice_gain: 1.08
   music_gain: 0.085
   music_fade_duration: 2.5
@@ -141,3 +140,17 @@ visuals:
   ai_negative_prompt: "text, logo, watermark, subtitles, borders, split screen, multiple frames, deformed hands, extra fingers, duplicate people, cropped head, blurry face, cartoon, anime"
   ai_primary_model: "flux"
   ai_fallback_model: "turbo"
+# Publication (publish.py) — uniquement des NOMS de variables d'environnement, jamais les valeurs
+publish:
+  hf_repo: "soradata/AIShortvideos"   # dataset HF où le générateur dépose les vidéos
+  hf_folder: "videos"                 # dossier historique de Minute Mystère
+  zernio_key_env: "ZERNIO_API_KEY"
+  platforms:                          # publiées dans cet ordre
+    - {platform: youtube, account_env: YOUTUBE_ACCOUNT_ID}
+    - {platform: tiktok,  account_env: TIKTOK_ACCOUNT_ID}
+  delay_between_platforms: 15
+  stats:                              # boucle de feedback Zernio (bandit des hooks)
+    platform: null                    # tiktok | youtube | null = toutes
+    account_env: null                 # ex : TIKTOK_ACCOUNT_ID pour ne lire qu'un compte
+    limit: 20
+  fallback_hashtags: "🧠✨ #IA #MinuteMystère #Decouverte #PourToi"

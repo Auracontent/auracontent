@@ -59,12 +59,15 @@ class Composer:
     Applique le pipeline visuel : scènes -> sous-titres -> watermark -> mixage audio.
     """
 
-    def __init__(self, channel_config: dict | None = None):
+    def __init__(self, channel_config: dict | None = None, channel_name: str | None = None):
+        # assets/<chaîne>/{music,images} propres à la chaîne, assets/shared/ pour le commun
+        shared_dir = os.path.join(str(ASSETS_DIR), "shared")
+        channel_dir = os.path.join(str(ASSETS_DIR), channel_name) if channel_name else shared_dir
         self.temp_dir = str(TEMP_DIR)
         self.final_dir = str(OUTPUT_DIR)
-        self.music_dir = os.path.join(str(ASSETS_DIR), "music")
-        self.images_dir = os.path.join(str(ASSETS_DIR), "images")
-        self.sfx_dir = os.path.join(str(ASSETS_DIR), "sfx")
+        self.music_dir = os.path.join(channel_dir, "music")
+        self.images_dir = os.path.join(channel_dir, "images")
+        self.sfx_dir = os.path.join(shared_dir, "sfx")
 
         for directory in (
             self.temp_dir,

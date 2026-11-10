@@ -5,7 +5,7 @@ from __future__ import annotations
 from auracontent.services.scraping.archive_provider import ArchiveProvider
 from auracontent.services.scraping.video_provider import VideoProvider
 from auracontent.services.visuals.ai_image import AIImageGenerator
-from auracontent.utils.topic_tracker import load_topic_history
+from auracontent.utils.scraping_helpers import load_history
 
 # Direction artistique par défaut (surchargeable via channel_config)
 DEFAULT_AI_COMPOSITION = "cinematic shot, well composed"
@@ -30,7 +30,8 @@ class AssetManager:
         self.config = channel_config or {}
 
         # Fournisseurs
-        self.history = load_topic_history()
+        # Historique des assets déjà utilisés {source: [ids]} (anti-réutilisation)
+        self.history = load_history()
         self.videos = VideoProvider(self.history)
         self.archives = ArchiveProvider(self.history)
         self.ai = AIImageGenerator()

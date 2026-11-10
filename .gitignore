@@ -1,0 +1,34 @@
+# Dependencies
+node_modules/
+venv/
+
+# Environment variables (Critical for security)
+.env
+
+# System files
+.DS_Store
+Thumbs.db
+
+# Build outputs
+/dist
+/build
+/video-gen
+/assets/audio_clips
+/assets/final
+/assets/temp
+/assets/video_clips
+/modules/__pycache__
+/assets/avatar/avatar.mp4
+/assets/avatar/Gemini_Generated_Image_ww2ko4ww2ko4ww2k.png
+*.log
+*.mp4
+!assets/videos/*.mp4
+!assets/backgrounds/*.mp4
+
+# Sorties du Composer
+/temp/
+/output/
+__pycache__/
+
+# État synchronisé sur Hugging Face (meta/), source de vérité = HF
+/assets/shared/state/

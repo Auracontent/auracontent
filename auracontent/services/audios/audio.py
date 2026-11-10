@@ -7,7 +7,7 @@ import wave
 from pathlib import Path
 import requests
 from mutagen.mp3 import MP3
-from constants import GEMINI_MODEL_VOICE
+from config.settings import GEMINI_CONFIG
 from .text_fr import normalize_fr
 
 try:
@@ -58,7 +58,7 @@ class AudioEngine:
         self._last_gemini_call = time.time()
 
         url = ("https://generativelanguage.googleapis.com/v1beta/models/"
-               f"{GEMINI_MODEL_VOICE}:generateContent")
+               f"{GEMINI_CONFIG['voice']}:generateContent")
         payload = {
             "contents": [{"parts": [{"text": f"{prof['style']}\nRead this French text naturally:\n{text}"}]}],
             "generationConfig": {
