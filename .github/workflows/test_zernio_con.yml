@@ -13,7 +13,7 @@ jobs:
       - name: 🐍 Configurer Python
         uses: actions/setup-python@v7
         with:
-          python-version: "3.14"
+          python-version: "3.15"
 
       - name: 📦 Installer requests
         run: pip install requests
