@@ -18,6 +18,7 @@ from auracontent.services.audios.audio import AudioEngine
 from auracontent.services.publishing.caption import generate_caption
 from auracontent.services.video.composer import Composer
 from auracontent.services.visuals.asset_manager import AssetManager
+from auracontent.services.visuals.map_scene import MapTarget, map_settings, pick_map_target, render_map_scene
 from auracontent.utils.hook_tracker import record_hook_usage
 from auracontent.utils.subtitles import generate_grouped_srt
 from config.settings import ASSETS_DIR, TEMP_DIR
@@ -34,54 +35,106 @@ class VideoPipeline:
         self.publish_cfg = channel.section("publish")
 
     # ---------- 1. Assets ----------
-    def _fetch_assets(self, scenes: list[dict]) -> list[str]:
-        """Un média par scène (vidéo .mp4 ou image .jpg). Image de secours partagée si tout échoue."""
-        manager = AssetManager(self.channel.section("visuals"))
-        assets_dir = self.work_dir / "assets"
-        assets_dir.mkdir(parents=True, exist_ok=True)
-        fallbacks = sorted(glob.glob(SHARED_FALLBACK_IMAGES))
-        paths: list[str | None] = []
-        query_counts: dict[str, int] = {}
+    def _fetch_assets(self, scenes: list[dict], skip: set[int] | None = None) -> list[str | None]:
+        """Un média par scène (vidéo .mp4 ou image .jpg). Image de secours partagée si tout échoue.
 
-        for scene in scenes:
+        `skip` : indices des scènes dont le visuel sera fabriqué plus tard (carte animée) ; leur place reste
+        à None et `_fetch_scene_asset` sert de repli si la fabrication échoue.
+        """
+        self._asset_manager = AssetManager(self.channel.section("visuals"))
+        self._query_counts: dict[str, int] = {}
+        skip = skip or set()
+        paths: list[str | None] = []
+
+        for i, scene in enumerate(scenes):
             if scene.get("reuse_previous_asset") and paths:  # scène CTA : on garde le dernier visuel
                 paths.append(paths[-1])
                 continue
-            sid = scene["id"]
-            scene_type = scene.get("scene_type", "generic")
-            location = (scene.get("location_name") or "").strip().lower()
-            # Variété : un même lieu au-delà de 2 scènes -> plan d'ambiance (vidéo Pexels de préférence)
-            if scene_type == "specific" and location and query_counts.get(location, 0) >= 2 and scene.get("stock_search"):
-                print(f"  🔀 Scène {sid} : '{location}' déjà utilisé 2 fois, plan d'ambiance à la place.")
-                scene_type = "generic"
-            if location:
-                query_counts[location] = query_counts.get(location, 0) + 1
-            query = (scene.get("location_name") if scene_type == "specific" else scene.get("stock_search")) or ""
-            query = query.strip() or scene.get("image_prompt", "") or self.channel.section("visuals").get(
-                "video_fallback_query", "cinematic atmosphere"
-            )
-            print(f"  🎬 Scène {sid} [{scene_type}] : '{query}'")
-
-            tmp_path = str(assets_dir / f"tmp_{sid}")
-            ok, source = manager.get_best_asset(
-                query=query,
-                output_path=tmp_path,
-                scene_type=scene_type,
-                event_context=scene.get("event_context") or None,
-                image_prompt=scene.get("image_prompt") or None,
-            )
-            if ok and os.path.exists(tmp_path):
-                # Extension selon la source : le Composer anime les images (Ken Burns) et boucle les vidéos
-                ext = ".mp4" if source == "video" else ".jpg"
-                final = str(assets_dir / f"scene_{source}_{sid}{ext}")
-                os.replace(tmp_path, final)
-                paths.append(final)
-            elif fallbacks:
-                print(f"  ⚠️ Scène {sid} : aucun asset, image de secours.")
-                paths.append(random.choice(fallbacks))
-            else:
+            if i in skip:
+                self._count_location(scene)                    # le repli éventuel garde la même variété
                 paths.append(None)
+                continue
+            paths.append(self._fetch_scene_asset(scene))
         return paths
+
+    def _count_location(self, scene: dict) -> str:
+        location = (scene.get("location_name") or "").strip().lower()
+        if location:
+            self._query_counts[location] = self._query_counts.get(location, 0) + 1
+        return location
+
+    def _fetch_scene_asset(self, scene: dict, counted: bool = False) -> str | None:
+        assets_dir = self.work_dir / "assets"
+        assets_dir.mkdir(parents=True, exist_ok=True)
+        sid = scene["id"]
+        scene_type = scene.get("scene_type", "generic")
+        location = (scene.get("location_name") or "").strip().lower()
+        # Variété : un même lieu au-delà de 2 scènes -> plan d'ambiance (vidéo Pexels de préférence)
+        seen = self._query_counts.get(location, 0) - (1 if counted else 0)
+        if scene_type == "specific" and location and seen >= 2 and scene.get("stock_search"):
+            print(f"  🔀 Scène {sid} : '{location}' déjà utilisé 2 fois, plan d'ambiance à la place.")
+            scene_type = "generic"
+        if not counted:
+            self._count_location(scene)
+        query = (scene.get("location_name") if scene_type == "specific" else scene.get("stock_search")) or ""
+        query = query.strip() or scene.get("image_prompt", "") or self.channel.section("visuals").get(
+            "video_fallback_query", "cinematic atmosphere"
+        )
+        print(f"  🎬 Scène {sid} [{scene_type}] : '{query}'")
+
+        tmp_path = str(assets_dir / f"tmp_{sid}")
+        ok, source = self._asset_manager.get_best_asset(
+            query=query,
+            output_path=tmp_path,
+            scene_type=scene_type,
+            event_context=scene.get("event_context") or None,
+            image_prompt=scene.get("image_prompt") or None,
+        )
+        if ok and os.path.exists(tmp_path):
+            # Extension selon la source : le Composer anime les images (Ken Burns) et boucle les vidéos
+            ext = ".mp4" if source == "video" else ".jpg"
+            final = str(assets_dir / f"scene_{source}_{sid}{ext}")
+            os.replace(tmp_path, final)
+            return final
+        fallbacks = sorted(glob.glob(SHARED_FALLBACK_IMAGES))
+        if fallbacks:
+            print(f"  ⚠️ Scène {sid} : aucun asset, image de secours.")
+            return random.choice(fallbacks)
+        return None
+
+    # ---------- 1 bis. Carte animée (lot 1) ----------
+    def _plan_map(self, script: dict, scenes: list[dict]) -> MapTarget | None:
+        """Scène qui recevra la carte (visuals.map_scene dans le YAML), ou None."""
+        cfg = map_settings(self.channel.section("visuals"))
+        try:
+            return pick_map_target(script, scenes, cfg)
+        except Exception as e:   # la carte n'est jamais bloquante
+            print(f"⚠️ Carte animée ignorée : {e}")
+            return None
+
+    def _render_map(self, target: MapTarget, scenes: list[dict], assets: list[str | None]) -> None:
+        """Rend la carte à la durée réelle de la scène (connue après la voix) ; repli sur le visuel habituel."""
+        scene = scenes[target.index]
+        cfg = self.channel.section("video_composer")
+        # « osm » dans le nom : le crédit affiché mentionne OpenStreetMap (lieu géocodé par Nominatim)
+        tag = "map_osm" if target.source == "nominatim" else "map"
+        out = self.work_dir / "assets" / f"scene_{tag}_{scene['id']}.mp4"
+        out.parent.mkdir(parents=True, exist_ok=True)
+        ok = render_map_scene(
+            target, float(scene["duration"]), str(out), cfg=map_settings(self.channel.section("visuals")),
+            width=cfg.get("video_width", 1080), height=cfg.get("video_height", 1920), fps=cfg.get("fps", 30),
+        )
+        if ok:
+            assets[target.index] = str(out)
+            scene["map"] = {"lat": target.lat, "lon": target.lon, "label": target.label, "source": target.source}
+        else:
+            print(f"  ↩️ Scène {scene['id']} : visuel habituel à la place de la carte.")
+            assets[target.index] = self._fetch_scene_asset(scene, counted=True)
+        # scène CTA juste après : elle reprend le visuel de la scène précédente, encore vide au moment du tri
+        for i in range(target.index + 1, len(scenes)):
+            if not scenes[i].get("reuse_previous_asset"):
+                break
+            assets[i] = assets[i - 1]
 
     # ---------- 2. Voix + sous-titres ----------
     async def _voice(self, scenes: list[dict]) -> list[dict]:
@@ -121,8 +174,9 @@ class VideoPipeline:
         self._enrich_for_audience(script, scenes, title)
         shutil.rmtree(self.work_dir, ignore_errors=True)
 
+        map_target = self._plan_map(script, scenes)
         print("🔄 Recherche des assets...")
-        assets = self._fetch_assets(scenes)
+        assets = self._fetch_assets(scenes, skip={map_target.index} if map_target else None)
 
         print("📝 Légende...")
         caption = generate_caption(self.llm, title, scenes, self.publish_cfg.get("fallback_hashtags", ""))
@@ -130,6 +184,9 @@ class VideoPipeline:
         print("🎙️ Voix...")
         scenes = asyncio.run(self._voice(scenes))
         self._subtitles(scenes)
+        if map_target:
+            print("🗺️ Carte animée...")
+            self._render_map(map_target, scenes, assets)
 
         print("🎞️ Montage...")
         composer = Composer(self.channel.section("video_composer"), channel_name=self.name)

@@ -102,6 +102,8 @@ class MysteryBrain(BaseBrain):
             self._source = source
             self.last_pick = {"region": region["name"], "category": category["name"],
                               "source_title": source["title"], "source_url": source["url"]}
+            if source.get("coordinates"):   # pour la carte animée (lot 1)
+                self.last_pick.update(lat=source["coordinates"]["lat"], lon=source["coordinates"]["lon"])
             return title
 
         raise RuntimeError(f"Aucun sujet valide trouvé après {max_attempts} tentatives.")

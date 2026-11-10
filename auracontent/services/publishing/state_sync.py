@@ -14,7 +14,7 @@ import shutil
 from config.settings import ASSETS_DIR
 
 STATE_DIR = ASSETS_DIR / "shared" / "state"
-STATE_FILES = ("global_history.json", "hook_history.json", "asset_history.json")
+STATE_FILES = ("global_history.json", "hook_history.json", "asset_history.json", "geocode_cache.json")
 STATE_REPO = os.getenv("HF_STATE_REPO", "soradata/AIShortvideos")
 STATE_FOLDER = "meta"
 
