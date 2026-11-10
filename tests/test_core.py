@@ -315,3 +315,22 @@ def test_batch_failure_falls_back_to_per_scene(monkeypatch, tmp_path):
     scenes = [{"id": 1, "text": "a"}, {"id": 2, "text": "b"}]
     asyncio.run(engine.process_script(scenes))
     assert all(s["tts_engine"] == "gemini" and s["audio_path"].endswith(".wav") for s in scenes)
+
+
+# ---------- Direction artistique ----------
+def test_srt_never_straddles_two_clauses(tmp_path):
+    path = generate_grouped_srt("Ils restent divisés, et le trésor a disparu en 1875.", 5, str(tmp_path / "a.srt"),
+                                uppercase=True, highlight_color="#FFD400")
+    captions = [b.splitlines()[2] for b in open(path, encoding="utf-8").read().strip().split("\n\n")]
+    assert captions[0] == "ILS RESTENT DIVISÉS"                      # coupe à la virgule, virgule masquée
+    assert not any(c.endswith((" ET", " LE", " EN")) for c in captions)  # pas de mot-outil en fin de légende
+    assert any('<font color="#FFD400">1875</font>' in c for c in captions)
+
+
+def test_headline_splits_statement_and_punchline():
+    from auracontent.services.video.composer import Composer
+
+    composer = Composer({"headline_persistent": True}, channel_name="mystery")
+    lines, accent = composer._headline_lines("Mont-Saint-Michel | 70 ans de prison")
+    assert lines == ["MONT-SAINT-MICHEL", "70 ANS DE PRISON"] and accent == 1
+    assert composer._headline_lines("") == ([], 0)

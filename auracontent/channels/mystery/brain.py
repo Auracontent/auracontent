@@ -19,7 +19,14 @@ from auracontent.utils.topic_tracker import (
 MOODS = {"ominous", "intriguing", "tense", "awe", "scientific", "investigation"}
 ROLES = {"hook", "tension", "context", "value", "escalation", "reveal", "cta"}
 SCENE_TYPES = {"specific", "generic"}
-TITLE_FORMATS = ["question provocante", "affirmation brute", "paradoxe frappant", "anecdote ciblée"]
+TITLE_FORMATS = [
+    "fait daté (commence par l'année ou la date)",
+    "lieu en tête, suivi de deux-points puis du fait",
+    "paradoxe en une phrase affirmative",
+    "chiffre précis en tête",
+]
+MAX_TITLE_CHARS = 80              # au-delà, YouTube coupe le titre bien avant la fin
+BANNED_TITLE_WORDS = ("le plus ", "la plus ", "les plus ", "incroyable", "hallucinant", "bizarre")
 MAX_WORDS_PER_SCENE = 32          # le prompt demande 15-22 mots, on tolère jusqu'à 32
 
 
@@ -133,7 +140,9 @@ class MysteryBrain(BaseBrain):
             temperature=1.0, max_completion_tokens=200,
         )
         title = str(data.get("title", "")).strip().strip('"«» ')
-        if not title or len(title.split()) > 18:
+        low = title.lower()
+        if (not title or len(title) > MAX_TITLE_CHARS or len(title.split()) > 14
+                or any(w in low for w in BANNED_TITLE_WORDS)):
             print(f"   ↻ Titre rejeté : {title!r}")
             return None
         return title

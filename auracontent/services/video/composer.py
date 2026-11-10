@@ -127,6 +127,19 @@ class Composer:
         self.overlay_max_lines = config.get("overlay_max_lines", 3)
         self.overlay_y = config.get("overlay_y", 300)
 
+        # Bandeau-titre permanent (signature visuelle + miniature lisible quelle que soit l'image retenue)
+        self.fonts_dir = os.path.join(shared_dir, "fonts")
+        headline_font = os.path.join(self.fonts_dir, config.get("headline_font", "Montserrat-Bold.ttf"))
+        self.headline_font_path = headline_font if os.path.exists(headline_font) else self.watermark_font_path
+        self.headline_persistent = config.get("headline_persistent", False)
+        self.headline_font_size = config.get("headline_font_size", 96)
+        self.headline_min_font_size = config.get("headline_min_font_size", 60)
+        self.headline_chars_per_line = config.get("headline_chars_per_line", 18)
+        self.headline_max_lines = config.get("headline_max_lines", 3)
+        self.headline_y = config.get("headline_y", 230)
+        self.headline_margin_x = config.get("headline_margin_x", 70)
+        self.headline_accent_color = config.get("headline_accent_color", "0xFFD400")
+
     # Musique et effets sonores
     def set_background_music(self, mood: str = "intriguing") -> None:
         self.current_bg_music_path = self._pick_music_track(mood)
@@ -319,6 +332,66 @@ class Composer:
             )
         return video_stream
 
+    def _headline_lines(self, text: str) -> tuple[list[str], int]:
+        """Découpe « CONSTAT | CHUTE » en lignes ; retourne (lignes, nombre de lignes de chute en accent)."""
+        parts = [p.strip() for p in str(text).upper().split("|") if p.strip()]
+        wrapped = [
+            textwrap.wrap(p, width=self.headline_chars_per_line, break_long_words=False, break_on_hyphens=False)
+            for p in parts
+        ]
+        lines = [line for part in wrapped for line in part]
+        if not lines:
+            return [], 0
+        # sans séparateur, seule la dernière ligne porte l'accent
+        accent = len(wrapped[-1]) if len(wrapped) > 1 else 1
+        if len(lines) > self.headline_max_lines:
+            lines = lines[: self.headline_max_lines]
+            accent = min(accent, 1)
+        return lines, accent
+
+    def _headline_font_size_for(self, lines: list[str]) -> int:
+        """Plus grande taille (entre min et max) pour laquelle la ligne la plus longue tient dans l'écran."""
+        size = self.headline_font_size
+        try:
+            from PIL import ImageFont
+
+            max_width = self.video_width - 2 * self.headline_margin_x
+            while size > self.headline_min_font_size:
+                font = ImageFont.truetype(self.headline_font_path, size)
+                if max(font.getlength(line) for line in lines) <= max_width:
+                    break
+                size -= 4
+        except Exception:
+            pass
+        return size
+
+    def _add_headline(self, video_stream, text: str):
+        """Titre en deux temps, affiché pendant toute la vidéo : constat en blanc, chute sur fond jaune."""
+        lines, accent = self._headline_lines(text)
+        if not lines:
+            return video_stream
+        size = self._headline_font_size_for(lines)
+        line_height = int(size * 1.34)
+        for i, line in enumerate(lines):
+            common = dict(
+                text=escape_drawtext(line),
+                fontfile=self.headline_font_path,
+                fontsize=size,
+                x="(w-text_w)/2",
+                y=f"{self.headline_y}+{i * line_height}",
+            )
+            if i >= len(lines) - accent:
+                video_stream = video_stream.filter(
+                    "drawtext", fontcolor="black", box=1,
+                    boxcolor=self.headline_accent_color, boxborderw=int(size * 0.16), **common,
+                )
+            else:
+                video_stream = video_stream.filter(
+                    "drawtext", fontcolor="white", borderw=max(int(size * 0.07), 4), bordercolor="black",
+                    shadowcolor="black@0.6", shadowx=0, shadowy=int(size * 0.06), **common,
+                )
+        return video_stream
+
     def _add_source_credit(self, video_stream, text: str):
         return video_stream.filter(
             "drawtext",
@@ -366,6 +439,7 @@ class Composer:
                 video_stream = video_stream.filter(
                     "subtitles",
                     filename=escape_path_for_filter(srt_path),
+                    fontsdir=escape_path_for_filter(self.fonts_dir),
                     force_style=self.subtitle_style,
                 )
 
@@ -542,35 +616,40 @@ class Composer:
         except Exception:
             return False
 
-    # Watermark
-    def add_watermark(self, input_video_path: str, output_video_path: str) -> bool:
-        if not self.watermark_path or not os.path.exists(self.watermark_path):
+    # Habillage final : watermark + bandeau-titre, en un seul encodage
+    def add_watermark(self, input_video_path: str, output_video_path: str, headline: str | None = None) -> bool:
+        has_logo = bool(self.watermark_path and os.path.exists(self.watermark_path))
+        if not has_logo and not headline:
             return False
 
         try:
             video = ffmpeg.input(input_video_path)
-            logo = (
-                ffmpeg.input(self.watermark_path, loop=1, framerate=self.fps)
-                .video.filter(
-                    "scale",
-                    self.watermark_width,
-                    -1,
-                    force_original_aspect_ratio="decrease",
+            stream = video.video
+            if has_logo:
+                logo = (
+                    ffmpeg.input(self.watermark_path, loop=1, framerate=self.fps)
+                    .video.filter(
+                        "scale",
+                        self.watermark_width,
+                        -1,
+                        force_original_aspect_ratio="decrease",
+                    )
+                    .filter("format", "rgba")
+                    .filter("colorchannelmixer", aa=self.watermark_opacity)
                 )
-                .filter("format", "rgba")
-                .filter("colorchannelmixer", aa=self.watermark_opacity)
-            )
-            watermarked = ffmpeg.overlay(
-                video.video,
-                logo,
-                x=self.watermark_x,
-                y=self.watermark_y,
-                eof_action="repeat",
-                shortest=1,
-            )
+                stream = ffmpeg.overlay(
+                    stream,
+                    logo,
+                    x=self.watermark_x,
+                    y=self.watermark_y,
+                    eof_action="repeat",
+                    shortest=1,
+                )
+            if headline:
+                stream = self._add_headline(stream, headline)
             _run(
                 ffmpeg.output(
-                    watermarked,
+                    stream,
                     video.audio,
                     output_video_path,
                     r=self.fps,
@@ -581,12 +660,12 @@ class Composer:
             )
             return True
         except Exception as e:
-            print(f"⚠️ Watermark failed: {e}")
+            print(f"⚠️ Habillage final échoué : {e}")
             return False
 
     # Pipeline final
     def concatenate_with_transitions(
-        self, video_paths: list[str], output_filename: str = "final_video.mp4"
+        self, video_paths: list[str], output_filename: str = "final_video.mp4", headline: str | None = None
     ) -> str | None:
         raw_final_path = os.path.join(self.temp_dir, "raw_final_stitched.mp4")
         output_path = os.path.join(self.final_dir, output_filename)
@@ -610,7 +689,7 @@ class Composer:
         if not music_mixed:
             self._normalize_or_copy(stitched_path, raw_final_path)
 
-        if not self.add_watermark(raw_final_path, output_path):
+        if not self.add_watermark(raw_final_path, output_path, headline=headline):
             shutil.copy2(raw_final_path, output_path)
 
         _safe_remove(raw_final_path)
