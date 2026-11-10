@@ -29,14 +29,22 @@ GEMINI_CONFIG = {
     "voice": "gemini-2.5-flash-preview-tts"
 }
 
+# Ordre des fournisseurs LLM (surchargeable : LLM_PROVIDERS=groq,gemini,openrouter).
+# Gemini en premier : API stable et JSON fiable, alors que les modèles gratuits Groq/OpenRouter
+# changent ou disparaissent sans prévenir (principale source d'instabilité de la v1).
+LLM_PROVIDER_ORDER = ["gemini", "groq", "openrouter"]
+GEMINI_TEXT_MODELS = [GEMINI_CONFIG["text"], "gemini-2.5-flash"]
+
+# Groq : essayés dans l'ordre (un modèle décommissionné est ignoré automatiquement)
 GROQ_MODELS = [
     "openai/gpt-oss-20b",
-    "llama-3.3-70b-specdec"
+    "llama-3.3-70b-versatile",   # remplace llama-3.3-70b-specdec (décommissionné)
 ]
 
+# OpenRouter : les modèles GRATUITS sont découverts automatiquement (llm_client._discover_free_models),
+# puis le routeur "openrouter/free". Les modèles listés ici (PAYANTS, consomment tes crédits) passent en dernier.
 OPENROUTER_ROUTING = [
     "meta-llama/llama-3.3-70b-instruct",
-    "google/gemma-3-27b-it:free",
 ]
 
 # ==========================================

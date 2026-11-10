@@ -28,7 +28,7 @@ sudo apt-get install -y -qq $PACKAGES
 # 3. Dépendances Python
 if [ -f "$REPO_DIR/pyproject.toml" ]; then
     cd "$REPO_DIR"
-    uv sync --group default --group media
+    uv sync --locked --group default --group media
 fi
 
 # 4. Vérification des secrets (injectés par Vault ou lus depuis .env)

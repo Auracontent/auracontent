@@ -28,7 +28,7 @@ on:
 
 jobs:
   generate:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04   # image figée : ubuntu-latest change de version sans prévenir
     timeout-minutes: 45
     env:
       CHANNEL: ${{ github.event.inputs.channel || github.event.client_payload.channel || 'mystery' }}
@@ -59,31 +59,28 @@ jobs:
         uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
+          cache-dependency-glob: "uv.lock"
 
       - name: 🐍 Configurer Python 3.12
         run: uv python install 3.12
 
-      - name: 🗃️ Cache Hugging Face
-        uses: actions/cache@v6
-        with:
-          path: ~/.cache/huggingface
-          key: ${{ runner.os }}-huggingface-kokoro-v1
-          restore-keys: |
-            ${{ runner.os }}-huggingface-kokoro-
+      - name: 📦 Installer les dépendances (versions figées par uv.lock)
+        run: uv sync --locked --group default --group media
 
-      - name: 📦 Installer les dépendances
-        run: uv sync --group default --group media
+      # Teste chaque service avec les vraies clés : arrêt en ~20 s si un service critique est KO
+      - name: 🩺 Diagnostic des services
+        run: uv run python -m auracontent.cli.doctor --require-hf
 
       - name: 🎬 Générer (${{ env.CHANNEL }})
         run: |
-          for i in 1 2 3; do
+          # 2 tentatives : les pannes de configuration sont déjà écartées par le diagnostic
+          for i in 1 2; do
             echo "Tentative $i..."
-            uv run python main.py $CHANNEL --upload --sync-state && exit 0
+            uv run python -m auracontent.cli.generate $CHANNEL --upload --sync-state && exit 0
             echo "Échec de la tentative $i. Pause de 15 secondes avant de réessayer..."
             sleep 15
           done
-          echo "Les 3 tentatives ont échoué."
+          echo "Les 2 tentatives ont échoué."
           exit 1
 
       - name: 🔊 Vérifier le niveau sonore

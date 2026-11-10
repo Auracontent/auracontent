@@ -18,6 +18,7 @@ from auracontent.utils.topic_tracker import (
 
 MOODS = {"ominous", "intriguing", "tense", "awe", "scientific", "investigation"}
 ROLES = {"hook", "tension", "context", "value", "escalation", "reveal", "cta"}
+SCENE_TYPES = {"specific", "generic"}
 TITLE_FORMATS = ["question provocante", "affirmation brute", "paradoxe frappant", "anecdote ciblée"]
 MAX_WORDS_PER_SCENE = 45          # le prompt demande 20-30, on tolère jusqu'à 45
 
@@ -202,6 +203,9 @@ class MysteryBrain(BaseBrain):
                 raise ValueError(f"scène {sid} : {words} mots, maximum {MAX_WORDS_PER_SCENE} (vise 20 à 30).")
             if scene.get("location_name") and not str(scene.get("location_country", "")).strip():
                 raise ValueError(f"scène {sid} : 'location_country' manquant pour '{scene['location_name']}'.")
+            # Le LLM confond parfois scene_type et role ("intro", "hook"...) : on le recalcule
+            if scene.get("scene_type") not in SCENE_TYPES:
+                scene["scene_type"] = "specific" if scene.get("location_name") else "generic"
             if scene.get("mood") not in MOODS:
                 scene["mood"] = "intriguing"
             if scene.get("role") not in ROLES:

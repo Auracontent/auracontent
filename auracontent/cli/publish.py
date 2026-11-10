@@ -1,12 +1,13 @@
 """Publie la vidéo du jour d'une chaîne via Zernio. À lancer depuis la racine du dépôt :
 
-    python publish.py mystery
-    python publish.py mystery finance
+    python -m auracontent.cli.publish mystery
+    python -m auracontent.cli.publish mystery finance
 
 Tout est configuré dans la section `publish:` de config/channels/<chaîne>.yaml.
 Seuls les NOMS des variables d'environnement y figurent ; les valeurs viennent
 des Secrets GitHub, de Vault (Onyxia) ou du .env.
 """
+import argparse
 import os
 import sys
 import time
@@ -69,12 +70,13 @@ def publish_channel(channel: str) -> bool:
     return all_ok
 
 
-def main(channels: list[str]) -> int:
+def main(argv: list[str]) -> int:
     load_dotenv()
-    if not channels:
-        sys.exit(__doc__)
+    parser = argparse.ArgumentParser(description="Publie la vidéo du jour via Zernio")
+    parser.add_argument("channels", nargs="+", help="chaînes à publier (ex : mystery)")
+    args = parser.parse_args(argv)
     results = {}
-    for channel in channels:
+    for channel in args.channels:
         try:
             results[channel] = publish_channel(channel)
         except Exception as e:

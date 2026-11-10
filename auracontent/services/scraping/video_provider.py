@@ -19,6 +19,7 @@ class VideoProvider:
 
     def _fetch_from_pexels(self, query, output_path):
         if not PEXELS_API_KEY:
+            print("ℹ️ PEXELS_API_KEY absente : Pexels ignoré.")
             return False
         url = "https://api.pexels.com/videos/search"
         params = {"query": query, "orientation": "portrait", "per_page": 15}
@@ -26,7 +27,9 @@ class VideoProvider:
 
         try:
             r = requests.get(url, headers=headers, params=params, timeout=15)
-            if r.status_code == 200:
+            if r.status_code != 200:
+                print(f"❌ Pexels HTTP {r.status_code} : {r.text[:150]}")
+            else:
                 videos = r.json().get("videos", [])
                 random.shuffle(videos)
                 
@@ -43,12 +46,14 @@ class VideoProvider:
                         mark_used(self.history, "pexels", video_id)
                         print("✅ Vidéo trouvée sur Pexels.")
                         return True
+                print(f"ℹ️ Pexels : aucune vidéo neuve pour '{query}' ({len(videos)} résultats).")
         except Exception as e:
             print(f"❌ Erreur Pexels : {e}")
         return False
 
     def _fetch_from_pixabay(self, query, output_path):
         if not PIXABAY_API_KEY:
+            print("ℹ️ PIXABAY_API_KEY absente : Pixabay ignoré.")
             return False
             
         url = "https://pixabay.com/api/videos/"
@@ -56,7 +61,9 @@ class VideoProvider:
 
         try:
             r = requests.get(url, params=params, timeout=15)
-            if r.status_code == 200:
+            if r.status_code != 200:
+                print(f"❌ Pixabay HTTP {r.status_code} : {r.text[:150]}")
+            else:
                 hits = r.json().get("hits", [])
                 random.shuffle(hits)
                 
@@ -73,6 +80,7 @@ class VideoProvider:
                         mark_used(self.history, "pixabay", video_id)
                         print("✅ Vidéo trouvée sur Pixabay.")
                         return True
+                print(f"ℹ️ Pixabay : aucune vidéo neuve pour '{query}' ({len(hits)} résultats).")
         except Exception as e:
             print(f"❌ Erreur Pixabay : {e}")
         return False

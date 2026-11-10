@@ -10,7 +10,7 @@ on:
 
 jobs:
   publier_video:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
       CHANNELS: ${{ github.event.inputs.channels || 'mystery' }}
@@ -25,13 +25,13 @@ jobs:
         uses: astral-sh/setup-uv@v10.1.0
         with:
           enable-cache: true
-          cache-dependency-glob: "pyproject.toml"
+          cache-dependency-glob: "uv.lock"
 
       - name: 🐍 Configurer Python 3.12
         run: uv python install 3.12
 
       - name: 📦 Installer les dépendances
-        run: uv sync --group default
+        run: uv sync --locked --group default
 
       # Les noms des variables utilisées par chaque chaîne sont dans config/channels/<chaîne>.yaml (section publish)
       - name: 🚀 Publier
@@ -43,7 +43,7 @@ jobs:
           ZERNIO_API_KEYS_FINANCE: ${{ secrets.ZERNIO_API_KEYS_FINANCE }}
           TIKTOK_CAPITAL_SIMPLE_ID: ${{ secrets.TIKTOK_CAPITAL_SIMPLE_ID }}
           YOUTUBE_CAPITAL_SIMPLE_ID: ${{ secrets.YOUTUBE_CAPITAL_SIMPLE_ID }}
-        run: uv run python publish.py $CHANNELS
+        run: uv run python -m auracontent.cli.publish $CHANNELS
 
       - name: 💾 Sauvegarder les rapports de loudness
         if: always()
