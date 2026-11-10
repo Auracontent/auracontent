@@ -26,6 +26,12 @@ on:
   repository_dispatch:
     types: [trigger-videos]
 
+# L'historique (sujets, hooks) est un état partagé sur HF : deux runs en parallèle
+# s'écraseraient. Les runs sont donc mis en file d'attente, sans annuler celui en cours.
+concurrency:
+  group: auracontent-state
+  cancel-in-progress: false
+
 jobs:
   generate:
     permissions:
