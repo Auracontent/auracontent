@@ -216,8 +216,10 @@ class LLMClient:
 
     def _provider_group(self, name: str) -> list[dict[str, Any]]:
         if name == "gemini" and self.gemini_key:
+            # reasoning_effort bas : sinon la « réflexion » du modèle épuise le budget avant le JSON
             return [{"name": "Gemini", "model": m, "base_url": GEMINI_BASE_URL, "api_key": self.gemini_key,
-                     "is_groq": False, "budget_cap": False} for m in self.gemini_models]
+                     "is_groq": False, "budget_cap": False, "extra": {"reasoning_effort": "low"}}
+                    for m in self.gemini_models]
         if name == "groq" and self.groq_key:
             return [{"name": "Groq", "model": m, "base_url": GROQ_BASE_URL, "api_key": self.groq_key,
                      "is_groq": True, "budget_cap": True} for m in self.groq_models]
@@ -288,6 +290,7 @@ class LLMClient:
             else:
                 ceiling = max(max_completion_tokens, 8000)
             use_json, temp, rate_hits = json_mode, temperature, 0
+            extra = dict(provider.get("extra") or {})
 
             for attempt in range(3):
                 try:
@@ -295,12 +298,16 @@ class LLMClient:
                               "max_completion_tokens": max_tokens}
                     if use_json:
                         kwargs["response_format"] = {"type": "json_object"}
+                    kwargs.update(extra)
                     content = self._extract_content(client.chat.completions.create(**kwargs))
                     print(f"✅ Réponse obtenue via {provider['name']} ({provider['model']})")
                     return content
                 except Exception as e:
                     err_str, last_error = str(e), e
                     kind = _classify_error(e, err_str)
+                    if extra and "error code: 400" in err_str.lower() and "reasoning" in err_str.lower():
+                        extra = {}  # paramètre non supporté par ce modèle : on réessaie sans
+                        continue
                     print(f"⚠️ Échec {provider['name']} [{provider['model']}] ({attempt + 1}/3, {kind}) : "
                           f"{err_str[:200]}{'…' if len(err_str) > 200 else ''}")
 

@@ -49,7 +49,7 @@ def check_llm():
         single = LLMClient(**{**client.__dict__, "order": [group]})
         try:
             single.call_with_fallback([{"role": "user", "content": "Réponds juste OK."}],
-                                      temperature=0, max_completion_tokens=20)
+                                      temperature=0, max_completion_tokens=300)
             lines.append(f"{group}: OK")
             any_ok = True
         except Exception as e:
@@ -72,6 +72,30 @@ def check_pixabay():
         return WARN, "clé absente"
     r = _http("GET", "https://pixabay.com/api/videos/", params={"key": key, "q": "forest", "per_page": 3})
     return (OK, "OK") if r is not None and r.status_code == 200 else (WARN, _status(r))
+
+
+def check_europeana():
+    key = os.getenv("EUROPEAN_API_KEY") or os.getenv("EUROPEANA_API_KEY")
+    if not key:
+        return WARN, "EUROPEAN_API_KEY absente"
+    r = _http("GET", "https://api.europeana.eu/record/v2/search.json",
+              params={"wskey": key, "query": "Paris", "rows": 1, "qf": "TYPE:IMAGE"})
+    return (OK, "OK") if r is not None and r.status_code == 200 else (WARN, _status(r))
+
+
+def check_cloudflare():
+    """Vraie mini génération : un jeton R2 « valide » n'a pas forcément la permission Workers AI."""
+    account = os.getenv("CLOUDFLARE_ACCOUNT_ID")
+    token = os.getenv("CLOUDFLARE_API_TOKEN") or os.getenv("CLOUDFLARE_R2_TOKEN")
+    if not (account and token):
+        missing = [n for n, v in (("CLOUDFLARE_ACCOUNT_ID", account), ("CLOUDFLARE_API_TOKEN", token)) if not v]
+        return WARN, f"{', '.join(missing)} absent(s) : Cloudflare FLUX désactivé"
+    r = _http("POST", f"https://api.cloudflare.com/client/v4/accounts/{account}/ai/run/@cf/black-forest-labs/flux-1-schnell",
+              headers={"Authorization": f"Bearer {token}"}, json={"prompt": "a stone", "steps": 1})
+    if r is not None and r.status_code == 200:
+        return OK, "génération OK"
+    hint = " (jeton sans permission Workers AI ? un jeton R2 ne suffit pas)" if r is not None and r.status_code in (401, 403) else ""
+    return WARN, _status(r) + hint
 
 
 def check_pollinations():
@@ -114,6 +138,8 @@ def main(argv: list[str]) -> int:
         "Hugging Face": (lambda: check_hf(args.hf_repo), args.require_hf),
         "Pexels": (check_pexels, False),
         "Pixabay": (check_pixabay, False),
+        "Europeana": (check_europeana, False),
+        "Cloudflare AI": (check_cloudflare, False),
         "Pollinations": (check_pollinations, False),
         "Wikimedia": (check_wikimedia, False),
         "Zernio": (check_zernio, False),

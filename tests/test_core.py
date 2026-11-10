@@ -98,3 +98,59 @@ def test_ken_burns_scene_has_expected_duration(tmp_path):
     assert out is not None
     duration = float(ffmpeg.probe(out)["format"]["duration"])
     assert 1.9 <= duration <= 2.6  # 2 s + SECOND_IMAGE_EXTRA_DURATION (0.35 s)
+
+
+# ---------- Qualité / audience ----------
+@pytest.mark.parametrize("duration, expected", [("45", 6), ("30", 5), ("90", 11), ("200", 11), ("abc", 6)])
+def test_scene_count_follows_target_duration(monkeypatch, duration, expected):
+    from auracontent.core.brain.base_brain import BaseBrain
+
+    brain = BaseBrain.__new__(BaseBrain)
+    brain.config = {"brain": {"scene_count": 11, "seconds_per_scene": 8}}
+    monkeypatch.setenv("VIDEO_DURATION", duration)
+    assert brain.target_scene_count() == expected
+
+
+def test_best_scored_hook_wins_without_stats():
+    hooks = [{"text": "a", "pattern": "x", "score": 6}, {"text": "b", "pattern": "y", "score": 9}]
+    assert hook_tracker.select_hook(hooks, {}, epsilon=0.0)["text"] == "b"
+
+
+@pytest.mark.parametrize("body, expected", [
+    ('{"error": {"details": [{"retryDelay": "37s"}]}}', 38.0),
+    ('{"quotaId": "GenerateRequestsPerDayPerProjectPerModel"}', None),
+    ('{"error": "quota"}', 30.0),
+])
+def test_gemini_tts_retry_delay(body, expected):
+    from auracontent.services.audios.audio import AudioEngine
+
+    assert AudioEngine._retry_delay(body) == expected
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg absent")
+def test_landscape_image_is_not_distorted(tmp_path):
+    """Régression : zoompan étirait les photos horizontales au format 9:16 (un cercle devenait une ellipse)."""
+    import ffmpeg
+    from PIL import Image, ImageDraw
+
+    from auracontent.services.video.composer import Composer
+
+    image = tmp_path / "circle.jpg"
+    img = Image.new("RGB", (1600, 1000), (0, 0, 0))
+    ImageDraw.Draw(img).ellipse((500, 200, 1100, 800), fill="white")
+    img.save(image)
+    voice = tmp_path / "voice.wav"
+    ffmpeg.input("sine=duration=1", f="lavfi").output(str(voice), ac=2, ar=48000).run(quiet=True)
+
+    composer = Composer({"video_width": 360, "video_height": 640, "fps": 10}, channel_name="mystery")
+    composer.temp_dir = str(tmp_path)
+    out = composer.process_scene({"id": "c", "audio_path": str(voice), "duration": 1.0}, str(image))
+    frame = tmp_path / "frame.png"
+    ffmpeg.input(out, ss=0.05).output(str(frame), vframes=1).run(quiet=True)
+
+    px = Image.open(frame).convert("L")
+    w, h = px.size
+    bright = [(x, y) for x in range(w) for y in range(int(h * 0.3), int(h * 0.7)) if px.getpixel((x, y)) > 200]
+    xs, ys = [p[0] for p in bright], [p[1] for p in bright]
+    ratio = (max(xs) - min(xs)) / (max(ys) - min(ys))
+    assert 0.85 <= ratio <= 1.15  # toujours un cercle

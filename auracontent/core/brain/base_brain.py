@@ -1,3 +1,4 @@
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -93,9 +94,24 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
         hooks = [h for h in data.get("hooks", []) if isinstance(h, dict) and h.get("text")]
         return hooks[:n] or [{"text": topic, "pattern": "default", "raison": ""}]
 
+    def target_scene_count(self) -> int:
+        """Nombre de scènes déduit de la durée visée (env VIDEO_DURATION ou brain.target_duration).
+
+        La narration Gemini tourne autour de 8 s par scène : 45 s -> 6 scènes. `scene_count` reste le plafond.
+        """
+        brain_cfg = self.config.get("brain", {})
+        max_scenes = int(brain_cfg.get("scene_count", 11))
+        try:
+            duration = float(os.getenv("VIDEO_DURATION") or brain_cfg.get("target_duration", 45))
+        except ValueError:
+            duration = 45.0
+        per_scene = float(brain_cfg.get("seconds_per_scene", 8))
+        return max(5, min(max_scenes, round(duration / per_scene)))
+
     def generate_script(self, topic, chosen_hook=None):
         """Point d'entrée standard pour générer un script."""
-        target_scenes = int(self.config.get("brain", {}).get("scene_count", 11))
+        target_scenes = self.target_scene_count()
+        print(f"⏱️ {target_scenes} scènes visées")
         return self.generate_script_with_target(
             topic, scene_count=target_scenes, chosen_hook=chosen_hook
         )

@@ -20,7 +20,7 @@ MOODS = {"ominous", "intriguing", "tense", "awe", "scientific", "investigation"}
 ROLES = {"hook", "tension", "context", "value", "escalation", "reveal", "cta"}
 SCENE_TYPES = {"specific", "generic"}
 TITLE_FORMATS = ["question provocante", "affirmation brute", "paradoxe frappant", "anecdote ciblée"]
-MAX_WORDS_PER_SCENE = 45          # le prompt demande 20-30, on tolère jusqu'à 45
+MAX_WORDS_PER_SCENE = 32          # le prompt demande 15-22 mots, on tolère jusqu'à 32
 
 
 @dataclass
@@ -200,7 +200,7 @@ class MysteryBrain(BaseBrain):
             sid = scene["id"]
             words = len(str(scene["text"]).split())
             if words > MAX_WORDS_PER_SCENE:
-                raise ValueError(f"scène {sid} : {words} mots, maximum {MAX_WORDS_PER_SCENE} (vise 20 à 30).")
+                raise ValueError(f"scène {sid} : {words} mots, maximum {MAX_WORDS_PER_SCENE} (vise 15 à 22).")
             if scene.get("location_name") and not str(scene.get("location_country", "")).strip():
                 raise ValueError(f"scène {sid} : 'location_country' manquant pour '{scene['location_name']}'.")
             # Le LLM confond parfois scene_type et role ("intro", "hook"...) : on le recalcule

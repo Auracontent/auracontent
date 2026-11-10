@@ -28,12 +28,14 @@ GEMINI_CONFIG = {
     "text": "gemini-3.6-flash",
     "voice": "gemini-2.5-flash-preview-tts"
 }
+# Modèles TTS Gemini essayés dans l'ordre (quotas séparés par modèle, mêmes voix Charon/Orus...)
+GEMINI_TTS_MODELS = [GEMINI_CONFIG["voice"], "gemini-2.5-pro-preview-tts"]
 
 # Ordre des fournisseurs LLM (surchargeable : LLM_PROVIDERS=groq,gemini,openrouter).
 # Gemini en premier : API stable et JSON fiable, alors que les modèles gratuits Groq/OpenRouter
 # changent ou disparaissent sans prévenir (principale source d'instabilité de la v1).
 LLM_PROVIDER_ORDER = ["gemini", "groq", "openrouter"]
-GEMINI_TEXT_MODELS = [GEMINI_CONFIG["text"], "gemini-2.5-flash"]
+GEMINI_TEXT_MODELS = [GEMINI_CONFIG["text"]]  # gemini-2.5-flash : 404
 
 # Groq : essayés dans l'ordre (un modèle décommissionné est ignoré automatiquement)
 GROQ_MODELS = [

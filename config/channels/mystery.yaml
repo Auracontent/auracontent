@@ -3,7 +3,9 @@ description: "Vidéos documentaires courtes sur des mystères historiques réels
 
 # Brain (LLM)
 brain:
-  scene_count: 11
+  scene_count: 11          # plafond
+  target_duration: 45      # secondes (surchargé par VIDEO_DURATION dans le workflow)
+  seconds_per_scene: 8
   voice_direction: "French premium narrator, calm, elegant, intriguing, controlled pacing"
   language: "fr"
   source_provider: "wikipedia"
@@ -111,8 +113,8 @@ video_composer:
   watermark_x: 42
   watermark_y: 48
 
-  # Sous-titres & textes
-  subtitle_style: "FontName=DejaVu Sans,FontSize=24,Bold=1,PrimaryColour=&H00FFFFFF,SecondaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H78000000,BorderStyle=3,Outline=1.5,Shadow=0,Alignment=2,MarginL=70,MarginR=70,MarginV=125"
+  # Sous-titres & textes (unités ASS sur une hauteur de 288 : FontSize 15 ≈ 100 px en 1920)
+  subtitle_style: "FontName=DejaVu Sans,FontSize=15,Bold=1,PrimaryColour=&H00FFFFFF,SecondaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H78000000,BorderStyle=3,Outline=1.5,Shadow=0,Alignment=2,MarginL=25,MarginR=25,MarginV=105"
   font_path: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
   source_credit_y: "h-520"
   source_credit_size: 18
@@ -121,6 +123,7 @@ video_composer:
     wiki: "Source : Wikimedia Commons"
     wikimedia: "Source : Wikimedia Commons"
     openverse: "Source : Openverse"
+    europeana: "Source : Europeana"
     video: "Illustration : Pexels / Pixabay"
     pexels: "Illustration : Pexels / Pixabay"
     pixabay: "Illustration : Pexels / Pixabay"
