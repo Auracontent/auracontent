@@ -75,7 +75,7 @@ def check_pixabay():
 
 
 def check_europeana():
-    key = os.getenv("EUROPEAN_API_KEY") or os.getenv("EUROPEANA_API_KEY")
+    key = (os.getenv("EUROPEAN_API_KEY") or os.getenv("EUROPEANA_API_KEY") or "").strip()
     if not key:
         return WARN, "EUROPEAN_API_KEY absente"
     r = _http("GET", "https://api.europeana.eu/record/v2/search.json",

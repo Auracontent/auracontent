@@ -270,7 +270,8 @@ PROVIDER_SPECS: dict[str, dict[str, Any]] = {
 
 
 def _env_key(names: list[str]) -> str | None:
-    return next((os.getenv(n) for n in names if os.getenv(n)), None)
+    """Première clé définie, sans espaces ni retours à la ligne parasites (copier-coller dans les Secrets)."""
+    return next((os.getenv(n).strip() for n in names if (os.getenv(n) or "").strip()), None)
 
 
 def _base_url(name: str) -> str | None:

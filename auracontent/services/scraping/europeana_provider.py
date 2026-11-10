@@ -15,7 +15,8 @@ MIN_IMAGE_BYTES = 40_000  # écarte les vignettes (edmPreview ~ 200 px)
 class EuropeanaProvider:
     def __init__(self, history):
         self.history = history
-        self.api_key = os.getenv("EUROPEAN_API_KEY") or os.getenv("EUROPEANA_API_KEY")
+        # strip : un espace / retour à la ligne collé dans un Secret GitHub rend la clé invalide (401)
+        self.api_key = (os.getenv("EUROPEAN_API_KEY") or os.getenv("EUROPEANA_API_KEY") or "").strip() or None
 
     @staticmethod
     def _text(value) -> str:
