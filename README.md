@@ -2,8 +2,7 @@
   <img
     src="assets/shared/images/logo.png"
     alt="AuraContent Logo"
-    width="160"
-    height="160"
+    width="480"
   />
 </p>
 

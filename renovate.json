@@ -2,5 +2,12 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "config:recommended"
+  ],
+  "packageRules": [
+    {
+      "description": "Python is pinned on purpose (3.12 in CI, <3.13 for dependencies): never bump it automatically",
+      "matchDepNames": ["python"],
+      "enabled": false
+    }
   ]
 }
