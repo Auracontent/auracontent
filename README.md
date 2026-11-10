@@ -1,13 +1,12 @@
 <p align="center">
   <img
-    src="assets/shared/images/logo_auracontent.png"
+    src="assets/shared/images/logo.jpg"
     alt="AuraContent Logo"
     width="160"
     height="160"
   />
 </p>
 
-<h1 align="center">🎬 AuraContent</h1>
 
 <p align="center">
   <strong>Automated faceless short-video factory</strong>
