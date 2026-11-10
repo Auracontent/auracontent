@@ -89,18 +89,22 @@ class VideoPipeline:
         return await engine.process_script(scenes)
 
     def _subtitles(self, scenes: list[dict]) -> None:
+        cfg = self.channel.section("video_composer")
         for scene in scenes:
             scene["srt_path"] = generate_grouped_srt(
                 text=scene["text"],
                 duration=scene["duration"],
                 output_path=str(self.work_dir / "subs" / f"scene_{scene['id']}.srt"),
+                uppercase=cfg.get("subtitle_uppercase", False),
+                highlight_color=cfg.get("subtitle_highlight_color"),
             )
 
     # ---------- Audience ----------
     def _enrich_for_audience(self, script: dict, scenes: list[dict], title: str) -> None:
         """Titre accrocheur à l'écran sur la scène 1 + CTA final lu par le narrateur."""
-        if scenes:
-            scenes[0]["overlay_text"] = script.get("on_screen_title") or title
+        # bandeau permanent : posé une seule fois sur la vidéo finale, pas sur la scène 1
+        if scenes and not self.channel.section("video_composer").get("headline_persistent"):
+            scenes[0]["overlay_text"] = str(script.get("on_screen_title") or title).replace("|", " ")
         cta = str(script.get("closing_cta") or "").strip()
         if cta and not any(s.get("role") == "cta" and cta in str(s.get("text", "")) for s in scenes):
             last = scenes[-1] if scenes else {}
@@ -133,7 +137,8 @@ class VideoPipeline:
         if not rendered:
             raise RuntimeError("aucune scène rendue.")
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        final = composer.concatenate_with_transitions(rendered, f"{self.name}_{stamp}.mp4")
+        headline = (script.get("on_screen_title") or title) if composer.headline_persistent else None
+        final = composer.concatenate_with_transitions(rendered, f"{self.name}_{stamp}.mp4", headline=headline)
         if not final:
             raise RuntimeError("assemblage final échoué.")
 

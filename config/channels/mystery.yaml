@@ -1,12 +1,12 @@
 channel_name: "mystery"
-description: "Vidéos documentaires courtes sur des mystères historiques réels."
+description: "Les secrets du patrimoine français : un lieu réel, une histoire que personne ne raconte, en moins d'une minute."
 
 # Brain (LLM)
 brain:
   scene_count: 11          # plafond
   target_duration: 45      # secondes (surchargé par VIDEO_DURATION dans le workflow)
   seconds_per_scene: 8
-  voice_direction: "French premium narrator, calm, elegant, intriguing, controlled pacing"
+  voice_direction: "French storyteller, confident and lively, brisk pacing, leaning in as if sharing a secret"
   language: "fr"
   source_provider: "wikipedia"
   factcheck: "strict"
@@ -38,23 +38,23 @@ brain:
     - {name: "Paris intra-muros", search: ["Paris"]}
   region_lookback: 3
 
+  # Ligne éditoriale : chaque vidéo part d'un LIEU ou d'un OBJET du patrimoine français que l'on peut
+  # nommer et montrer. Les faits divers criminels et la science générale sont sortis de la ligne.
   theme_categories:
-    - name: "un objet ou artefact physique disparu ou volé (bijou, manuscrit, tableau, relique, instrument scientifique)"
-      search: ["vol trésor", "manuscrit disparu", "relique volée", "tableau volé", "trésor perdu"]
-    - name: "un personnage historique réel méconnu ou une affaire judiciaire oubliée"
-      search: ["affaire criminelle", "procès", "affaire judiciaire", "imposteur", "disparition"]
-    - name: "un événement étouffé ou censuré (incendie suspect, épidémie cachée, scandale politique, sabotage)"
-      search: ["incendie", "épidémie", "scandale", "sabotage", "catastrophe"]
-    - name: "une loi, un règlement ou une tradition administrative absurde et réelle"
-      search: ["ordonnance", "coutume", "privilège", "arrêté", "tradition"]
-    - name: "un phénomène architectural visible en surface (façade, statue, plaque, vitrail, gargouille) avec une histoire cachée"
+    - name: "un trésor, une relique ou une œuvre du patrimoine français disparu, volé ou jamais retrouvé"
+      search: ["trésor perdu", "relique volée", "tableau volé", "manuscrit disparu", "vol trésor cathédrale"]
+    - name: "un monument ou un détail visible (façade, statue, plaque, vitrail, gargouille) dont l'histoire cachée contredit ce que l'on croit"
       search: ["statue", "vitrail", "gargouille", "monument historique", "façade"]
-    - name: "une découverte archéologique ou scientifique récente et peu connue"
+    - name: "un château, une abbaye ou un édifice français au destin improbable (vendu, déplacé, englouti, détruit par erreur)"
+      search: ["château détruit", "abbaye disparue", "village englouti", "monument déplacé", "édifice démoli"]
+    - name: "une loi, un privilège ou une tradition française absurde et réelle, attachée à un lieu précis"
+      search: ["ordonnance", "coutume", "privilège", "arrêté", "tradition"]
+    - name: "une découverte archéologique faite en France qui a changé ce que l'on savait du lieu"
       search: ["fouilles archéologiques", "découverte archéologique", "site archéologique", "épave", "nécropole"]
 
   banned_if_recent: ["tunnel", "souterrain", "passage secret", "catacombe", "salle secrète", "chambre secrète"]
   fiction_markers: ["fiction", "fictive", "fictif", "⚠️", "#story", "#storytime", "#horror"]
-  niche_keywords: ["mystère", "secret", "histoire", "légende"]
+  niche_keywords: ["patrimoine", "secret", "histoire", "trésor"]
 
 
 # Audio
@@ -64,13 +64,13 @@ audio:
   gemini:
     narrator:
       voice: "Charon"
-      style: "French documentary narrator. Calm, deep, warm and authoritative. Premium mystery-documentary style, intimate and cinematic but realistic. Clear diction, measured pacing, subtle suspense. Never theatrical, never rushed."
+      style: "French storyteller sharing a secret. Warm, deep, confident. Brisk pacing with energy on numbers, dates and names, a short beat before each reveal. Clear diction. Never theatrical, never monotone, never slow."
     witness:
       voice: "Orus"
       style: "French documentary witness. Natural, credible and human. Slightly tense and intimate. Restrained emotion, conversational pacing."
   edge:
-    narrator: {voice: "fr-FR-HenriNeural", rate: "-12%", pitch: "-4Hz"}
-    witness:  {voice: "fr-FR-HenriNeural", rate: "-8%",  pitch: "-2Hz"}
+    narrator: {voice: "fr-FR-HenriNeural", rate: "+4%", pitch: "-4Hz"}
+    witness:  {voice: "fr-FR-HenriNeural", rate: "+2%",  pitch: "-2Hz"}
   pronunciation:
     '\bmythe(s?)\b': 'mite\1'
     '\bmythique(s?)\b': 'mitique\1'
@@ -93,7 +93,7 @@ video_composer:
   voice_gain: 1.08
   music_gain: 0.085
   music_fade_duration: 2.5
-  transition_duration: 0.38
+  transition_duration: 0.2    # coupes nettes : un fondu long ralentit le rythme
 
   # SFX
   sfx_role_map:
@@ -109,13 +109,26 @@ video_composer:
 
   # Branding & filigrane
   watermark_filename: "minute_mystere_watermark.png"
-  watermark_width: 205
-  watermark_opacity: 0.72
+  watermark_width: 120
+  watermark_opacity: 0.6
   watermark_x: 42
-  watermark_y: 48
+  watermark_y: 56
+
+  # Bandeau-titre permanent : « CONSTAT | CHUTE » (on_screen_title), chute sur fond jaune.
+  # Affiché pendant toute la vidéo, donc présent sur l'image que YouTube retient comme miniature.
+  headline_persistent: true
+  headline_font: "Montserrat-Bold.ttf"      # dans assets/shared/fonts
+  headline_font_size: 96
+  headline_chars_per_line: 18               # la taille se réduit seule si la ligne dépasse
+  headline_max_lines: 3
+  headline_y: 230
+  headline_accent_color: "0xFFD400"
 
   # Sous-titres & textes (unités ASS sur une hauteur de 288 : FontSize 15 ≈ 100 px en 1920)
-  subtitle_style: "FontName=DejaVu Sans,FontSize=15,Bold=1,PrimaryColour=&H00FFFFFF,SecondaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H78000000,BorderStyle=3,Outline=1.5,Shadow=0,Alignment=2,MarginL=25,MarginR=25,MarginV=105"
+  # Montserrat Bold, contour noir sans cartouche, capitales, chiffres en jaune (même jaune que le bandeau)
+  subtitle_style: "FontName=Montserrat,FontSize=14,Bold=1,PrimaryColour=&H00FFFFFF,OutlineColour=&H00000000,BackColour=&H96000000,BorderStyle=1,Outline=1.3,Shadow=0.5,Alignment=2,MarginL=22,MarginR=22,MarginV=92"
+  subtitle_uppercase: true
+  subtitle_highlight_color: "#FFD400"
   font_path: "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf"
   source_credit_y: "h-520"
   source_credit_size: 18
@@ -134,9 +147,9 @@ video_composer:
 # Visuels
 visuals:
   ai_composition: "wide-angle documentary shot, strictly centered subject, eye-level perspective"
-  ai_lighting: "dramatic natural lighting, moody shadows, cinematic ambient light"
+  ai_lighting: "golden hour or blue hour light, strong directional light, clear readable subject"
   ai_texture: "visible material details, realistic weathered surfaces, natural imperfections"
-  ai_palette: "muted desaturated tones, dark cinematic color grading"
+  ai_palette: "rich natural colors, warm golden highlights against deep blue shadows, strong contrast"
   ai_mood: "tense, mysterious, documentary atmosphere, photojournalistic feel"
   ai_suffix: "photorealistic, ultra-realistic, real-world photography, 8k detail."
   video_fallback_query: "mysterious historical documentary atmosphere"
@@ -157,4 +170,4 @@ publish:
     platform: null                    # tiktok | youtube | null = toutes
     account_env: null                 # ex : TIKTOK_ACCOUNT_ID_MYSTERY pour ne lire qu'un compte
     limit: 20
-  fallback_hashtags: "🧠✨ #IA #MinuteMystère #Decouverte #PourToi"
+  fallback_hashtags: "#histoire #patrimoine #france #mystère"
