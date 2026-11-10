@@ -1,4 +1,3 @@
-import time
 import requests
 import random
 from config.settings import PEXELS_API_KEY, PIXABAY_API_KEY

@@ -1,5 +1,4 @@
 import re
-import json
 import unicodedata
 
 AI_MENTION_PATTERNS = [

@@ -2,12 +2,13 @@ import asyncio
 import base64
 import os
 import re
+import subprocess
 import time
 import wave
 from pathlib import Path
 import requests
 from mutagen.mp3 import MP3
-from config.settings import GEMINI_CONFIG, GEMINI_TTS_MODELS
+from config.settings import GEMINI_TTS_MODELS
 from .text_fr import normalize_fr
 
 try:
@@ -73,9 +74,8 @@ class AudioEngine:
         m = re.search(r'"retryDelay":\s*"(\d+(?:\.\d+)?)s"', body)
         return min(float(m.group(1)) + 1, 65) if m else 30.0
 
-    def _gemini(self, text, role, path, scene=None):
-        style = self._gemini_style(role, scene or {})
-        voice = self.cfg["gemini"][role]["voice"]
+    def _gemini_request(self, prompt: str, speech_config: dict, path) -> None:
+        """Appel TTS Gemini avec retries (429 par minute, 5xx) et bascule de modèle (quota du jour, 404)."""
         last_error = None
         for model in list(self.gemini_models):
             for _ in range(3):
@@ -85,13 +85,10 @@ class AudioEngine:
                 self._last_gemini_call = time.time()
                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent"
                 payload = {
-                    "contents": [{"parts": [{"text": f"{style}\nRead this French text naturally:\n{text}"}]}],
-                    "generationConfig": {
-                        "responseModalities": ["AUDIO"],
-                        "speechConfig": {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}},
-                    },
+                    "contents": [{"parts": [{"text": prompt}]}],
+                    "generationConfig": {"responseModalities": ["AUDIO"], "speechConfig": speech_config},
                 }
-                r = requests.post(url, json=payload, timeout=90, headers={"x-goog-api-key": self.gemini_key})
+                r = requests.post(url, json=payload, timeout=180, headers={"x-goog-api-key": self.gemini_key})
                 if r.status_code == 200:
                     parts = r.json()["candidates"][0]["content"]["parts"]
                     inline = next((p["inlineData"] for p in parts if "inlineData" in p), None)
@@ -118,6 +115,104 @@ class AudioEngine:
                     self.gemini_models.remove(model)
                 break
         raise RuntimeError(last_error or "Gemini TTS indisponible")
+
+    def _gemini(self, text, role, path, scene=None):
+        style = self._gemini_style(role, scene or {})
+        voice = self.cfg["gemini"][role]["voice"]
+        self._gemini_request(f"{style}\nRead this French text naturally:\n{text}",
+                             {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": voice}}}, path)
+
+    # ---------- narration complète en UNE requête (7x moins de quota TTS) ----------
+    SPEAKER_LABELS = {"narrator": "Narrateur", "witness": "Temoin"}
+
+    @staticmethod
+    def _role(scene) -> str:
+        role = scene.get("voice_type", "narrator")
+        return role if role in ("narrator", "witness") else "narrator"
+
+    def _batch_prompt(self, scenes, texts) -> tuple[str, dict]:
+        roles = [self._role(s) for s in scenes]
+        multi = len(set(roles)) > 1
+        directions = []
+        for i, scene in enumerate(scenes, start=1):
+            extras = [self.ROLE_DIRECTIONS.get(scene.get("role", "")), scene.get("voice_direction")]
+            extras = [e for e in extras if e]
+            if extras:
+                directions.append(f"- Paragraph {i}: {' '.join(extras)}")
+        header = [self.cfg["gemini"]["narrator"]["style"]]
+        if multi:
+            header.append(f"Witness voice ({self.SPEAKER_LABELS['witness']}): {self.cfg['gemini']['witness']['style']}")
+        header.append("Read this French narration naturally, as one continuous documentary voice-over. "
+                      "Make a clear pause of about one second between paragraphs. Never read the speaker labels.")
+        if directions:
+            header.append("Delivery per paragraph:\n" + "\n".join(directions))
+        if multi:
+            body = "\n\n".join(f"{self.SPEAKER_LABELS[r]}: {t}" for r, t in zip(roles, texts))
+            speech = {"multiSpeakerVoiceConfig": {"speakerVoiceConfigs": [
+                {"speaker": self.SPEAKER_LABELS[r], "voiceConfig": {"prebuiltVoiceConfig": {
+                    "voiceName": self.cfg["gemini"][r]["voice"]}}} for r in ("narrator", "witness")]}}
+        else:
+            body = "\n\n".join(texts)
+            speech = {"voiceConfig": {"prebuiltVoiceConfig": {"voiceName": self.cfg["gemini"][roles[0]]["voice"]}}}
+        # Consignes d'un côté, transcription de l'autre (format des exemples Google) : la voix ne lit que la suite
+        return "\n".join(header) + "\n\nTRANSCRIPT TO READ ALOUD (read only this):\n\n" + body, speech
+
+    @staticmethod
+    def detect_silences(path: str, noise_db: int = -35, min_silence: float = 0.3) -> list[tuple[float, float]]:
+        """Intervalles de silence (début, fin) détectés par ffmpeg silencedetect."""
+        out = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-i", str(path), "-af", f"silencedetect=noise={noise_db}dB:d={min_silence}",
+             "-f", "null", "-"], capture_output=True, text=True, timeout=120,
+        ).stderr
+        starts = [float(x) for x in re.findall(r"silence_start: (-?\d+(?:\.\d+)?)", out)]
+        ends = [float(x) for x in re.findall(r"silence_end: (\d+(?:\.\d+)?)", out)]
+        return list(zip(starts, ends))
+
+    @staticmethod
+    def split_points(total: float, weights: list[float], silences: list[tuple[float, float]]) -> list[float] | None:
+        """Instants de coupe entre scènes : chaque frontière attendue (proportionnelle à la longueur du texte)
+        est calée sur le silence le plus proche. None si une frontière n'a pas de silence plausible."""
+        n = len(weights)
+        if n < 2:
+            return []
+        tolerance = max(1.5, 0.4 * total / n)
+        cuts, cumulative, prev = [], 0.0, 0.0
+        for w in weights[:-1]:
+            cumulative += w
+            expected = total * cumulative / sum(weights)
+            candidates = [((a + b) / 2, b - a) for a, b in silences
+                          if prev + 0.5 < (a + b) / 2 < total - 0.5 and abs((a + b) / 2 - expected) <= tolerance]
+            if not candidates:
+                return None
+            # le plus proche, en favorisant les pauses longues (fin de paragraphe)
+            mid, _ = min(candidates, key=lambda c: abs(c[0] - expected) - 1.5 * c[1])
+            cuts.append(mid)
+            prev = mid
+        return cuts
+
+    def _gemini_batch(self, scenes) -> None:
+        texts = [self.prepare_text(s["text"]) for s in scenes]
+        prompt, speech = self._batch_prompt(scenes, texts)
+        full = self.out / "narration_full.wav"
+        self._gemini_request(prompt, speech, full)
+
+        total = audio_duration(str(full))
+        cuts = self.split_points(total, [len(t) for t in texts], self.detect_silences(str(full)))
+        if cuts is None:
+            raise RuntimeError("découpage aux silences impossible")
+
+        with wave.open(str(full), "rb") as wf:
+            rate, params, frames = wf.getframerate(), wf.getparams(), wf.readframes(wf.getnframes())
+        width = params.sampwidth * params.nchannels
+        bounds = [0.0] + cuts + [total]
+        for scene, start, end in zip(scenes, bounds, bounds[1:]):
+            path = self.out / f"scene_{scene['id']}.wav"
+            with wave.open(str(path), "wb") as out:
+                out.setparams(params)
+                out.writeframes(frames[int(start * rate) * width:int(end * rate) * width])
+            scene.update(audio_path=str(path), tts_engine="gemini",
+                         duration=max(audio_duration(str(path)), self.min_dur))
+            print(f"     Scène {scene['id']} [{self._role(scene)}] via gemini, narration unique ({scene['duration']:.1f}s)")
 
     async def _edge(self, text, role, path):
         if edge_tts is None:
@@ -148,13 +243,18 @@ class AudioEngine:
         raise RuntimeError(f"Aucun moteur TTS disponible : {last_err}")
 
     async def _render(self, scene):
-        role = scene.get("voice_type", "narrator")
-        role = role if role in ("narrator", "witness") else "narrator"
+        role = self._role(scene)
         path, engine = await self.generate(scene["text"], f"scene_{scene['id']}", role, scene)
         scene.update(audio_path=path, tts_engine=engine, duration=max(audio_duration(path), self.min_dur))
         print(f"     Scène {scene['id']} [{role}] via {engine} ({scene['duration']:.1f}s)")
 
     async def process_script(self, scenes: list[dict]) -> list[dict]:
+        if "gemini" in self.engines and len(scenes) > 1 and self.cfg.get("batch_tts", True):
+            try:
+                await asyncio.to_thread(self._gemini_batch, scenes)
+                return scenes
+            except Exception as e:
+                print(f"      ⚠️ Narration en une requête impossible ({e}) : une requête par scène.")
         for scene in scenes:
             await self._render(scene)
         # Une seule voix par vidéo : si le moteur a changé en cours de route, on refait tout avec le dernier

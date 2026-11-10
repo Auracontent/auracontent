@@ -220,3 +220,98 @@ def test_llm_registry_skips_providers_without_key(monkeypatch):
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
     client = llm_client.LLMClient.create_default()
     assert {p["name"] for p in client.providers} == {"Mistral"}
+
+
+# ---------- Narration Gemini en une seule requête ----------
+AUDIO_CFG = {
+    "engines": ["gemini", "edge"],
+    "gemini": {"narrator": {"voice": "Charon", "style": "calm"}, "witness": {"voice": "Orus", "style": "tense"}},
+    "edge": {"narrator": {"voice": "fr-FR-HenriNeural"}, "witness": {"voice": "fr-FR-HenriNeural"}},
+}
+
+
+def test_split_points_snap_to_paragraph_pauses():
+    from auracontent.services.audios.audio import AudioEngine
+
+    # 3 paragraphes (poids 1, 2, 1) sur 20 s ; pauses longues à 5.0 et 15.0, pause courte parasite à 9.0
+    silences = [(4.5, 5.5), (8.9, 9.1), (14.6, 15.4)]
+    assert AudioEngine.split_points(20.0, [1, 2, 1], silences) == [5.0, 15.0]
+
+
+def test_split_points_gives_up_without_pauses():
+    from auracontent.services.audios.audio import AudioEngine
+
+    assert AudioEngine.split_points(20.0, [1, 1, 1], [(1.0, 1.4)]) is None
+
+
+def test_batch_prompt_uses_two_voices_only_when_needed(monkeypatch, tmp_path):
+    from auracontent.services.audios.audio import AudioEngine
+
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    engine = AudioEngine(AUDIO_CFG, output_dir=str(tmp_path))
+    solo = [{"id": 1, "text": "a"}, {"id": 2, "text": "b"}]
+    _, speech = engine._batch_prompt(solo, ["a", "b"])
+    assert speech["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"] == "Charon"
+
+    duo = [{"id": 1, "text": "a"}, {"id": 2, "text": "b", "voice_type": "witness"}]
+    prompt, speech = engine._batch_prompt(duo, ["a", "b"])
+    voices = {c["speaker"]: c["voiceConfig"]["prebuiltVoiceConfig"]["voiceName"]
+              for c in speech["multiSpeakerVoiceConfig"]["speakerVoiceConfigs"]}
+    assert voices == {"Narrateur": "Charon", "Temoin": "Orus"}
+    assert "Temoin: b" in prompt
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg absent")
+def test_single_request_narration_is_split_per_scene(monkeypatch, tmp_path):
+    import asyncio
+
+    import ffmpeg
+
+    from auracontent.services.audios.audio import AudioEngine, audio_duration
+
+    # Fausse narration : 3 s de « voix », pause 1 s, 5 s (avec une micro-pause), pause 1 s, 3 s
+    fake = tmp_path / "fake.wav"
+    tone = "sine=frequency=300:sample_rate=24000:duration={d}"
+    gap = "anullsrc=r=24000:cl=mono:d={d}"
+    parts = [tone.format(d=3), gap.format(d=1), tone.format(d=2.4), gap.format(d=0.2), tone.format(d=2.4),
+             gap.format(d=1), tone.format(d=3)]
+    streams = [ffmpeg.input(p, f="lavfi") for p in parts]
+    ffmpeg.concat(*streams, v=0, a=1).output(str(fake), ac=1, ar=24000, sample_fmt="s16").run(quiet=True)
+
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    engine = AudioEngine(AUDIO_CFG, output_dir=str(tmp_path / "out"), min_scene_duration=1.0)
+    calls = []
+    monkeypatch.setattr(engine, "_gemini_request", lambda prompt, speech, path: (calls.append(1), shutil.copy(fake, path)))
+
+    scenes = [{"id": 1, "text": "x" * 30}, {"id": 2, "text": "x" * 50}, {"id": 3, "text": "x" * 30}]
+    asyncio.run(engine.process_script(scenes))
+
+    assert len(calls) == 1  # UNE seule requête TTS pour toute la vidéo
+    durations = [audio_duration(s["audio_path"]) for s in scenes]
+    assert durations[0] == pytest.approx(3.5, abs=0.3)
+    assert durations[1] == pytest.approx(6.0, abs=0.4)
+    assert durations[2] == pytest.approx(3.5, abs=0.3)
+    assert {s["tts_engine"] for s in scenes} == {"gemini"}
+
+
+def test_batch_failure_falls_back_to_per_scene(monkeypatch, tmp_path):
+    import asyncio
+    import wave
+
+    from auracontent.services.audios.audio import AudioEngine
+
+    monkeypatch.setenv("GEMINI_API_KEY", "k")
+    engine = AudioEngine(AUDIO_CFG, output_dir=str(tmp_path), min_scene_duration=1.0)
+
+    def boom(scenes):
+        raise RuntimeError("découpage aux silences impossible")
+
+    def fake_scene(text, role, path, scene=None):
+        with wave.open(str(path), "wb") as wf:
+            wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(24000); wf.writeframes(b"\0\0" * 24000)
+
+    monkeypatch.setattr(engine, "_gemini_batch", boom)
+    monkeypatch.setattr(engine, "_gemini", fake_scene)
+    scenes = [{"id": 1, "text": "a"}, {"id": 2, "text": "b"}]
+    asyncio.run(engine.process_script(scenes))
+    assert all(s["tts_engine"] == "gemini" and s["audio_path"].endswith(".wav") for s in scenes)

@@ -60,6 +60,7 @@ brain:
 # Audio
 audio:
   engines: [gemini, edge]
+  batch_tts: true   # toute la narration en UNE requête Gemini (7x moins de quota). false = une requête par scène
   gemini:
     narrator:
       voice: "Charon"
