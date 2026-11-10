@@ -1,6 +1,6 @@
 <p align="center">
   <img
-    src="assets/shared/images/logo.jpg"
+    src="assets/shared/images/logo.png"
     alt="AuraContent Logo"
     width="160"
     height="160"
