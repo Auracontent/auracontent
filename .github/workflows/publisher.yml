@@ -37,12 +37,10 @@ jobs:
       - name: 🚀 Publier
         env:
           HF_TOKEN: ${{ secrets.HF_TOKEN }}
-          ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY }}
-          TIKTOK_ACCOUNT_ID: ${{ secrets.TIKTOK_ACCOUNT_ID }}
-          YOUTUBE_ACCOUNT_ID: ${{ secrets.YOUTUBE_ACCOUNT_ID }}
-          ZERNIO_API_KEYS_FINANCE: ${{ secrets.ZERNIO_API_KEYS_FINANCE }}
-          TIKTOK_CAPITAL_SIMPLE_ID: ${{ secrets.TIKTOK_CAPITAL_SIMPLE_ID }}
-          YOUTUBE_CAPITAL_SIMPLE_ID: ${{ secrets.YOUTUBE_CAPITAL_SIMPLE_ID }}
+          # mystery
+          ZERNIO_API_KEY_MYSTERY: ${{ secrets.ZERNIO_API_KEY_MYSTERY }}
+          TIKTOK_ACCOUNT_ID_MYSTERY: ${{ secrets.TIKTOK_ACCOUNT_ID_MYSTERY }}
+          YOUTUBE_ACCOUNT_ID_MYSTERY: ${{ secrets.YOUTUBE_ACCOUNT_ID_MYSTERY }}
         run: uv run python -m auracontent.cli.publish $CHANNELS
 
       - name: 💾 Sauvegarder les rapports de loudness

@@ -171,7 +171,7 @@ Then fill in the keys you have. [`.env.example`](.env.example) documents every v
 | `WIKIMEDIA_CONTACT` | Wikipedia/Wikimedia User-Agent (strongly recommended) |
 | `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `POLLINATIONS_TOKEN`, … | visuals (optional, more = better) |
 | `HF_TOKEN` | upload + state sync (`--upload`, `--sync-state`) |
-| `ZERNIO_API_KEY`, `TIKTOK_ACCOUNT_ID`, `YOUTUBE_ACCOUNT_ID` | publishing |
+| `ZERNIO_API_KEY_<CHANNEL>`, `TIKTOK_ACCOUNT_ID_<CHANNEL>`, `YOUTUBE_ACCOUNT_ID_<CHANNEL>` | publishing (e.g. `_MYSTERY`; names set in the channel YAML) |
 
 Channel behaviour (duration, voice, topic rules, publishing targets…) lives in `config/channels/<channel>.yaml`. The YAML only contains the **names** of environment variables, never their values.
 

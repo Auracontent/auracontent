@@ -116,13 +116,35 @@ def check_hf(repo: str):
     return (OK, f"accès à {repo}") if r is not None and r.status_code == 200 else (FAIL, _status(r))
 
 
+def _zernio_key_envs() -> list[str]:
+    """Noms des clés Zernio déclarés par les chaînes enregistrées (publish.zernio_key_env du YAML)."""
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.channels.registry import CHANNEL_REGISTRY
+
+    names = []
+    for channel in CHANNEL_REGISTRY:
+        try:
+            env = (load_channel_config(channel).get("publish") or {}).get("zernio_key_env")
+        except FileNotFoundError:
+            continue
+        if env and env not in names:
+            names.append(env)
+    return names or ["ZERNIO_API_KEY"]
+
+
 def check_zernio():
-    key = os.getenv("ZERNIO_API_KEY")
-    if not key:
-        return WARN, "ZERNIO_API_KEY absente : pas de boucle de feedback"
-    r = _http("GET", "https://zernio.com/api/v1/analytics", headers={"Authorization": f"Bearer {key}"},
-              params={"limit": 1})
-    return (OK, "OK") if r is not None and r.status_code == 200 else (WARN, _status(r))
+    results, any_ok = [], False
+    for env in _zernio_key_envs():
+        key = (os.getenv(env) or "").strip()
+        if not key:
+            results.append(f"{env} absente")
+            continue
+        r = _http("GET", "https://zernio.com/api/v1/analytics", headers={"Authorization": f"Bearer {key}"},
+                  params={"limit": 1})
+        ok = r is not None and r.status_code == 200
+        any_ok |= ok
+        results.append(f"{env}: OK" if ok else f"{env}: {_status(r)}")
+    return (OK if any_ok else WARN), " | ".join(results)
 
 
 def main(argv: list[str]) -> int:

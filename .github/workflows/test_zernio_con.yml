@@ -20,7 +20,7 @@ jobs:
 
       - name: 🔍 Test de l'API Zernio (Debug)
         env:
-          ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY }}
+          ZERNIO_API_KEY: ${{ secrets.ZERNIO_API_KEY_MYSTERY }}
         run: |
           python -c "
           import os, requests
