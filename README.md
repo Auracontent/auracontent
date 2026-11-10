@@ -8,10 +8,6 @@
 
 
 <p align="center">
-  <strong>Automated faceless short-video factory</strong>
-</p>
-
-<p align="center">
   From a channel config to a published YouTube Short / TikTok: script, voiceover, visuals, editing, storage and publishing — fully automated.
 </p>
 
