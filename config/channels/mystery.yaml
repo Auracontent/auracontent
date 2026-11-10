@@ -148,13 +148,13 @@ visuals:
 publish:
   hf_repo: "soradata/AIShortvideos"   # dataset HF où le générateur dépose les vidéos
   hf_folder: "videos"                 # dossier historique de Minute Mystère
-  zernio_key_env: "ZERNIO_API_KEY"
+  zernio_key_env: "ZERNIO_API_KEY_MYSTERY"
   platforms:                          # publiées dans cet ordre
-    - {platform: youtube, account_env: YOUTUBE_ACCOUNT_ID}
-    - {platform: tiktok,  account_env: TIKTOK_ACCOUNT_ID}
+    - {platform: youtube, account_env: YOUTUBE_ACCOUNT_ID_MYSTERY}
+    - {platform: tiktok,  account_env: TIKTOK_ACCOUNT_ID_MYSTERY}
   delay_between_platforms: 15
   stats:                              # boucle de feedback Zernio (bandit des hooks)
     platform: null                    # tiktok | youtube | null = toutes
-    account_env: null                 # ex : TIKTOK_ACCOUNT_ID pour ne lire qu'un compte
+    account_env: null                 # ex : TIKTOK_ACCOUNT_ID_MYSTERY pour ne lire qu'un compte
     limit: 20
   fallback_hashtags: "🧠✨ #IA #MinuteMystère #Decouverte #PourToi"
