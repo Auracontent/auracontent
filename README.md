@@ -1,9 +1,9 @@
 <p align="center">
-  <img
-    src="assets/shared/images/logo.png"
-    alt="AuraContent Logo"
-    width="480"
-  />
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/shared/images/logo_dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/shared/images/logo_light.png">
+    <img src="assets/shared/images/logo_light.png" alt="AuraContent" width="480">
+  </picture>
 </p>
 
 
