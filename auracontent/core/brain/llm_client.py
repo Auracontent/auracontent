@@ -39,7 +39,47 @@ FREE_MODEL_PREFERENCES = [
 ]
 FREE_MODEL_BLACKLIST = ["vision", "-vl", "image", "audio", "embed", "thinking", "lfm", "guard", "safeguard"]
 _SMALL_MODEL_RE = re.compile(r"(?<![0-9a-z])(0?\.?[1-9])b(?![a-z0-9])")  # 1b..9b : trop petit pour du JSON long
-_RATE_LIMIT_NUMS_RE = re.compile(r"Limit[:\s]+(\d+),?\s*Requested[:\s]+(\d+)", re.IGNORECASE)
+_RATE_LIMIT_NUMS_RE = re.compile(r"Limit[:\s]+(\d+),?\s*(?:Used[:\s]+\d+,?\s*)?Requested[:\s]+(\d+)", re.IGNORECASE)
+_RETRY_IN_RE = re.compile(r"(?:try again in|retryDelay['\"]?\s*[:=]\s*['\"]?)\s*(?:(\d+)m)?(\d+(?:\.\d+)?)s", re.IGNORECASE)
+MAX_RATE_LIMIT_WAIT = 65  # au-delà, on passe au fournisseur suivant
+GROQ_MODEL_PREFERENCES = ["gpt-oss-120b", "llama-4-maverick", "kimi-k2", "qwen3-32b", "llama-4-scout", "gpt-oss-20b"]
+_GROQ_MODELS_CACHE: dict[str, Any] = {"ts": 0.0, "models": []}
+
+
+def _retry_after(e, err_str) -> float | None:
+    """Délai d'attente conseillé par le fournisseur (corps d'erreur ou message), en secondes."""
+    body = getattr(e, "body", None)
+    text = f"{err_str} {json.dumps(body) if body is not None else ''}"
+    m = _RETRY_IN_RE.search(text)
+    if not m:
+        return None
+    return float(m.group(1) or 0) * 60 + float(m.group(2))
+
+
+def _is_daily_quota(e, err_str) -> bool:
+    body = getattr(e, "body", None)
+    text = f"{err_str} {json.dumps(body) if body is not None else ''}".lower()
+    return any(k in text for k in ("per day", "perday", "daily", "requests per day", "tokens per day"))
+
+
+def _discover_groq_models(api_key: str, configured: list[str]) -> list[str]:
+    """Modèles Groq réellement accessibles à CE compte (évite les 404 de modèles retirés ou non autorisés)."""
+    now = time.time()
+    if _GROQ_MODELS_CACHE["models"] and now - _GROQ_MODELS_CACHE["ts"] < FREE_MODELS_CACHE_TTL:
+        available = _GROQ_MODELS_CACHE["models"]
+    else:
+        try:
+            r = requests.get(f"{GROQ_BASE_URL}/models", headers={"Authorization": f"Bearer {api_key}"}, timeout=10)
+            r.raise_for_status()
+            available = [m["id"] for m in r.json().get("data", []) if m.get("active", True)]
+            _GROQ_MODELS_CACHE.update({"ts": now, "models": available})
+        except Exception as e:
+            print(f"⚠️ Liste des modèles Groq indisponible ({e}) : liste configurée utilisée.")
+            return configured
+    ordered = [m for m in configured if m in available]
+    for pref in GROQ_MODEL_PREFERENCES:
+        ordered += [m for m in available if pref in m and m not in ordered]
+    return ordered[:3] or configured
 
 _FREE_MODELS_CACHE: dict[str, Any] = {"ts": 0.0, "models": []}
 _DEAD_MODELS: set[str] = set()  # slugs 404 / décommissionnés pendant cette exécution
@@ -221,8 +261,9 @@ class LLMClient:
                      "is_groq": False, "budget_cap": False, "extra": {"reasoning_effort": "low"}}
                     for m in self.gemini_models]
         if name == "groq" and self.groq_key:
+            models = _discover_groq_models(self.groq_key, self.groq_models)
             return [{"name": "Groq", "model": m, "base_url": GROQ_BASE_URL, "api_key": self.groq_key,
-                     "is_groq": True, "budget_cap": True} for m in self.groq_models]
+                     "is_groq": True, "budget_cap": True} for m in models]
         if name == "openrouter" and self.openrouter_key:
             slugs = _discover_free_models()
             if OPENROUTER_FREE_ROUTER not in slugs:
@@ -316,8 +357,10 @@ class LLMClient:
                         if salvaged:
                             print("🩹 JSON récupéré et réparé depuis failed_generation.")
                             return salvaged
+                        if use_json:
+                            print("ℹ️ Nouvel essai sans le mode JSON strict (réparation locale).")
+                            use_json = False
                         temp = max(0.2, temp - 0.2)
-                        time.sleep(1)
                         continue
                     if kind == "not_found":
                         _DEAD_MODELS.add(provider["model"])
@@ -333,18 +376,25 @@ class LLMClient:
                         continue
                     if kind == "rate_limit":
                         rate_hits += 1
-                        low = err_str.lower()
-                        if "per day" in low or "daily" in low:
-                            print(f"⛔ Quota journalier atteint ({provider['model']}), passage au suivant.")
+                        if _is_daily_quota(e, err_str):
+                            _DEAD_MODELS.add(provider["model"])
+                            print(f"⛔ Quota journalier atteint ({provider['model']}), ignoré pour cette exécution.")
                             break
                         nums = _RATE_LIMIT_NUMS_RE.search(err_str)
-                        if nums:
+                        if nums and int(nums.group(2)) > int(nums.group(1)):  # requête plus grosse que la limite
                             limit, requested = int(nums.group(1)), int(nums.group(2))
                             max_tokens = max(500, max_tokens - (requested - limit) - SAFETY_MARGIN_TOKENS)
                             continue
-                        if not is_groq and rate_hits >= 2:
+                        delay = _retry_after(e, err_str)
+                        if provider["name"] == "OpenRouter" and provider["model"].endswith(":free"):
+                            break  # modèles gratuits partagés : saturés, inutile d'insister
+                        if delay is None:
+                            delay = 20 if provider["name"] in ("Gemini", "Groq") else 6
+                        if delay > MAX_RATE_LIMIT_WAIT:
+                            print(f"⏭️ {provider['model']} : attente de {delay:.0f}s trop longue, passage au suivant.")
                             break
-                        time.sleep(25 if is_groq else 6)
+                        print(f"⏳ Limite par minute sur {provider['model']}, attente de {delay:.0f}s...")
+                        time.sleep(delay + 1)
                         continue
                     time.sleep(2)
 

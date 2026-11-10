@@ -154,3 +154,41 @@ def test_landscape_image_is_not_distorted(tmp_path):
     xs, ys = [p[0] for p in bright], [p[1] for p in bright]
     ratio = (max(xs) - min(xs)) / (max(ys) - min(ys))
     assert 0.85 <= ratio <= 1.15  # toujours un cercle
+
+
+# ---------- Limites de débit ----------
+class _FakeError(Exception):
+    def __init__(self, msg, body=None):
+        super().__init__(msg)
+        self.body = body
+
+
+def test_retry_after_groq_message():
+    from auracontent.core.brain.llm_client import _retry_after
+
+    msg = "Error code: 429 - Rate limit reached on tokens per minute (TPM): Limit 8000, Used 6844, Requested 2100. Please try again in 7.35s."
+    assert _retry_after(_FakeError(msg), msg) == pytest.approx(7.35)
+
+
+def test_retry_after_gemini_body():
+    from auracontent.core.brain.llm_client import _is_daily_quota, _retry_after
+
+    body = [{"error": {"code": 429, "details": [{"@type": "type.googleapis.com/google.rpc.RetryInfo", "retryDelay": "23s"}]}}]
+    e = _FakeError("Error code: 429", body)
+    assert _retry_after(e, str(e)) == 23
+    assert not _is_daily_quota(e, str(e))
+
+
+def test_gemini_daily_quota_detected():
+    from auracontent.core.brain.llm_client import _is_daily_quota
+
+    body = [{"error": {"details": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier"}]}}]
+    e = _FakeError("Error code: 429", body)
+    assert _is_daily_quota(e, str(e))
+
+
+def test_groq_tpm_message_with_used_field():
+    from auracontent.core.brain.llm_client import _RATE_LIMIT_NUMS_RE
+
+    m = _RATE_LIMIT_NUMS_RE.search("Limit 8000, Used 4521, Requested 9100")
+    assert (m.group(1), m.group(2)) == ("8000", "9100")

@@ -38,9 +38,10 @@ LLM_PROVIDER_ORDER = ["gemini", "groq", "openrouter"]
 GEMINI_TEXT_MODELS = [GEMINI_CONFIG["text"]]  # gemini-2.5-flash : 404
 
 # Groq : essayés dans l'ordre (un modèle décommissionné est ignoré automatiquement)
+# Point de départ seulement : llm_client interroge Groq pour ne garder que les modèles accessibles à ton compte
 GROQ_MODELS = [
+    "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
-    "llama-3.3-70b-versatile",   # remplace llama-3.3-70b-specdec (décommissionné)
 ]
 
 # OpenRouter : les modèles GRATUITS sont découverts automatiquement (llm_client._discover_free_models),
