@@ -134,6 +134,11 @@ def place_details(wikibase_item: str | None) -> dict:
     return details
 
 
+def fetch_page(title: str) -> dict | None:
+    """Page exploitable (assez de matière, pas d'homonymie) ou None. Voir find_candidates."""
+    return _fetch_page(title)
+
+
 def find_candidates(query: str, limit: int = 8, exclude: set[str] | None = None) -> list[dict]:
     """Pages exploitables pour `query` : [{"title", "url", "extract", "coordinates", "wikibase_item"}].
 

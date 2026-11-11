@@ -11,6 +11,7 @@ import os
 
 from auracontent.services.publishing.zernio import get_latest_videos_stats
 from auracontent.utils.hook_tracker import compute_pattern_scores, load_hook_history, select_hook
+from auracontent.utils.pending_topic import clear_pending, load_pending, note_script_attempt, save_pending
 from auracontent.utils.topic_tracker import save_global_history
 from config import settings
 
@@ -45,20 +46,40 @@ class GlobalBrain:
         if previous_stats_list is None:
             previous_stats_list = self._fetch_stats(channel.section("publish"))
 
-        # 1. Sujet (l'anti-doublon sur l'historique global est fait dans pick_topic)
-        topic = brain.pick_topic()
-        print(f"🎯 Sujet retenu : {topic}")
+        b = channel.section("brain") or {}
+        resumable = hasattr(brain, "export_state") and hasattr(brain, "restore_state")
+        pending = load_pending(channel_name, max_attempts=int(b.get("resume_max_attempts", 3)),
+                               max_age_days=float(b.get("resume_max_days", 7))) if resumable else None
+        if pending:
+            # Reprise : sujet, titre et accroche déjà validés lors d'une exécution précédente
+            brain.restore_state(pending["brain"])
+            topic, hooks, chosen_hook = pending["topic"], pending["hooks"], pending["chosen_hook"]
+            print(f"♻️ Reprise du sujet validé ({pending.get('script_attempts', 0)} échec(s) de script) : {topic}")
+            print(f"🪝 Accroche : {chosen_hook.get('text')}")
+        else:
+            # 1. Sujet (l'anti-doublon sur l'historique global est fait dans pick_topic)
+            topic = brain.pick_topic()
+            print(f"🎯 Sujet retenu : {topic}")
 
-        # 2. Accroche choisie par le bandit (pattern le plus performant, 20 % d'exploration)
-        hooks = brain.generate_hook_variants(topic, n=5, previous_stats_list=previous_stats_list)
-        scores = compute_pattern_scores(previous_stats_list, load_hook_history(channel_name))
-        if scores:
-            print(f"📈 Scores des patterns : {scores}")
-        chosen_hook = select_hook(hooks, pattern_scores=scores) or hooks[0]
-        print(f"🪝 Accroche : {chosen_hook.get('text')}")
+            # 2. Accroche choisie par le bandit (pattern le plus performant, 20 % d'exploration)
+            hooks = brain.generate_hook_variants(topic, n=5, previous_stats_list=previous_stats_list)
+            scores = compute_pattern_scores(previous_stats_list, load_hook_history(channel_name))
+            if scores:
+                print(f"📈 Scores des patterns : {scores}")
+            chosen_hook = select_hook(hooks, pattern_scores=scores) or hooks[0]
+            print(f"🪝 Accroche : {chosen_hook.get('text')}")
+            if resumable:
+                save_pending(channel_name, {"topic": topic, "hooks": hooks, "chosen_hook": chosen_hook,
+                                            "brain": brain.export_state()})
 
-        # 3. Script
-        script = brain.generate_script(topic, chosen_hook=chosen_hook)
+        # 3. Script (en cas d'échec, le sujet reste en attente pour la prochaine exécution)
+        try:
+            script = brain.generate_script(topic, chosen_hook=chosen_hook)
+        except Exception:
+            if resumable:
+                note_script_attempt(channel_name)
+                print("💾 Sujet, titre et accroche gardés : la prochaine exécution reprendra ce sujet.")
+            raise
         pick = dict(getattr(brain, "last_pick", {}) or {})
         script.update({"topic": topic, "channel": channel_name, "hook": chosen_hook,
                        "hook_variants": hooks, "pick": pick})
@@ -66,6 +87,8 @@ class GlobalBrain:
         # 4. Sauvegarde du script puis de l'historique (seulement si tout a réussi)
         path = self._save_script(channel_name, script)
         save_global_history(topic, channel_name, script_path=str(path), **pick)
+        if resumable:
+            clear_pending(channel_name)
         print(f"✅ Script sauvegardé : {path}")
         return path
 

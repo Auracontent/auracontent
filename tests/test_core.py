@@ -216,11 +216,11 @@ def test_llm_registry_skips_providers_without_key(monkeypatch):
             monkeypatch.delenv(var, raising=False)
     for var in ("LLM_PROVIDERS",):
         monkeypatch.delenv(var, raising=False)
-    monkeypatch.setenv("MISTRAL_API_KEY", "k")
+    monkeypatch.setenv("DEEPSEEK_API_KEY", "k")
     monkeypatch.setenv("CLOUDFLARE_API_TOKEN", "t")  # sans CLOUDFLARE_ACCOUNT_ID -> ignoré
     monkeypatch.delenv("CLOUDFLARE_ACCOUNT_ID", raising=False)
     client = llm_client.LLMClient.create_default()
-    assert {p["name"] for p in client.providers} == {"Mistral"}
+    assert {p["name"] for p in client.providers} == {"DeepSeek"}
 
 
 # ---------- Narration Gemini en une seule requête ----------
@@ -991,6 +991,7 @@ def test_topic_needs_enough_images_and_falls_back_to_best_illustrated(monkeypatc
     pages = iter([{"title": f"Lieu {i}", "url": "u", "extract": "x"} for i in range(10)])
     counts = {"Lieu 0": 2, "Lieu 1": 4, "Lieu 2": 1}
     brain = _mystery_brain()
+    brain._anecdotes = []                                      # « Le saviez-vous ? » vide : repli mots-clés
     brain._find_source = lambda region, category, used: next(pages)
     brain.count_source_images = lambda source, details: counts.get(source["title"], 0)
     titles = []
@@ -1067,3 +1068,348 @@ def test_place_details_walks_up_to_the_department(monkeypatch):
     assert wikipedia.place_details("Q1") == {"commons_category": "Abbaye X", "commune": "Chaux-lès-Passavant",
                                              "department": "Doubs"}
     assert wikipedia.place_details(None) == {}
+
+
+# ---------- Quotas LLM (fix/quotas-llm) ----------
+class _FakeCompletions:
+    def __init__(self, outcomes, calls):
+        self.outcomes, self.calls = outcomes, calls
+
+    def create(self, **kwargs):
+        self.calls.append(kwargs)
+        outcome = self.outcomes.pop(0)
+        if isinstance(outcome, Exception):
+            raise outcome
+        return outcome
+
+
+def _fake_openai(monkeypatch, outcomes):
+    from auracontent.core.brain import llm_client as lc
+
+    calls = []
+
+    class FakeOpenAI:
+        def __init__(self, **kwargs):
+            self.chat = type("Chat", (), {"completions": _FakeCompletions(outcomes, calls)})()
+
+    monkeypatch.setattr(lc, "OpenAI", FakeOpenAI)
+    monkeypatch.setattr(lc.time, "sleep", lambda s: None)
+    return calls
+
+
+def _completion(text, prompt_tokens=10, completion_tokens=5):
+    return {"choices": [{"message": {"content": text}, "finish_reason": "stop"}],
+            "usage": {"prompt_tokens": prompt_tokens, "completion_tokens": completion_tokens}}
+
+
+def _client_with(monkeypatch, groups):
+    """LLMClient dont les fournisseurs sont fabriqués par _provider_group à partir des vraies specs."""
+    from auracontent.core.brain import llm_client as lc
+
+    monkeypatch.setattr(lc, "_discover_models", lambda name, url, key, configured, prefs, limit=3: configured)
+    monkeypatch.setattr(lc, "_base_url", lambda name: "https://example.invalid/v1")
+    return lc.LLMClient(keys={g: "k" for g in groups}, models=groups, order=list(groups))
+
+
+def test_groq_gpt_oss_skips_strict_json_and_lowers_reasoning(monkeypatch):
+    from auracontent.core.brain import llm_client as lc
+
+    client = _client_with(monkeypatch, {"groq": ["openai/gpt-oss-120b", "llama-3.1-8b-instant"]})
+    gpt, llama = client.providers
+    assert gpt["json_mode"] is False and llama["json_mode"] is True
+    assert gpt["extra"] == {"reasoning_effort": "low", "include_reasoning": False} and llama["extra"] == {}
+    assert lc.split_extras(gpt["extra"]) == {"reasoning_effort": "low", "extra_body": {"include_reasoning": False}}
+
+    calls = _fake_openai(monkeypatch, [_completion('```json\n{"ok": true}\n```')])
+    assert client.call_json_with_retry([{"role": "user", "content": "x"}], max_completion_tokens=500) == {"ok": True}
+    assert "response_format" not in calls[0]                       # jamais le mode JSON strict de Groq
+    assert calls[0]["extra_body"] == {"include_reasoning": False}
+
+
+def test_reasoning_models_get_a_bigger_first_budget(monkeypatch):
+    from auracontent.core.brain import llm_client as lc
+
+    client = _client_with(monkeypatch, {"github": ["openai/gpt-4.1-mini"], "openrouter": ["qwen/qwen3-235b"]})
+    monkeypatch.setattr(lc, "_discover_free_models", lambda: [])
+    calls = _fake_openai(monkeypatch, [_completion("a"), _completion("b")])
+    client.call_with_fallback([], max_completion_tokens=1000, allowed_models=["gpt-4.1-mini"])
+    client.call_with_fallback([], max_completion_tokens=1000, allowed_models=["qwen3"])
+    assert calls[0]["max_completion_tokens"] == 1000                      # modèle sans raisonnement
+    assert calls[1]["max_completion_tokens"] == 1000 + lc.REASONING_EXTRA_TOKENS
+    assert calls[1]["extra_body"] == {"reasoning": {"effort": "low"}}     # OpenRouter : effort abaissé
+
+
+def test_rejected_reasoning_parameter_is_dropped(monkeypatch):
+    client = _client_with(monkeypatch, {"zhipu": ["glm-4.5-flash"]})
+    calls = _fake_openai(monkeypatch, [Exception("Error code: 400 - unknown parameter: thinking"), _completion("ok")])
+    assert client.call_with_fallback([]) == "ok"
+    assert calls[0]["extra_body"] == {"thinking": {"type": "disabled"}} and "extra_body" not in calls[1]
+
+
+def test_usage_report_counts_calls_tokens_and_failures(monkeypatch):
+    client = _client_with(monkeypatch, {"github": ["openai/gpt-4.1-mini"]})
+    _fake_openai(monkeypatch, [Exception("Error code: 500 boom"), _completion("ok", 120, 30)])
+    client.call_with_fallback([])
+    assert client.usage["GitHub Models"] == {"calls": 2, "failures": 1, "prompt_tokens": 120, "completion_tokens": 30}
+    report = "\n".join(client.usage_report())
+    assert "GitHub Models" in report and "2 appel(s),   1 échec(s)" in report
+    assert "Total : 2 appel(s), dont 1 échoué(s)." in report
+
+
+@pytest.mark.parametrize("raw, expected", [("OK", "OK"), ('{"choices": [{"message": {"content": "OK"}}]}', "OK"),
+                                           (b"OK", "OK")])
+def test_github_models_plain_text_answer_is_accepted(raw, expected):
+    """Régression du diagnostic : « Réponse inattendue du LLM : OK » alors que le modèle avait répondu."""
+    from auracontent.core.brain.llm_client import LLMClient
+
+    assert LLMClient._extract_content(raw) == expected
+
+
+def test_simple_tasks_fall_back_without_script_models(monkeypatch):
+    client = _client_with(monkeypatch, {"gemini": ["gemini-3.6-flash"], "groq": ["openai/gpt-oss-20b"],
+                                        "cloudflare": ["@cf/meta/llama-3.3-70b-instruct-fp8-fast"]})
+    calls = _fake_openai(monkeypatch, [Exception("Error code: 402 more credits"), _completion("ok")])
+    out = client.call_with_fallback([], allowed_models=["gpt-oss-20b"], fallback_excluded=["gemini", "gpt-oss-120b"])
+    assert out == "ok" and [c["model"] for c in calls] == ["openai/gpt-oss-20b",
+                                                           "@cf/meta/llama-3.3-70b-instruct-fp8-fast"]
+
+
+def test_mystery_routes_simple_tasks_to_small_models():
+    brain = _mystery_brain(_ScriptedLLM({"retournement": True}))
+    seen = []
+    brain.llm.call_json_with_retry = lambda messages, **k: seen.append(k) or {"retournement": True}
+    brain.has_reversal("t", {"title": "x"})
+    assert "gpt-oss-20b" in seen[0]["allowed_models"] and "gemini" not in seen[0]["allowed_models"]
+    assert "gemini" in seen[0]["fallback_excluded"]                    # Gemini réservé au script
+    assert "gemini" in brain.script_routing()["allowed_models"]
+
+
+def test_no_removed_provider_left():
+    """Mistral et Cerebras retirés : code, configuration, workflows, documentation, listes de modèles."""
+    import re
+    from pathlib import Path
+
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.core.brain import llm_client
+
+    root = Path(__file__).resolve().parent.parent
+    pattern = re.compile("mis" + "tral|cere" + "bras", re.IGNORECASE)   # en morceaux : ce test ne se trouve pas lui-même
+    hits = []
+    for folder in ("auracontent", "config", "scripts", ".github"):
+        for path in (root / folder).rglob("*"):
+            if path.is_file() and path.suffix in {".py", ".yaml", ".yml", ".md", ".toml"} and \
+                    pattern.search(path.read_text(encoding="utf-8", errors="ignore")):
+                hits.append(str(path.relative_to(root)))
+    for name in ("README.md", "CONTRIBUTING.md", ".env.example", "pyproject.toml"):
+        if pattern.search((root / name).read_text(encoding="utf-8")):
+            hits.append(name)
+    assert hits == []
+    assert not {"mistral", "cerebras"} & set(llm_client.PROVIDER_SPECS)
+    brain = load_channel_config("mystery")["brain"]
+    assert not any(pattern.search(m) for m in brain["script_models"] + brain["simple_models"])
+
+
+def test_script_accepted_one_scene_off_target():
+    from auracontent.core.brain.base_brain import BaseBrain
+
+    class Brain(BaseBrain):
+        def build_script_prompt(self, *a):
+            return []
+
+    def scenes(n):
+        return {"title": "t", "scenes": [{"id": 9, "text": "x"} for _ in range(n)]}
+
+    llm = _ScriptedLLM(scenes(5))
+    data = Brain(config={"brain": {"scene_count_tolerance": 1}}, llm=llm)._generate_script_attempt("t", 6, None, 0)
+    assert [s["id"] for s in data["scenes"]] == [1, 2, 3, 4, 5]           # renumérotées
+    with pytest.raises(ValueError):
+        Brain(config={"brain": {"scene_count_tolerance": 1}}, llm=_ScriptedLLM(scenes(4)))._generate_script_attempt(
+            "t", 6, None, 0)
+    with pytest.raises(ValueError):                                       # autres chaînes : exact
+        Brain(config={"brain": {}}, llm=_ScriptedLLM(scenes(5)))._generate_script_attempt("t", 6, None, 0)
+
+
+def test_pending_topic_survives_script_failure(monkeypatch, tmp_path):
+    from auracontent.core.brain import global_brain as gb
+    from auracontent.utils import pending_topic
+
+    monkeypatch.setattr(pending_topic, "PENDING_PATH", tmp_path / "pending_topics.json")
+    saved = []
+    monkeypatch.setattr(gb, "save_global_history", lambda *a, **k: saved.append(a))
+    monkeypatch.setattr(gb, "load_hook_history", lambda channel: [])
+
+    class FakeBrain:
+        def __init__(self):
+            self.picks, self.fail, self.last_pick, self._source = 0, True, {}, None
+
+        def pick_topic(self):
+            self.picks += 1
+            self.last_pick, self._source = {"source_title": "Abbaye X"}, {"title": "Abbaye X", "extract": "..."}
+            return "Titre validé"
+
+        def generate_hook_variants(self, topic, n=5, previous_stats_list=None):
+            return [{"text": "Accroche validée", "pattern": "chiffre", "score": 8}]
+
+        def generate_script(self, topic, chosen_hook=None):
+            if self.fail:
+                raise RuntimeError("quotas épuisés")
+            return {"scenes": [], "title": topic}
+
+        def export_state(self):
+            return {"source": self._source, "last_pick": self.last_pick}
+
+        def restore_state(self, state):
+            self._source, self.last_pick = state["source"], state["last_pick"]
+
+    class FakeChannel:
+        def __init__(self, brain):
+            self.brain = brain
+
+        def section(self, key):
+            return {}
+
+    first = FakeBrain()
+    g = gb.GlobalBrain.__new__(gb.GlobalBrain)
+    g.channels, g.output_dir = {"mystery": FakeChannel(first)}, tmp_path
+    with pytest.raises(RuntimeError):
+        g.run_channel("mystery", previous_stats_list=[])
+    entry = pending_topic.load_pending("mystery")
+    assert entry["topic"] == "Titre validé" and entry["script_attempts"] == 1 and saved == []
+
+    second = FakeBrain()                                     # exécution suivante : nouveau processus
+    second.fail = False
+    g.channels = {"mystery": FakeChannel(second)}
+    path = g.run_channel("mystery", previous_stats_list=[])
+    assert second.picks == 0                                 # aucun nouveau choix de sujet
+    assert second.last_pick == {"source_title": "Abbaye X"}
+    script = json.loads(path.read_text(encoding="utf-8"))
+    assert script["hook"]["text"] == "Accroche validée" and script["topic"] == "Titre validé"
+    assert pending_topic.load_pending("mystery") is None and len(saved) == 1
+
+
+def test_pending_topic_is_dropped_after_too_many_failures(monkeypatch, tmp_path):
+    from auracontent.utils import pending_topic
+
+    monkeypatch.setattr(pending_topic, "PENDING_PATH", tmp_path / "p.json")
+    pending_topic.save_pending("mystery", {"topic": "T"})
+    for _ in range(3):
+        pending_topic.note_script_attempt("mystery")
+    assert pending_topic.load_pending("mystery", max_attempts=3) is None
+    assert pending_topic.load_pending("mystery") is None                 # supprimé
+
+
+def test_failed_run_pushes_only_pending_topic(monkeypatch, tmp_path):
+    from auracontent.services.publishing import state_sync
+
+    uploaded = []
+
+    class FakeApi:
+        def upload_file(self, **k):
+            uploaded.append(k["path_in_repo"])
+
+    monkeypatch.setattr(state_sync, "_api", lambda: (FakeApi(), "t"))
+    monkeypatch.setattr(state_sync, "STATE_DIR", tmp_path)
+    for name in ("pending_topics.json", "global_history.json"):
+        (tmp_path / name).write_text("{}", encoding="utf-8")
+    state_sync.push_state(("pending_topics.json",))
+    assert uploaded == ["meta/pending_topics.json"]               # jamais les historiques après un échec
+    assert "pending_topics.json" in state_sync.STATE_FILES        # récupéré au début de l'exécution suivante
+
+
+def test_prefilter_skips_llm_when_nothing_usable():
+    from auracontent.channels.mystery.brain import prefilter_candidates
+
+    region = {"name": "Bretagne", "search": ["Finistère", "Morbihan"]}
+    candidates = [
+        {"title": "Quimper", "extract": "Quimper est une commune française du Finistère."},
+        {"title": "Trésor de Y", "extract": "Le trésor de Y fut découvert en 1820 près de Vannes, dans le Morbihan."},
+        {"title": "Trésor de Z", "extract": "Le trésor de Z fut découvert à Reims."},
+    ]
+    assert [c["title"] for c in prefilter_candidates(candidates, region)] == ["Trésor de Y"]
+
+    brain = _mystery_brain(_ScriptedLLM())                   # aucune réponse prévue : tout appel échouerait
+    import auracontent.channels.mystery.brain as mb
+    original = mb.find_candidates
+    mb.find_candidates = lambda q, limit, exclude: candidates[:1] + candidates[2:]
+    try:
+        assert brain._find_source(region, {"name": "c", "search": ["trésor"]}, set()) is None
+    finally:
+        mb.find_candidates = original
+    assert brain.llm.calls == []
+
+
+LSV_WIKITEXT = """{{Palette Le saviez-vous}}
+* <!--@ID_100-->[[Fichier:Phare.jpg|40px|droite|Le phare.]]Le '''[[Phare de la Caravelle|phare de la Caravelle]]''' ''(photo)'', haut de {{Unité|21|m}}, éclaire la rive américaine de l'océan Atlantique.
+*:<small>présente 6 jours en page d'accueil. [[Discussion:Phare de la Caravelle/LSV_100|Discussion.]]</small>
+* <!--@ID_101-->Le premier monument du {{s|XX}} protégé en France est une plate-forme de canon.
+*:<small>[[Discussion:Plate-forme de la pièce d'artillerie 380/LSV_101|Discussion.]]</small>
+*:<small>ligne de détail sans anecdote</small>
+"""
+
+
+def test_le_saviez_vous_anecdotes_are_parsed():
+    from auracontent.services.scraping.anecdotes import parse_anecdotes
+
+    items = parse_anecdotes(LSV_WIKITEXT)
+    assert [(a["id"], a["target"]) for a in items] == [("100", "Phare de la Caravelle"),
+                                                       ("101", "Plate-forme de la pièce d'artillerie 380")]
+    assert items[0]["text"] == ("Le phare de la Caravelle, haut de 21 m, éclaire la rive américaine "
+                                "de l'océan Atlantique.")
+    assert "XXe siècle" in items[1]["text"]
+
+
+@pytest.mark.parametrize("claims, expected", [
+    ({"P625": [{"mainsnak": {"datavalue": {"value": {"latitude": 14.8, "longitude": -60.9}}}}]}, True),
+    ({"P625": [{"mainsnak": {"datavalue": {"value": {"latitude": -22.9, "longitude": -43.2}}}}],   # au Brésil
+      "P17": [{"mainsnak": {"datavalue": {"value": {"id": "Q142"}}}}]}, False),
+    ({"P17": [{"mainsnak": {"datavalue": {"value": {"id": "Q142"}}}}],
+      "P276": [{"mainsnak": {"datavalue": {"value": {"id": "Q19675"}}}}]}, True),           # objet au Louvre
+    ({"P17": [{"mainsnak": {"datavalue": {"value": {"id": "Q142"}}}}]}, False),             # organisation
+    ({"P27": [{"mainsnak": {"datavalue": {"value": {"id": "Q142"}}}}]}, False),             # personne
+])
+def test_anecdote_must_be_a_place_or_object_in_france(claims, expected):
+    from auracontent.services.scraping.anecdotes import _in_france
+    from auracontent.services.visuals.map_scene import find_region
+
+    assert _in_france(claims, lambda lat, lon: find_region(lat, lon, max_km=5) is not None) is expected
+
+
+def test_anecdotes_skip_already_used_and_foreign(monkeypatch):
+    from auracontent.services.scraping import anecdotes as an
+
+    monkeypatch.setattr(an, "fetch_wikitext", lambda title: LSV_WIKITEXT if "accueil" in title else "")
+    monkeypatch.setattr(an, "_wikibase_items", lambda titles: {t: (t, f"Q{i}") for i, t in enumerate(titles)})
+    monkeypatch.setattr(an, "located_in_france", lambda qids: set(qids))
+    kept = an.collect_french_anecdotes([2020], archives=1, exclude_ids={"101"})
+    assert [a["target"] for a in kept] == ["Phare de la Caravelle"]
+    kept = an.collect_french_anecdotes([2020], exclude_titles={"phare de la caravelle"})
+    assert [a["target"] for a in kept] == ["Plate-forme de la pièce d'artillerie 380"]   # article déjà traité
+
+
+def test_topic_sources_try_anecdotes_first_then_keywords(monkeypatch):
+    import auracontent.channels.mystery.brain as mb
+
+    brain = _mystery_brain()
+    brain._anecdotes = [{"id": "7", "text": "Le phare éclaire l'Amérique.", "target": "Phare de la Caravelle"},
+                        {"id": "8", "text": "Trop court.", "target": "Article court"}]
+    pages = {"Phare de la Caravelle": {"title": "Phare de la Caravelle", "url": "u", "extract": "x",
+                                       "coordinates": {"lat": 14.77, "lon": -60.88}, "wikibase_item": "Q1"}}
+    monkeypatch.setattr(mb, "fetch_page", lambda title: pages.get(title))
+    keyword_calls = []
+    brain._find_source = lambda region, category, used: keyword_calls.append(1) or {"title": "Mot-clé"}
+    sources = ["le_saviez_vous", "keywords"]
+    region, category = {"name": "Bretagne", "search": []}, {"name": "cat", "search": []}
+
+    page, reg, cat = brain._next_source(sources, region, category, set())
+    assert page["anecdote"] == "Le phare éclaire l'Amérique." and page["anecdote_id"] == "7"
+    assert reg["name"].startswith("Outre-mer") and cat["name"].startswith("anecdote")
+    assert keyword_calls == []
+    page, reg, cat = brain._next_source(sources, region, category, set())   # anecdote 8 : page inutilisable
+    assert page == {"title": "Mot-clé"} and reg == region and keyword_calls == [1]
+
+
+@pytest.mark.parametrize("lat, lon, expected", [(48.857, 2.352, "Paris intra-muros"), (48.80, 2.13, "Île-de-France"),
+                                                (47.24, 6.36, "Bourgogne-Franche-Comté"), (43.30, 5.37, "Provence")])
+def test_anecdote_region_matches_yaml_regions(lat, lon, expected):
+    brain = _mystery_brain()
+    assert brain.region_of({"coordinates": {"lat": lat, "lon": lon}})["name"].startswith(expected)

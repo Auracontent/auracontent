@@ -53,6 +53,11 @@ def load_used_sources(channel: str | None = None) -> set[str]:
     return {e["source_title"].lower() for e in _filter(_load_entries(), channel) if e.get("source_title")}
 
 
+def load_used_values(field: str, channel: str | None = None) -> set[str]:
+    """Valeurs déjà prises par un champ de l'historique (ex. « anecdote_id »), en chaînes."""
+    return {str(e[field]) for e in _filter(_load_entries(), channel) if e.get(field) not in (None, "")}
+
+
 def save_global_history(topic: str, channel: str, **meta) -> None:
     entries = _load_entries()
     entry = {"topic": topic, "channel": channel,

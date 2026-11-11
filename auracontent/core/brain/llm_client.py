@@ -35,13 +35,19 @@ FREE_MODELS_CACHE_TTL = 3600
 # Ordre de préférence des modèles gratuits (le premier mot-clé trouvé gagne)
 FREE_MODEL_PREFERENCES = [
     "llama-3.3-70b", "gpt-oss-120b", "qwen3-235b", "qwen3-next", "qwen3-coder",
-    "qwen", "nemotron", "deepseek", "gemma-3-27b", "gemma", "mistral", "glm", "llama",
+    "qwen", "nemotron", "deepseek", "gemma-3-27b", "gemma", "glm", "llama",
 ]
 FREE_MODEL_BLACKLIST = ["vision", "-vl", "image", "audio", "embed", "thinking", "lfm", "guard", "safeguard"]
 _SMALL_MODEL_RE = re.compile(r"(?<![0-9a-z])(0?\.?[1-9])b(?![a-z0-9])")  # 1b..9b : trop petit pour du JSON long
 _RATE_LIMIT_NUMS_RE = re.compile(r"Limit[:\s]+(\d+),?\s*(?:Used[:\s]+\d+,?\s*)?Requested[:\s]+(\d+)", re.IGNORECASE)
 _RETRY_IN_RE = re.compile(r"(?:try again in|retryDelay['\"]?\s*[:=]\s*['\"]?)\s*(?:(\d+)m)?(\d+(?:\.\d+)?)s", re.IGNORECASE)
 MAX_RATE_LIMIT_WAIT = 20  # au-delà, on bascule sur le fournisseur suivant (quota indépendant)
+# Modèles à raisonnement : la réflexion consomme le budget de sortie avant le JSON (finish_reason='length').
+# Leur budget initial est relevé d'autant, et leur effort de raisonnement abaissé quand l'API le permet.
+REASONING_MODEL_HINTS = ("gpt-oss", "qwen3", "deepseek-r", "gemini-2.5", "gemini-3", "glm-4.5", "glm-4.6",
+                         "magistral", "thinking")
+REASONING_EXTRA_TOKENS = 2500
+DIRECT_KWARGS = {"reasoning_effort"}       # paramètres connus du SDK OpenAI ; les autres passent en extra_body
 _MODELS_CACHE: dict[str, tuple[float, list[str]]] = {}
 _FREE_MODELS_CACHE: dict[str, Any] = {"ts": 0.0, "models": []}
 _DEAD_MODELS: set[str] = set()  # slugs 404 / décommissionnés / quota du jour épuisé pendant cette exécution
@@ -236,37 +242,71 @@ def _discover_free_models(max_models=OPENROUTER_MAX_DISCOVERED) -> list[str]:
 
 # Registre des fournisseurs compatibles OpenAI. Chaque entrée a son PROPRE quota :
 # plus il y en a, moins une saturation ponctuelle bloque la génération.
-#   key_env     : variables d'environnement possibles pour la clé (la première trouvée gagne)
-#   discover    : préférences pour la découverte via /models (None = liste configurée telle quelle)
-#   budget_cap  : limite de tokens par minute très basse (Groq) -> budget de sortie plafonné
+#   key_env       : variables d'environnement possibles pour la clé (la première trouvée gagne)
+#   discover      : préférences pour la découverte via /models (None = liste configurée telle quelle)
+#   budget_cap    : limite de tokens par minute très basse (Groq) -> budget de sortie plafonné
+#   extra         : paramètres ajoutés à chaque requête du fournisseur
+#   model_extra   : paramètres ajoutés selon un fragment du nom de modèle
+#   no_json_mode  : fragments de modèles pour lesquels le mode JSON strict échoue : réparation locale directe
+#   discover_limit: nombre de modèles gardés après découverte (petits modèles compris)
+# Effort de raisonnement, d'après la documentation de chaque fournisseur :
+#   Gemini (API compatible OpenAI) : reasoning_effort ;
+#   Groq : reasoning_effort low|medium|high pour gpt-oss, include_reasoning=false pour ne pas renvoyer la réflexion ;
+#   Cloudflare : reasoning.effort documenté pour l'API Responses ; en chat completions NON confirmé -> envoyé,
+#                retiré automatiquement si l'API le refuse ;
+#   OpenRouter : reasoning: {effort: "low"} (normalisé pour tous les modèles qui raisonnent) ;
+#   Z.ai : thinking: {type: "disabled"} (GLM-4.5 et suivants) ;
+#   Qwen (qwen-plus, qwen-flash) : enable_thinking est déjà false par défaut -> rien à envoyer ;
+#   DeepSeek (deepseek-chat), GitHub Models (gpt-4.1-mini, gpt-4o-mini) : modèles sans raisonnement.
 PROVIDER_SPECS: dict[str, dict[str, Any]] = {
     "gemini": {"label": "Gemini", "base_url": GEMINI_BASE_URL, "key_env": ["GEMINI_API_KEY"],
                "models": "GEMINI_TEXT_MODELS", "discover": None,
                # reasoning_effort bas : sinon la « réflexion » du modèle épuise le budget avant le JSON
                "extra": {"reasoning_effort": "low"}},
-    "mistral": {"label": "Mistral", "base_url": "https://api.mistral.ai/v1", "key_env": ["MISTRAL_API_KEY"],
-                "models": "MISTRAL_MODELS", "discover": None},
-    "cerebras": {"label": "Cerebras", "base_url": "https://api.cerebras.ai/v1", "key_env": ["CEREBRAS_API_KEY"],
-                 "models": "CEREBRAS_MODELS",
-                 "discover": ["gpt-oss-120b", "llama-3.3-70b", "qwen-3-235b", "llama-4", "qwen-3-32b"]},
     "groq": {"label": "Groq", "base_url": GROQ_BASE_URL, "key_env": ["GROQ_API_KEY"], "models": "GROQ_MODELS",
-             "discover": ["gpt-oss-120b", "llama-4-maverick", "kimi-k2", "qwen3-32b", "llama-4-scout", "gpt-oss-20b"],
-             "budget_cap": True},
+             "discover": ["gpt-oss-120b", "gpt-oss-20b", "llama-3.1-8b", "llama-4-scout", "llama-4-maverick",
+                          "kimi-k2", "qwen3-32b"],
+             "discover_limit": 5, "budget_cap": True,
+             # « Failed to validate JSON » à chaque appel en mode JSON strict sur gpt-oss
+             "no_json_mode": ("gpt-oss",),
+             "model_extra": {"gpt-oss": {"reasoning_effort": "low", "include_reasoning": False}}},
     "cloudflare": {"label": "Cloudflare", "base_url": None, "key_env": ["CLOUDFLARE_API_TOKEN", "CLOUDFLARE_R2_TOKEN"],
-                   "models": "CLOUDFLARE_TEXT_MODELS", "discover": None},
+                   "models": "CLOUDFLARE_TEXT_MODELS", "discover": None,
+                   "model_extra": {"gpt-oss": {"reasoning_effort": "low"}}},
     "github": {"label": "GitHub Models", "base_url": "https://models.github.ai/inference", "key_env": ["GITHUB_TOKEN"],
                "models": "GITHUB_MODELS", "discover": None},
     # Fournisseurs chinois, endpoints INTERNATIONAUX (hors Chine continentale)
     "zhipu": {"label": "Z.ai GLM", "base_url": "https://api.z.ai/api/paas/v4", "key_env": ["ZAI_API_KEY", "ZHIPU_API_KEY"],
-              "models": "ZHIPU_MODELS", "discover": None},
+              "models": "ZHIPU_MODELS", "discover": None, "extra": {"thinking": {"type": "disabled"}}},
     "qwen": {"label": "Qwen", "base_url": "https://dashscope-intl.aliyuncs.com/compatible-mode/v1",
              "key_env": ["DASHSCOPE_API_KEY", "QWEN_API_KEY"], "models": "QWEN_MODELS",
              "discover": ["qwen-plus", "qwen-flash", "qwen-turbo", "qwen3"]},
     "deepseek": {"label": "DeepSeek", "base_url": "https://api.deepseek.com/v1", "key_env": ["DEEPSEEK_API_KEY"],
                  "models": "DEEPSEEK_MODELS", "discover": None},  # payant (très bon marché) : en fin de cascade
     "openrouter": {"label": "OpenRouter", "base_url": OPENROUTER_BASE_URL, "key_env": ["OPENROUTER_API_KEY"],
-                   "models": "OPENROUTER_ROUTING", "discover": None},
+                   "models": "OPENROUTER_ROUTING", "discover": None, "extra": {"reasoning": {"effort": "low"}}},
 }
+
+
+def is_reasoning_model(model: str) -> bool:
+    low = str(model).lower()
+    return any(h in low for h in REASONING_MODEL_HINTS)
+
+
+def request_extras(spec: dict, model: str) -> dict:
+    """Paramètres propres au fournisseur et au modèle (effort de raisonnement...)."""
+    extra = dict(spec.get("extra") or {})
+    for fragment, params in (spec.get("model_extra") or {}).items():
+        if fragment in str(model).lower():
+            extra.update(params)
+    return extra
+
+
+def split_extras(extra: dict) -> dict:
+    """Paramètres hors SDK OpenAI (thinking, reasoning, include_reasoning...) -> extra_body."""
+    direct = {k: v for k, v in extra.items() if k in DIRECT_KWARGS}
+    body = {k: v for k, v in extra.items() if k not in DIRECT_KWARGS}
+    return {**direct, **({"extra_body": body} if body else {})}
 
 
 def _env_key(names: list[str]) -> str | None:
@@ -286,6 +326,36 @@ class LLMClient:
     keys: dict[str, str] = field(default_factory=dict)
     models: dict[str, list[str]] = field(default_factory=dict)
     order: list[str] = field(default_factory=lambda: list(PROVIDER_SPECS))
+    # Journal d'usage : fournisseur -> {calls, failures, prompt_tokens, completion_tokens}
+    usage: dict[str, dict[str, int]] = field(default_factory=dict)
+
+    def _record(self, provider: str, ok: bool, response=None) -> None:
+        entry = self.usage.setdefault(provider, {"calls": 0, "failures": 0, "prompt_tokens": 0,
+                                                 "completion_tokens": 0})
+        entry["calls"] += 1
+        if not ok:
+            entry["failures"] += 1
+            return
+        usage = getattr(response, "usage", None)
+        if usage is None and isinstance(response, dict):
+            usage = response.get("usage")
+        get = (lambda k: usage.get(k)) if isinstance(usage, dict) else (lambda k: getattr(usage, k, None))
+        if usage is not None:
+            entry["prompt_tokens"] += int(get("prompt_tokens") or 0)
+            entry["completion_tokens"] += int(get("completion_tokens") or 0)
+
+    def usage_report(self) -> list[str]:
+        """Appels, tokens et échecs par fournisseur (fin d'exécution)."""
+        if not self.usage:
+            return ["📊 LLM : aucun appel."]
+        lines = ["📊 Appels LLM par fournisseur :"]
+        for name, u in sorted(self.usage.items(), key=lambda kv: -kv[1]["calls"]):
+            lines.append(f"   {name:<14} {u['calls']:>3} appel(s), {u['failures']:>3} échec(s), "
+                         f"{u['prompt_tokens']:>7} tokens en entrée, {u['completion_tokens']:>7} en sortie")
+        total = sum(u["calls"] for u in self.usage.values())
+        failed = sum(u["failures"] for u in self.usage.values())
+        lines.append(f"   Total : {total} appel(s), dont {failed} échoué(s).")
+        return lines
 
     @classmethod
     def create_default(cls):
@@ -297,7 +367,7 @@ class LLMClient:
         if active:
             print(f"🧠 Fournisseurs LLM actifs : {', '.join(active)}")
         else:
-            print("⚠️ Aucun fournisseur LLM configuré (GEMINI_API_KEY, GROQ_API_KEY, CEREBRAS_API_KEY...).")
+            print("⚠️ Aucun fournisseur LLM configuré (GEMINI_API_KEY, GROQ_API_KEY, GITHUB_TOKEN...).")
         return client
 
     def _provider_group(self, name: str) -> list[dict[str, Any]]:
@@ -311,12 +381,14 @@ class LLMClient:
                 models.append(OPENROUTER_FREE_ROUTER)  # filet de sécurité gratuit
             models += [m for m in self.models.get(name, []) if m not in models]  # payants en dernier
         elif spec.get("discover"):
-            models = _discover_models(spec["label"], base_url, key, self.models.get(name, []), spec["discover"])
+            models = _discover_models(spec["label"], base_url, key, self.models.get(name, []), spec["discover"],
+                                      limit=spec.get("discover_limit", 3))
         else:
             models = self.models.get(name, [])
         return [{"name": spec["label"], "model": m, "base_url": base_url, "api_key": key,
                  "is_groq": name == "groq", "budget_cap": spec.get("budget_cap", False),
-                 "extra": spec.get("extra")} for m in models]
+                 "extra": request_extras(spec, m),
+                 "json_mode": not any(f in m.lower() for f in spec.get("no_json_mode", ()))} for m in models]
 
     @property
     def providers(self) -> list[dict[str, Any]]:
@@ -326,6 +398,22 @@ class LLMClient:
 
     @staticmethod
     def _extract_content(response):
+        # Certains points d'accès (GitHub Models) renvoient un corps que le SDK ne décode pas : une chaîne
+        # brute (« OK ») ou un JSON en texte. C'est une réponse valable, pas une erreur.
+        if isinstance(response, (bytes, bytearray)):
+            response = response.decode("utf-8", "replace")
+        if isinstance(response, str):
+            text = response.strip()
+            try:
+                decoded = json.loads(text)
+            except ValueError:
+                decoded = None
+            if isinstance(decoded, dict) and decoded.get("choices"):
+                response = decoded
+            elif text:
+                return _strip_reasoning(text).strip() or text
+            else:
+                raise ValueError("Contenu vide du LLM.")
         choices = getattr(response, "choices", None)
         if choices is None and isinstance(response, dict):
             choices = response.get("choices")
@@ -357,10 +445,14 @@ class LLMClient:
 
     def call_with_fallback(self, messages, temperature=1.0, json_mode=False,
                            max_completion_tokens=3000, hard_token_cap=7500,
-                           allowed_models: list[str] | None = None, wait_rounds: int = 0, wait_seconds: float = 60):
+                           allowed_models: list[str] | None = None, wait_rounds: int = 0, wait_seconds: float = 60,
+                           fallback_excluded: list[str] | None = None):
         """Cascade des fournisseurs. Avec `allowed_models`, seuls ces modèles sont essayés ; s'ils échouent
         tous (quota par minute), on attend `wait_seconds` puis on recommence, `wait_rounds` fois au plus,
-        plutôt que de descendre vers un modèle plus petit."""
+        plutôt que de descendre vers un modèle plus petit.
+
+        `fallback_excluded` (tâches simples) : si les modèles autorisés échouent tous, on essaie les autres,
+        sauf ceux qui correspondent à ces fragments (Gemini, réservé au script)."""
         for round_ in range(wait_rounds + 1):
             try:
                 return self._call_providers(messages, temperature, json_mode, max_completion_tokens,
@@ -368,6 +460,15 @@ class LLMClient:
             except RuntimeError:
                 alive = [p for p in self.providers if self.model_allowed(p["model"], allowed_models)]
                 if round_ == wait_rounds or not alive:
+                    if fallback_excluded is not None and allowed_models is not None:
+                        others = [p["model"] for p in self.providers
+                                  if not self.model_allowed(p["model"], allowed_models)
+                                  and not self.model_allowed(p["model"], fallback_excluded)]
+                        if others:
+                            print(f"↪️ Petits modèles indisponibles : repli sur {', '.join(others[:4])}"
+                                  f"{'…' if len(others) > 4 else ''} (sans {', '.join(fallback_excluded)}).")
+                            return self._call_providers(messages, temperature, json_mode, max_completion_tokens,
+                                                        hard_token_cap, others)
                     raise
                 print(f"⏳ Modèles autorisés saturés ({', '.join(allowed_models or [])}) : attente de "
                       f"{wait_seconds:.0f} s avant un nouvel essai ({round_ + 1}/{wait_rounds}).")
@@ -383,7 +484,7 @@ class LLMClient:
             skipped = [p["model"] for p in providers if not self.model_allowed(p["model"], allowed_models)]
             providers = [p for p in providers if self.model_allowed(p["model"], allowed_models)]
             if skipped:
-                print(f"ℹ️ Modèles écartés pour cet appel (trop petits) : {', '.join(skipped)}")
+                print(f"ℹ️ Modèles non retenus pour cet appel : {', '.join(skipped)}")
             if not providers:
                 raise RuntimeError(f"Aucun modèle autorisé disponible ({', '.join(allowed_models)}).")
 
@@ -400,12 +501,14 @@ class LLMClient:
                 } if provider["name"] == "OpenRouter" else None,
             )
             max_tokens = max_completion_tokens
+            if is_reasoning_model(provider["model"]):   # la réflexion passe avant le JSON : budget relevé
+                max_tokens += REASONING_EXTRA_TOKENS
             if provider["budget_cap"]:  # Groq : limite de tokens par minute très basse
                 ceiling = max(500, hard_token_cap - prompt_tokens - SAFETY_MARGIN_TOKENS)
                 max_tokens = min(max_tokens, ceiling)
             else:
-                ceiling = max(max_completion_tokens, 8000)
-            use_json, temp, rate_hits = json_mode, temperature, 0
+                ceiling = max(max_tokens, 8000)
+            use_json, temp, rate_hits = json_mode and provider.get("json_mode", True), temperature, 0
             extra = dict(provider.get("extra") or {})
 
             for attempt in range(3):
@@ -414,15 +517,23 @@ class LLMClient:
                               "max_completion_tokens": max_tokens}
                     if use_json:
                         kwargs["response_format"] = {"type": "json_object"}
-                    kwargs.update(extra)
-                    content = self._extract_content(client.chat.completions.create(**kwargs))
+                    kwargs.update(split_extras(extra))
+                    response = client.chat.completions.create(**kwargs)
+                    content = self._extract_content(response)
+                    self._record(provider["name"], True, response)
                     print(f"✅ Réponse obtenue via {provider['name']} ({provider['model']})")
                     return content
                 except Exception as e:
                     err_str, last_error = str(e), e
                     kind = _classify_error(e, err_str)
-                    if extra and "error code: 400" in err_str.lower() and "reasoning" in err_str.lower():
-                        extra = {}  # paramètre non supporté par ce modèle : on réessaie sans
+                    self._record(provider["name"], False)
+                    low = err_str.lower()
+                    # paramètre de raisonnement refusé (400) ou ignoré au point de vider la réponse : sans lui
+                    if extra and (("error code: 400" in low and any(k.replace("_", " ") in low.replace("_", " ")
+                                                                    for k in [*extra, "reasoning", "thinking"]))
+                                  or kind == "empty"):
+                        print(f"ℹ️ {provider['name']} [{provider['model']}] : paramètres {sorted(extra)} retirés.")
+                        extra = {}
                         continue
                     print(f"⚠️ Échec {provider['name']} [{provider['model']}] ({attempt + 1}/3, {kind}) : "
                           f"{err_str[:200]}{'…' if len(err_str) > 200 else ''}")

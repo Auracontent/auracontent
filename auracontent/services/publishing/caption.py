@@ -39,12 +39,14 @@ def apply_hashtag_rules(caption: str, brand_hashtag: str | None = None, banned_h
 
 
 def generate_caption(llm, title: str, scenes: list[dict], fallback_hashtags: str = "",
-                     brand_hashtag: str | None = None, banned_hashtags=()) -> str:
-    caption = _generate_caption(llm, title, scenes, fallback_hashtags)
+                     brand_hashtag: str | None = None, banned_hashtags=(), routing: dict | None = None) -> str:
+    """`routing` : modèles autorisés (tâche simple, voir BaseBrain.simple_routing)."""
+    caption = _generate_caption(llm, title, scenes, fallback_hashtags, routing or {})
     return apply_hashtag_rules(caption, brand_hashtag, banned_hashtags)
 
 
-def _generate_caption(llm, title: str, scenes: list[dict], fallback_hashtags: str = "") -> str:
+def _generate_caption(llm, title: str, scenes: list[dict], fallback_hashtags: str = "",
+                      routing: dict | None = None) -> str:
     fallback = f"{title} {fallback_hashtags}".strip()
     script = " ".join(str(s.get("text", "")) for s in scenes)
     messages = [{
@@ -52,7 +54,8 @@ def _generate_caption(llm, title: str, scenes: list[dict], fallback_hashtags: st
         "content": CAPTION_PROMPT.format(title=title, script=script[:3000], hashtags=fallback_hashtags or "#PourToi"),
     }]
     try:
-        caption = llm.call_with_fallback(messages, temperature=0.8, max_completion_tokens=300).strip().strip('"')
+        caption = llm.call_with_fallback(messages, temperature=0.8, max_completion_tokens=300,
+                                         **(routing or {})).strip().strip('"')
         return caption or fallback
     except Exception as e:
         print(f"⚠️ Légende IA impossible ({e}), légende de secours.")

@@ -15,6 +15,7 @@ from datetime import datetime
 from pathlib import Path
 
 from auracontent.channels.base_channel import BaseChannel
+from auracontent.core.brain.base_brain import simple_routing_from
 from auracontent.services.audios.audio import AudioEngine
 from auracontent.services.publishing.caption import generate_caption
 from auracontent.services.video.composer import Composer
@@ -34,6 +35,10 @@ class VideoPipeline:
         self.llm = llm
         self.work_dir = TEMP_DIR / self.name
         self.publish_cfg = channel.section("publish")
+
+    def _simple_routing(self) -> dict:
+        """Légende : tâche simple, petits modèles (brain.simple_models)."""
+        return simple_routing_from(self.channel.section("brain"))
 
     # ---------- 1. Assets ----------
     def _shot_settings(self) -> dict:
@@ -246,7 +251,8 @@ class VideoPipeline:
         print("📝 Légende...")
         caption = generate_caption(self.llm, title, scenes, self.publish_cfg.get("fallback_hashtags", ""),
                                    brand_hashtag=self.publish_cfg.get("brand_hashtag"),
-                                   banned_hashtags=self.publish_cfg.get("banned_hashtags", ()))
+                                   banned_hashtags=self.publish_cfg.get("banned_hashtags", ()),
+                                   routing=self._simple_routing())
 
         print("🎙️ Voix...")
         scenes = asyncio.run(self._voice(scenes))
