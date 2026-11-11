@@ -20,13 +20,14 @@ from auracontent.utils.media_helpers import get_duration, is_video_file
 from config.settings import OUTPUT_DIR
 
 MAP_TEST_PLACES = [   # coordonnées fixes : aucun appel réseau
-    ("reims", MapTarget(1, 49.2583, 4.0317, "Reims", "test")),
+    ("reims", MapTarget(1, 49.2583, 4.0317, "Reims", "test")),           # avec l'accroche de marque
     ("ajaccio", MapTarget(1, 41.9192, 8.7386, "Ajaccio", "test")),
     ("saint_denis_reunion", MapTarget(1, -20.8789, 55.4481, "Saint-Denis", "test")),
 ]
 MAP_DURATION = 6.2
 MAP_PREVIEW_TIMES = (0.4, 3.0, 5.6)
 MAP_HEADLINE = "EN 1825, UN TRÉSOR | DISPARAÎT ICI"
+MAP_TAGLINE = "C’EST ARRIVÉ ICI"   # visuals.map_scene.tagline (facultatif) : montré sur le premier lieu
 
 SCENE_DURATION = 6.0
 
@@ -81,6 +82,22 @@ def check_map_clip(label: str, path: str, duration: float, fps: int) -> bool:
     return ok
 
 
+def check_watermark_clear_of_headline(composer: Composer) -> bool:
+    """Le filigrane (en haut à gauche) doit finir au-dessus du bandeau-titre."""
+    from PIL import Image
+
+    if not (composer.watermark_path and os.path.exists(composer.watermark_path)):
+        print("❌ filigrane introuvable")
+        return False
+    with Image.open(composer.watermark_path) as logo:
+        height = composer.watermark_width * logo.height / logo.width
+    bottom = composer.watermark_y + height
+    ok = bottom < composer.headline_y
+    print(f"{'✅' if ok else '❌'} filigrane {os.path.basename(composer.watermark_path)} : "
+          f"y {composer.watermark_y} à {bottom:.0f}, bandeau à partir de y {composer.headline_y}")
+    return ok
+
+
 def render_map_previews() -> bool:
     config = load_channel_config("mystery")
     composer = Composer(config.get("video_composer"), channel_name="mystery")
@@ -93,10 +110,13 @@ def render_map_previews() -> bool:
     with open(srt, "w", encoding="utf-8") as f:
         f.write(f"1\n00:00:00,500 --> 00:00:0{math.floor(MAP_DURATION) - 1},000\nTOUT COMMENCE ICI, EN 1825\n")
 
-    results = []
-    for name, target in MAP_TEST_PLACES:
+    results = [check_watermark_clear_of_headline(composer)]
+    for i, (name, target) in enumerate(MAP_TEST_PLACES):
         clip = os.path.join(composer.temp_dir, f"scene_map_{name}.mp4")
-        if not render_map_scene(target, MAP_DURATION, clip, cfg=map_settings(config.get("visuals")), fps=fps):
+        cfg = map_settings(config.get("visuals"))
+        if i == 0:
+            cfg["tagline"] = MAP_TAGLINE
+        if not render_map_scene(target, MAP_DURATION, clip, cfg=cfg, fps=fps):
             results.append(False)
             continue
         results.append(check_map_clip(name, clip, MAP_DURATION, fps))

@@ -1,6 +1,6 @@
 # constants_mimolune.py
 # Constantes dédiées à la chaîne Mimolune, séparées de constants.py
-# pour ne rien casser sur Minute Mystère.
+# pour ne rien casser sur la chaîne mystery.
 
 # URLs pour l'accès aux vidéos et assets sur Hugging Face
 API_URL_MIMOLUNE = "https://huggingface.co/api/datasets/soradata/MimoluneVideos/tree/main/videos"

@@ -69,6 +69,7 @@ def map_settings(visuals_cfg: dict | None) -> dict:
     cfg.setdefault("zoom", 3.0)                 # métropole : vue finale 3 fois plus serrée que la France entière
     cfg.setdefault("overseas_view_km", 4500)    # outre-mer : largeur de la vue de départ
     cfg.setdefault("overseas_zoom", 10.0)     # Réunion : ~130 px de large à la fin
+    cfg.setdefault("tagline", "")               # accroche de marque sous le nom du lieu (facultative)
     return cfg
 
 
@@ -297,6 +298,8 @@ class MapRenderer:
         self._prepare_rings()
         self.font_label = self._fit_font(self.label, 84, int(820 * sx))
         self.font_region = ImageFont.truetype(str(FONT_PATH), int(42 * sx))
+        self.tagline = str(cfg.get("tagline") or "").strip().upper()
+        self.font_tag = ImageFont.truetype(str(FONT_PATH), int(40 * sx))
         self.label_below = self._choose_label_side()
 
     # --- projection ---
@@ -426,18 +429,26 @@ class MapRenderer:
         img.paste(overlay, (0, 0), overlay)
 
     def _label_lines(self):
-        lines = [(self.label, self.font_label)] if self.label else []
+        """[(texte, police, accent)] : nom du lieu, région, puis accroche de marque (noir sur jaune)."""
+        lines = [(self.label, self.font_label, False)] if self.label else []
         if lines and self.region_name and self.region_name.upper() not in self.label:
-            lines.append((self.region_name.upper(), self.font_region))
+            lines.append((self.region_name.upper(), self.font_region, False))
+        if self.tagline:
+            lines.append((self.tagline, self.font_tag, True))
         return lines
+
+    @staticmethod
+    def _line_height(font, accent: bool) -> float:
+        return font.size * (1.6 if accent else 1.18)   # l'accroche a un cartouche : un peu plus d'air
 
     def _label_box(self, below: bool, pos: tuple[float, float] | None = None) -> tuple[float, float, float, float]:
         """Cadre de l'étiquette (sous le point `pos` ou au-dessus), contenu dans la zone sûre."""
         px, py = pos or self.anchor
         sx = self.width / 1080
         lines = self._label_lines()
-        height = sum(font.size * 1.18 for _, font in lines)
-        width = max((font.getlength(text) for text, font in lines), default=0)
+        height = sum(self._line_height(font, accent) for _, font, accent in lines)
+        width = max((font.getlength(text) + (font.size * 0.6 if accent else 0) for text, font, accent in lines),
+                    default=0)
         x0 = min(max(px - width / 2, 40 * sx), 930 * sx - width)
         y0 = py + 70 * sx if below else py - 60 * sx - height
         return x0, y0, x0 + width, y0 + height
@@ -473,11 +484,18 @@ class MapRenderer:
         d = ImageDraw.Draw(overlay)
         a = int(255 * alpha)
         x0, y, x1, _ = self._label_box(self.label_below, pos)
-        for text, font in lines:
+        for text, font, accent in lines:
             x = x0 + (x1 - x0 - font.getlength(text)) / 2
-            d.text((x, y), text, font=font, fill=(255, 255, 255, a), stroke_width=max(int(font.size * 0.08), 3),
-                   stroke_fill=(0, 0, 0, a))
-            y += font.size * 1.18
+            if accent:   # même style que la chute du bandeau-titre : noir sur jaune
+                pad = font.size * 0.3
+                top = y + font.size * 0.25
+                d.rectangle([x - pad, top - pad * 0.6, x + font.getlength(text) + pad, top + font.size + pad * 0.6],
+                            fill=(*ACCENT, a))
+                d.text((x, top), text, font=font, fill=(0, 0, 0, a))
+            else:
+                d.text((x, y), text, font=font, fill=(255, 255, 255, a),
+                       stroke_width=max(int(font.size * 0.08), 3), stroke_fill=(0, 0, 0, a))
+            y += self._line_height(font, accent)
         img.paste(overlay, (0, 0), overlay)
 
     def render_frame(self, t: float, duration: float) -> Image.Image:

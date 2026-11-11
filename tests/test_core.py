@@ -525,3 +525,81 @@ def test_map_credit_mentions_openstreetmap_only_when_geocoded():
     composer = Composer(load_channel_config("mystery")["video_composer"], channel_name="mystery")
     assert composer._resolve_source_credit("temp/mystery/assets/scene_map_2.mp4") == "Carte : Natural Earth"
     assert "OpenStreetMap" in composer._resolve_source_credit("temp/mystery/assets/scene_map_osm_2.mp4")
+
+
+# ---------- Nouveau nom « C’est arrivé ici » (lot 10) ----------
+def test_caption_drops_old_name_and_adds_brand_hashtag():
+    from auracontent.services.publishing.caption import apply_hashtag_rules
+
+    banned = ["#minutemystere"]
+    caption = "🧠 Un trésor perdu !\nVous le saviez ? #histoire #MinuteMystère #france"
+    assert apply_hashtag_rules(caption, "#cestarriveici", banned) == (
+        "🧠 Un trésor perdu !\nVous le saviez ? #histoire #france #cestarriveici")
+    assert apply_hashtag_rules("Légende #CestArriveIci", "#cestarriveici", banned) == "Légende #CestArriveIci"
+    assert apply_hashtag_rules("Légende #MinuteMystère", None, ()) == "Légende #MinuteMystère"   # autres chaînes
+
+
+def test_caption_fallback_follows_brand_rules():
+    from auracontent.services.publishing.caption import generate_caption
+
+    class BrokenLLM:
+        def call_with_fallback(self, *a, **k):
+            raise RuntimeError("quota")
+
+    caption = generate_caption(BrokenLLM(), "Le trésor de Gourdon", [], "#histoire #MinuteMystère",
+                               brand_hashtag="#cestarriveici", banned_hashtags=["#minutemystere"])
+    assert caption == "Le trésor de Gourdon #histoire #cestarriveici"
+
+
+def test_mystery_branding_uses_new_name():
+    from PIL import Image
+
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.services.video.composer import Composer
+
+    cfg = load_channel_config("mystery")
+    composer = Composer(cfg["video_composer"], channel_name="mystery")
+    assert composer.watermark_path.endswith("cest_arrive_ici_watermark.png")
+    with Image.open(composer.watermark_path) as logo:
+        assert logo.size == (541, 160) and logo.mode == "RGBA"
+        bottom = composer.watermark_y + composer.watermark_width * logo.height / logo.width
+    assert (composer.watermark_width, composer.watermark_opacity) == (190, 0.85)
+    assert bottom < composer.headline_y                      # le filigrane ne touche pas le bandeau-titre
+    publish = cfg["publish"]
+    assert publish["fallback_hashtags"] == "#histoire #patrimoine #france #cestarriveici"
+    assert publish["hf_folder"] == "videos" and publish["zernio_key_env"] == "ZERNIO_API_KEY_MYSTERY"
+
+
+def test_no_old_channel_name_left():
+    """Critère du lot 10 : l'ancien nom de la chaîne n'apparaît plus (hors historique git et CHANGELOG)."""
+    import re
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent
+    old_name = "minute" + r"[\s_]" + "myst"           # écrit en morceaux : ce test ne doit pas se trouver lui-même
+    pattern = re.compile(old_name + "|" + "mist" + "[eè]re", re.IGNORECASE)
+    suffixes = {".py", ".md", ".yaml", ".yml", ".toml", ".txt", ".json", ".sh"}
+    hits = []
+    for folder in ("auracontent", "config", "scripts", "tests", ".github", "assets"):
+        for path in (root / folder).rglob("*"):
+            if path.is_file() and (path.suffix in suffixes or path.suffix == ".png") and path != Path(__file__):
+                if pattern.search(path.name) or (path.suffix in suffixes and path.stat().st_size < 3_000_000
+                                                 and pattern.search(path.read_text(encoding="utf-8", errors="ignore"))):
+                    hits.append(str(path.relative_to(root)))
+    for name in ("README.md", "CONTRIBUTING.md", ".env.example", "pyproject.toml", "constants.py"):
+        path = root / name
+        if path.exists() and pattern.search(path.read_text(encoding="utf-8", errors="ignore")):
+            hits.append(name)
+    assert hits == []
+
+
+def test_map_tagline_is_optional_and_stays_in_safe_zone():
+    from auracontent.services.visuals.map_scene import MapRenderer
+
+    plain = MapRenderer(49.2583, 4.0317, "Reims")
+    assert plain.tagline == "" and all(not accent for _, _, accent in plain._label_lines())
+    for lat, lon, name in ((49.2583, 4.0317, "Reims"), (-20.8789, 55.4481, "Saint-Denis")):
+        tagged = MapRenderer(lat, lon, name, {"tagline": "C’est arrivé ici"})
+        assert tagged._label_lines()[-1][0] == "C’EST ARRIVÉ ICI" and tagged._label_lines()[-1][2]
+        x0, y0, x1, y1 = tagged._label_box(tagged.label_below)
+        assert x0 >= 40 and x1 <= 930 and y0 > 610 and y1 < 1200   # entre bandeau et sous-titres

@@ -1,5 +1,5 @@
 channel_name: "mystery"
-description: "Les secrets du patrimoine français : un lieu réel, une histoire que personne ne raconte, en moins d'une minute."
+description: "C’est arrivé ici : les secrets du patrimoine français. Un lieu réel, une histoire que personne ne raconte, en moins d'une minute."
 
 # Brain (LLM)
 brain:
@@ -107,10 +107,11 @@ video_composer:
   sfx_gain: 0.55
   sfx_fade_out: 0.6
 
-  # Branding & filigrane
-  watermark_filename: "minute_mystere_watermark.png"
-  watermark_width: 120
-  watermark_opacity: 0.6
+  # Branding & filigrane « C’est arrivé ici » (541 x 160, fond transparent ; 190 px de large -> y 56 à 112,
+  # bien au-dessus du bandeau-titre qui commence à y = 230)
+  watermark_filename: "cest_arrive_ici_watermark.png"
+  watermark_width: 190
+  watermark_opacity: 0.85
   watermark_x: 42
   watermark_y: 56
 
@@ -170,10 +171,11 @@ visuals:
     zoom: 3.0                 # métropole : vue finale 3 fois plus serrée que la France entière
     overseas_view_km: 4500    # outre-mer : largeur de la vue de départ, centrée sur le territoire
     overseas_zoom: 10.0
+    tagline: ""               # accroche de marque à côté du point, facultative : ex. "C’EST ARRIVÉ ICI"
 # Publication (publish.py) — uniquement des NOMS de variables d'environnement, jamais les valeurs
 publish:
   hf_repo: "soradata/AIShortvideos"   # dataset HF où le générateur dépose les vidéos
-  hf_folder: "videos"                 # dossier historique de Minute Mystère
+  hf_folder: "videos"                 # dossier historique de la chaîne : ne pas renommer (historique)
   zernio_key_env: "ZERNIO_API_KEY_MYSTERY"
   platforms:                          # publiées dans cet ordre
     - {platform: youtube, account_env: YOUTUBE_ACCOUNT_ID_MYSTERY}
@@ -183,4 +185,6 @@ publish:
     platform: null                    # tiktok | youtube | null = toutes
     account_env: null                 # ex : TIKTOK_ACCOUNT_ID_MYSTERY pour ne lire qu'un compte
     limit: 20
-  fallback_hashtags: "#histoire #patrimoine #france #mystère"
+  fallback_hashtags: "#histoire #patrimoine #france #cestarriveici"
+  brand_hashtag: "#cestarriveici"     # ajouté à la légende s'il manque
+  banned_hashtags: ["#minutemystere"]   # ancien nom, retiré de la légende (casse et accents ignorés)
