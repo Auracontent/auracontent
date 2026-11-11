@@ -62,7 +62,7 @@ Everything can run in **GitHub Actions**: no server required.
 
 | Feature | Description |
 |---|---|
-| 🧠 **Multi-provider LLM** | ~10 providers (Gemini, Groq, Cerebras, Mistral, OpenRouter, DeepSeek, Cloudflare, GitHub Models, Z.ai, Qwen) with automatic fallback and rate-limit handling. Configure as many free tiers as you have. |
+| 🧠 **Multi-provider LLM** | 8 providers (Gemini, Groq, OpenRouter, DeepSeek, Cloudflare, GitHub Models, Z.ai, Qwen) with automatic fallback and rate-limit handling. Configure as many free tiers as you have. |
 | 📚 **Fact-checked scripts** | Topics and facts are grounded on Wikipedia; locations are constrained per channel. |
 | 🎣 **Hook optimisation** | A bandit tracker learns which hooks perform best using Zernio analytics. |
 | 🗣️ **Voiceover** | Gemini TTS narration in a single request, split on silences; `edge-tts` fallback. |
@@ -163,7 +163,7 @@ Then fill in the keys you have. [`.env.example`](.env.example) documents every v
 
 | Variable | Needed for |
 |---|---|
-| one of `GEMINI_API_KEY`, `GROQ_API_KEY`, `CEREBRAS_API_KEY`, … | script generation (**required**) |
+| one of `GEMINI_API_KEY`, `GROQ_API_KEY`, `GITHUB_TOKEN`, … | script generation (**required**) |
 | `WIKIMEDIA_CONTACT` | Wikipedia/Wikimedia User-Agent (strongly recommended) |
 | `PEXELS_API_KEY`, `PIXABAY_API_KEY`, `POLLINATIONS_TOKEN`, … | visuals (optional, more = better) |
 | `HF_TOKEN` | upload + state sync (`--upload`, `--sync-state`) |

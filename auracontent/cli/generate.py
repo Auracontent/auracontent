@@ -13,6 +13,7 @@ from auracontent.core.brain.global_brain import GlobalBrain
 from auracontent.core.brain.llm_client import LLMClient
 from auracontent.core.pipeline import produce_video
 from auracontent.services.publishing.state_sync import pull_state, push_state
+from auracontent.utils.pending_topic import PENDING_FILE
 
 
 def main(argv: list[str]) -> int:
@@ -41,9 +42,16 @@ def main(argv: list[str]) -> int:
             print(f"❌ {name} : {e}")
             results[name] = False
 
-    # On ne sauvegarde l'état que si au moins une chaîne a réussi (évite de « brûler » un sujet sans vidéo)
-    if args.sync_state and any(results.values()):
-        push_state()
+    for line in llm.usage_report():
+        print(line)
+
+    # On ne sauvegarde l'état que si au moins une chaîne a réussi (évite de « brûler » un sujet sans vidéo).
+    # Après un échec, seul le sujet en attente est sauvé : l'exécution suivante le reprend.
+    if args.sync_state:
+        if any(results.values()):
+            push_state()
+        else:
+            push_state((PENDING_FILE,))
     return 0 if all(results.values()) else 1
 
 

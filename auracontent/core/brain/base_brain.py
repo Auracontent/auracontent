@@ -11,6 +11,15 @@ _PLACEHOLDER = re.compile(r"\{(\w+)\}")
 _SECTION_HEADER = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
 
+def simple_routing_from(brain_cfg: dict | None) -> dict:
+    """Routage des tâches simples d'après la section `brain` du YAML (voir BaseBrain.simple_routing)."""
+    b = brain_cfg or {}
+    if not b.get("simple_models"):
+        return {}
+    excluded = b.get("simple_fallback_excluded", b.get("script_models") or ["gemini"])
+    return {"allowed_models": list(b["simple_models"]), "fallback_excluded": list(excluded)}
+
+
 @dataclass
 class BaseBrain:
     config: dict[str, Any]
@@ -76,7 +85,8 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
         data = self.llm.call_json_with_retry(
             [{"role": "user", "content": prompt}],
             temperature=0.1,
-            max_completion_tokens=300
+            max_completion_tokens=300,
+            **self.simple_routing(),
         )
         if data.get("is_duplicate"):
             return True, data.get("matched_topic")
@@ -123,6 +133,15 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
             return {}
         return {"allowed_models": list(allowed), "wait_rounds": int(b.get("script_wait_rounds", 3)),
                 "wait_seconds": float(b.get("script_wait_seconds", 60))}
+
+    def simple_routing(self) -> dict:
+        """Tâches simples (choix de page, titre, contrôles, accroches) : brain.simple_models (petits modèles).
+
+        Si tous échouent, repli sur les autres modèles SAUF ceux du script (brain.script_models, ou
+        brain.simple_fallback_excluded) : Gemini et les gros modèles restent réservés au script.
+        Absent du YAML = tous les modèles (autres chaînes).
+        """
+        return simple_routing_from(self.config.get("brain", {}))
 
     def generate_script(self, topic, chosen_hook=None):
         """Point d'entrée standard pour générer un script."""
@@ -171,12 +190,18 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
             )
 
             scenes = data.get("scenes", [])
-            if len(scenes) != scene_count:
+            tolerance = int(self.config.get("brain", {}).get("scene_count_tolerance", 0))
+            if abs(len(scenes) - scene_count) > tolerance:
                 if last:
                     raise ValueError(f"Échec du comptage des scènes après {max_retries + 1} tentatives.")
                 correction_feedback = (f"CORRECTION OBLIGATOIRE : génère EXACTEMENT {scene_count} scènes. "
                                        f"Tu en as fait {len(scenes)}.")
                 continue
+            if len(scenes) != scene_count:
+                print(f"ℹ️ {len(scenes)} scènes au lieu de {scene_count} : accepté (tolérance de {tolerance}).")
+                for idx, scene in enumerate(scenes, start=1):   # numérotation continue
+                    if isinstance(scene, dict):
+                        scene["id"] = idx
 
             try:
                 self._validate_script_base(data)

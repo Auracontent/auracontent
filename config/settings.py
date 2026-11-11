@@ -35,14 +35,12 @@ GEMINI_TTS_MODELS = [GEMINI_CONFIG["voice"], "gemini-2.5-pro-preview-tts"]
 # Gemini en premier : API stable et JSON fiable, alors que les modèles gratuits Groq/OpenRouter
 # changent ou disparaissent sans prévenir (principale source d'instabilité de la v1).
 # Un fournisseur sans clé est simplement ignoré.
-LLM_PROVIDER_ORDER = ["gemini", "zhipu", "qwen", "mistral", "cerebras", "groq", "cloudflare", "github",
-                      "deepseek", "openrouter"]
+LLM_PROVIDER_ORDER = ["gemini", "zhipu", "qwen", "groq", "cloudflare", "github", "deepseek", "openrouter"]
 ZHIPU_MODELS = ["glm-4.5-flash"]                                    # gratuit sur Z.ai
 QWEN_MODELS = ["qwen-plus", "qwen-flash"]                           # quota gratuit à l'inscription
 DEEPSEEK_MODELS = ["deepseek-chat"]                                 # payant, ~1 centime / vidéo
-MISTRAL_MODELS = ["mistral-medium-latest", "mistral-small-latest"]   # excellents en français
-CEREBRAS_MODELS = ["gpt-oss-120b", "llama-3.3-70b"]                  # complétés par découverte /models
-CLOUDFLARE_TEXT_MODELS = ["@cf/openai/gpt-oss-120b", "@cf/meta/llama-3.3-70b-instruct-fp8-fast"]
+CLOUDFLARE_TEXT_MODELS = ["@cf/openai/gpt-oss-120b", "@cf/openai/gpt-oss-20b",
+                          "@cf/meta/llama-3.3-70b-instruct-fp8-fast"]
 GITHUB_MODELS = ["openai/gpt-4.1-mini", "openai/gpt-4o-mini"]       # GITHUB_TOKEN des workflows
 GEMINI_TEXT_MODELS = [GEMINI_CONFIG["text"]]  # gemini-2.5-flash : 404
 
@@ -51,6 +49,7 @@ GEMINI_TEXT_MODELS = [GEMINI_CONFIG["text"]]  # gemini-2.5-flash : 404
 GROQ_MODELS = [
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
+    "llama-3.1-8b-instant",   # petit modèle rapide : tâches simples (choix de page, contrôles)
 ]
 
 # OpenRouter : les modèles GRATUITS sont découverts automatiquement (llm_client._discover_free_models),

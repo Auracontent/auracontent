@@ -14,7 +14,8 @@ import shutil
 from config.settings import ASSETS_DIR
 
 STATE_DIR = ASSETS_DIR / "shared" / "state"
-STATE_FILES = ("global_history.json", "hook_history.json", "asset_history.json", "geocode_cache.json")
+STATE_FILES = ("global_history.json", "hook_history.json", "asset_history.json", "geocode_cache.json",
+               "pending_topics.json")   # sujet validé en attente de script (reprise après un échec)
 STATE_REPO = os.getenv("HF_STATE_REPO", "soradata/AIShortvideos")
 STATE_FOLDER = "meta"
 
@@ -47,11 +48,12 @@ def pull_state() -> None:
             print(f"ℹ️ {name} absent sur HF (première exécution ?) : {type(e).__name__}")
 
 
-def push_state() -> None:
+def push_state(names: tuple[str, ...] | None = None) -> None:
+    """`names` : seulement ces fichiers (après un échec : le sujet en attente, jamais les historiques)."""
     api, _ = _api()
     if api is None:
         return
-    for name in STATE_FILES:
+    for name in names or STATE_FILES:
         local = STATE_DIR / name
         if not local.exists():
             continue

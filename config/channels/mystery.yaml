@@ -17,10 +17,27 @@ brain:
   min_source_images: 5          # images exploitables du lieu (article source + catégorie Commons) :
                                 # licence libre, 1000 px de large au moins, ni logo, ni carte, ni blason
 
-  # Script : jamais de modèle plus petit que gpt-oss-120b ; si ces modèles sont saturés, on attend
+  # Sources de sujets, essayées dans l'ordre : anecdotes « Le saviez-vous ? » de Wikipédia (lieu ou objet
+  # situé en France, d'après Wikidata), puis recherche Wikipédia par mots-clés aléatoires (repli)
+  topic_sources: ["le_saviez_vous", "keywords"]
+  le_saviez_vous:
+    years: [2010, 2025]       # archives annuelles « Wikipédia:Le saviez-vous ?/Archives/<année> »
+    archives_per_run: 2       # années lues par exécution (tirées au hasard), plus la page d'accueil
+    include_home: true
+    sample: 200               # anecdotes examinées par exécution (Wikidata interrogé par lots de 50)
+
+  # Script : jamais de modèle plus petit que gpt-oss-120b ; si ces modèles sont saturés, on attend.
+  # Le fact-check passe aussi par ces modèles (véracité).
   script_models: ["gemini", "gpt-oss-120b", "qwen3-235b", "deepseek-chat"]   # fragments de nom
   script_wait_rounds: 3
   script_wait_seconds: 60
+  # Tâches simples (choix de page, titre, retournement, doublon, accroches, bandeau, légende) : petits
+  # modèles. S'ils échouent tous, repli sur les autres modèles, sauf ceux du script (Gemini et gros modèles).
+  simple_models: ["gpt-oss-20b", "llama-3.1-8b", "llama-4-scout", "gpt-4.1-mini", "gpt-4o-mini",
+                  "glm-4.5-flash", "qwen-flash"]
+  scene_count_tolerance: 1      # script accepté à une scène près de la cible
+  resume_max_attempts: 3        # reprise du sujet validé après un échec du script, au plus 3 fois
+  resume_max_days: 7
   min_specific_ratio: 0.66      # au moins 4 scènes 'specific' sur 6 (le vrai lieu à l'image)
 
   # Style parlé : phrases courtes, aucun adjectif décoratif (variantes au féminin et au pluriel incluses)

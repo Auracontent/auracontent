@@ -11,7 +11,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from auracontent.core.brain.base_brain import BaseBrain
-from auracontent.services.scraping.wikipedia import find_candidates, place_details
+from auracontent.services.scraping.anecdotes import collect_french_anecdotes
+from auracontent.services.scraping.wikipedia import fetch_page, find_candidates, place_details
 from auracontent.services.visuals.asset_manager import subject_settings
 from auracontent.services.visuals.subject_images import collect_subject_images, place_terms_of
 from auracontent.utils.topic_tracker import (
@@ -19,6 +20,7 @@ from auracontent.utils.topic_tracker import (
     load_last_categories,
     load_last_regions,
     load_used_sources,
+    load_used_values,
 )
 
 MOODS = {"ominous", "intriguing", "tense", "awe", "scientific", "investigation"}
@@ -34,6 +36,8 @@ MAX_TITLE_CHARS = 80              # au-delà, YouTube coupe le titre bien avant 
 BANNED_TITLE_WORDS = ("le plus ", "la plus ", "les plus ", "incroyable", "hallucinant", "bizarre")
 MAX_WORDS_PER_SCENE = 32          # le prompt demande deux phrases de 12 mots au plus, on tolère jusqu'à 32
 DEFAULT_TOPIC_ATTEMPTS = 10
+ANECDOTE_CATEGORY = {"name": "anecdote « Le saviez-vous ? » de Wikipédia", "search": []}
+DEFAULT_ANECDOTE_YEARS = (2010, 2025)
 DEFAULT_MIN_SOURCE_IMAGES = 5
 HOOK_ROUNDS = 3                   # générations d'accroches avant d'abandonner (jamais d'accroche par défaut)
 MAX_HOOK_WORDS = 12               # l'accroche ouvre la scène 1 : même limite que les phrases du script
@@ -60,6 +64,27 @@ def count_words(sentence: str) -> int:
     return len([w for w in re.split(r"\s+", sentence) if re.search(r"\w", w)])
 
 
+# Articles généralistes : la première phrase définit une entité administrative, pas un fait
+GENERALIST = re.compile(r"\best (une|un|l une des|l un des) (commune|ville|region|province|departement|localite|"
+                        r"agglomeration|metropole|collectivite|canton|arrondissement|pays|intercommunalite)\b")
+
+
+def prefilter_candidates(candidates: list[dict], region: dict) -> list[dict]:
+    """Filtre sans modèle avant le choix par LLM : écarte les articles généralistes (commune, département...)
+    et les pages qui ne nomment ni la région visée ni l'un de ses lieux de recherche."""
+    places = [fold(x) for x in [region.get("name", "").split("(")[0], *region.get("search", [])] if fold(x)]
+    kept = []
+    for c in candidates:
+        head = fold(c.get("extract", "")[:300])
+        if GENERALIST.search(head):
+            continue
+        text = f" {fold(c.get('title', ''))} {fold(c.get('extract', '')[:4000])} "
+        if places and not any(f" {p} " in text for p in places):
+            continue
+        kept.append(c)
+    return kept
+
+
 def banned_word_pattern(words) -> re.Pattern | None:
     """« escarpé » attrape aussi « escarpée », « escarpés », « escarpées »."""
     stems = [re.escape(w.strip().lower()) for w in words or [] if str(w).strip()]
@@ -72,6 +97,7 @@ def banned_word_pattern(words) -> re.Pattern | None:
 class MysteryBrain(BaseBrain):
     channel_name: str = "mystery"
     _source: dict | None = field(default=None, init=False, repr=False)      # page Wikipédia du sujet
+    _anecdotes: list | None = field(default=None, init=False, repr=False)   # réserve « Le saviez-vous ? »
     last_pick: dict = field(default_factory=dict, init=False, repr=False)   # région, catégorie, source
 
     @property
@@ -129,13 +155,15 @@ class MysteryBrain(BaseBrain):
         stats_text = self._stats_text(previous_stats_list)
         tested: dict[str, dict] = {}          # titre de la page -> essai (pour le repli)
 
+        sources = [str(x) for x in b.get("topic_sources") or ["keywords"]]
         for attempt in range(1, max_attempts + 1):
             title_vars, region, category, _ = self.build_title_vars(used, stats_text)
-            source = self._find_source(region, category, used_sources | set(tested))
+            source, region, category = self._next_source(sources, region, category, used_sources | set(tested))
             if source is None:
                 print(f"   ↻ Essai {attempt}/{max_attempts} : aucune page Wikipédia exploitable "
                       f"({category['name']} / {region['name']}).")
                 continue
+            title_vars.update(forced_region=region["name"], forced_category=category["name"])
 
             trial = {"source": source, "region": region, "category": category, "title_vars": title_vars}
             trial["details"] = place_details(source.get("wikibase_item"))
@@ -160,6 +188,16 @@ class MysteryBrain(BaseBrain):
                 if title:
                     return self._retain(trial, title)
         raise RuntimeError(f"Aucun sujet valide trouvé après {max_attempts} tentatives.")
+
+    # ==========================================
+    # REPRISE (sujet validé, script en échec)
+    # ==========================================
+    def export_state(self) -> dict:
+        return {"source": self._source, "last_pick": dict(self.last_pick)}
+
+    def restore_state(self, state: dict) -> None:
+        self._source = state.get("source")
+        self.last_pick = dict(state.get("last_pick") or {})
 
     def count_source_images(self, source: dict, details: dict) -> int:
         """Images exploitables du lieu : article Wikipédia source + sa catégorie Commons (licence libre,
@@ -193,7 +231,10 @@ class MysteryBrain(BaseBrain):
         self._source = source
         self.last_pick = {"region": region["name"], "category": category["name"],
                           "source_title": source["title"], "source_url": source["url"],
-                          "source_images": trial["images"]}
+                          "source_images": trial["images"],
+                          "topic_source": "le_saviez_vous" if source.get("anecdote") else "keywords"}
+        if source.get("anecdote"):
+            self.last_pick.update(anecdote=source["anecdote"], anecdote_id=source.get("anecdote_id"))
         if source.get("coordinates"):   # pour la carte animée (lot 1)
             self.last_pick.update(lat=source["coordinates"]["lat"], lon=source["coordinates"]["lon"])
         # commune (étiquette de la carte, homonymes), département, catégorie Commons (photos du lieu)
@@ -210,17 +251,90 @@ class MysteryBrain(BaseBrain):
         try:
             data = self.llm.call_json_with_retry(
                 [{"role": "system", "content": sections["system"]}, {"role": "user", "content": user}],
-                temperature=0, max_completion_tokens=200,
+                temperature=0, max_completion_tokens=200, **self.simple_routing(),
             )
         except (RuntimeError, ValueError) as e:
             return False, f"contrôle impossible : {e}"
         return data.get("retournement") is True, str(data.get("raison", "")).strip()
 
+    # ==========================================
+    # SOURCES DE SUJETS (brain.topic_sources)
+    # ==========================================
+    def _next_source(self, sources, region, category, excluded):
+        """(page, région, catégorie) : chaque source de brain.topic_sources dans l'ordre, la suivante si
+        elle ne donne rien. « le_saviez_vous » : anecdotes de Wikipédia ; « keywords » : recherche aléatoire."""
+        for name in sources:
+            if name == "le_saviez_vous":
+                page = self._next_anecdote(excluded)
+                if page:
+                    return page, self.region_of(page), ANECDOTE_CATEGORY
+            elif name == "keywords":
+                page = self._find_source(region, category, excluded)
+                if page:
+                    return page, region, category
+                return None, region, category
+            else:
+                print(f"⚠️ Source de sujets inconnue dans brain.topic_sources : {name}")
+        return None, region, category
+
+    def _next_anecdote(self, excluded) -> dict | None:
+        """Prochaine anecdote inédite dont l'article est exploitable ; aucun appel LLM."""
+        cfg = dict(self.config.get("brain", {}).get("le_saviez_vous") or {})
+        if self._anecdotes is None:
+            first, last = cfg.get("years", DEFAULT_ANECDOTE_YEARS)
+            try:
+                self._anecdotes = collect_french_anecdotes(
+                    list(range(int(first), int(last) + 1)), archives=int(cfg.get("archives_per_run", 2)),
+                    include_home=bool(cfg.get("include_home", True)), sample=int(cfg.get("sample", 200)),
+                    exclude_ids=load_used_values("anecdote_id"), exclude_titles=set(excluded))
+            except Exception as e:      # jamais bloquant : la recherche par mots-clés prend le relais
+                print(f"⚠️ « Le saviez-vous ? » indisponible : {e}")
+                self._anecdotes = []
+        while self._anecdotes:
+            anecdote = self._anecdotes.pop(0)
+            if anecdote["target"].lower() in excluded:
+                continue
+            page = fetch_page(anecdote["target"])
+            if not page:
+                print(f"   ↻ Anecdote écartée (article trop court ou trop général) : {anecdote['target']}")
+                continue
+            print(f"   💡 Anecdote : {anecdote['text'][:140]}")
+            return {**page, "anecdote": anecdote["text"], "anecdote_id": anecdote["id"],
+                    "wikibase_item": page.get("wikibase_item") or anecdote.get("wikibase_item"),
+                    # coordonnées Wikidata si la page n'en a pas (région, carte animée)
+                    "coordinates": page.get("coordinates") or anecdote.get("coordinates")}
+        return None
+
+    def region_of(self, page: dict) -> dict:
+        """Région du YAML qui contient le lieu (coordonnées de la page), pour la rotation des régions."""
+        from auracontent.services.visuals.map_scene import find_region, is_metropolitan
+
+        regions = self.config["brain"]["regions"]
+        coords = page.get("coordinates") or {}
+        if not coords:
+            return {"name": "France", "search": []}
+        lat, lon = coords["lat"], coords["lon"]
+        if not is_metropolitan(lat, lon):
+            return next((r for r in regions if "outre" in fold(r["name"])), {"name": "Outre-mer", "search": []})
+        feature = find_region(lat, lon)
+        name = fold((feature or {}).get("properties", {}).get("name", ""))
+        if name == "ile de france" and 48.815 <= lat <= 48.902 and 2.224 <= lon <= 2.470:
+            return next((r for r in regions if fold(r["name"]).startswith("paris")), {"name": "Paris", "search": []})
+        for r in regions:
+            if name and fold(r["name"]).startswith(name):
+                return r
+        return {"name": (feature or {}).get("properties", {}).get("name", "France"), "search": []}
+
     def _find_source(self, region, category, used_sources):
         query = f'{random.choice(category["search"])} {random.choice(region["search"])}'
         print(f"   🔎 Wikipédia : « {query} »")
         candidates = find_candidates(query, limit=8, exclude=used_sources)
-        return self._choose_source(candidates, region, category) if candidates else None
+        kept = prefilter_candidates(candidates, region)
+        if len(kept) < len(candidates):
+            print(f"   🧹 Filtre sans modèle : {len(candidates) - len(kept)} page(s) écartée(s) sur {len(candidates)}.")
+        if not kept:
+            return None                       # rien d'utilisable : aucun appel LLM
+        return self._choose_source(kept, region, category)
 
     def _choose_source(self, candidates, region, category):
         """Le LLM retient la page qui raconte un fait précis de la catégorie, dans la région (ou aucune)."""
@@ -234,7 +348,7 @@ class MysteryBrain(BaseBrain):
         )
         try:
             data = self.llm.call_json_with_retry([{"role": "user", "content": prompt}],
-                                                 temperature=0, max_completion_tokens=100)
+                                                 temperature=0, max_completion_tokens=100, **self.simple_routing())
             idx = int(data.get("index", -1))
         except (RuntimeError, ValueError, TypeError) as e:
             print(f"⚠️ Choix de la source impossible : {e}")
@@ -244,10 +358,13 @@ class MysteryBrain(BaseBrain):
     def _write_title(self, title_vars, source):
         sections = self.read_sections("titles.md")
         source_block = f'SOURCE ({source["title"]}) :\n"""{source["extract"][:3000]}"""'
+        if source.get("anecdote"):   # fait déjà repéré et sourcé par les contributeurs de Wikipédia
+            source_block = (f"ANGLE À RETENIR (rubrique « Le saviez-vous ? » de Wikipédia) : « {source['anecdote']} »\n"
+                            "Le titre raconte CE fait, avec les détails exacts de la source.\n\n" + source_block)
         user = self.fill(sections["user"], source_block=source_block, **title_vars)
         data = self.llm.call_json_with_retry(
             [{"role": "system", "content": sections["system"]}, {"role": "user", "content": user}],
-            temperature=1.0, max_completion_tokens=200,
+            temperature=1.0, max_completion_tokens=200, **self.simple_routing(),
         )
         title = str(data.get("title", "")).strip().strip('"«» ')
         low = title.lower()
@@ -302,7 +419,7 @@ class MysteryBrain(BaseBrain):
             data = self.llm.call_json_with_retry(
                 [{"role": "system", "content": self.fill(sections["system"], n=n)},
                  {"role": "user", "content": user}],
-                temperature=1.0, max_completion_tokens=1500,
+                temperature=1.0, max_completion_tokens=1500, **self.simple_routing(),
             )
             hooks = self.valid_hooks(data.get("hooks", []), topic)
             if hooks:
@@ -411,7 +528,7 @@ class MysteryBrain(BaseBrain):
                   'Réponds uniquement en JSON : {"verbe": true|false, "mot": "..."}')
         try:
             data = self.llm.call_json_with_retry([{"role": "user", "content": prompt}],
-                                                 temperature=0, max_completion_tokens=100)
+                                                 temperature=0, max_completion_tokens=100, **self.simple_routing())
         except (RuntimeError, ValueError) as e:
             print(f"⚠️ Contrôle du bandeau impossible : {e}")
             return False
@@ -476,7 +593,7 @@ class MysteryBrain(BaseBrain):
         try:
             res = self.llm.call_json_with_retry(
                 [{"role": "system", "content": sec["system"]}, {"role": "user", "content": user}],
-                temperature=0, max_completion_tokens=500,
+                temperature=0, max_completion_tokens=500, **self.script_routing(),   # véracité : gros modèles
             )
         except Exception as e:
             print(f"⚠️ Fact-check indisponible : {e}")
