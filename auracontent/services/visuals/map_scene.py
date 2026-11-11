@@ -4,7 +4,9 @@ Rendu image par image avec Pillow (vecteurs redessinés à chaque image : net à
 encodé par FFmpeg en un .mp4 muet de la durée exacte de la scène. Le Composer le traite comme une vidéo.
 
 Fonds de carte : Natural Earth (domaine public), voir assets/shared/maps/README.md.
-Coordonnées : page Wikipédia source (prop=coordinates), sinon géocodage Nominatim du lieu de la scène 1.
+Coordonnées : page Wikipédia source (prop=coordinates), sinon géocodage Nominatim du sujet et de sa commune.
+Étiquette : le nom du sujet (page source) ou de sa commune, jamais un lieu deviné par le LLM ou le géocodeur.
+Repère : la grande ville la plus proche (assets/shared/maps/france_cities.json, Natural Earth).
 """
 from __future__ import annotations
 
@@ -13,6 +15,7 @@ import functools
 import json
 import math
 import os
+import re
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -55,8 +58,9 @@ class MapTarget:
     index: int          # indice de la scène qui reçoit la carte
     lat: float
     lon: float
-    label: str          # nom du lieu, affiché en capitales
+    label: str          # nom du sujet ou de sa commune, affiché en capitales
     source: str         # "wikipedia" ou "nominatim"
+    sublabel: str = ""  # seconde ligne : commune (si l'étiquette est le sujet), sinon la région
 
 
 def map_settings(visuals_cfg: dict | None) -> dict:
@@ -70,6 +74,11 @@ def map_settings(visuals_cfg: dict | None) -> dict:
     cfg.setdefault("overseas_view_km", 4500)    # outre-mer : largeur de la vue de départ
     cfg.setdefault("overseas_zoom", 10.0)     # Réunion : ~130 px de large à la fin
     cfg.setdefault("tagline", "")               # accroche de marque sous le nom du lieu (facultative)
+    cfg.setdefault("label_max_chars", 26)       # au-delà, l'étiquette prend le nom de la commune
+    cfg.setdefault("landmark", True)            # grande ville la plus proche en repère
+    cfg.setdefault("landmark_min_population", 100_000)
+    cfg.setdefault("landmark_min_population_overseas", 30_000)
+    cfg.setdefault("landmark_min_km", 6)        # plus près, c'est la même ville : pas de repère
     return cfg
 
 
@@ -132,6 +141,30 @@ def geocode_nominatim(query: str, user_agent: str | None = None,
     return coords
 
 
+def _subject_name(title: str) -> str:
+    """« Abbaye de X (Doubs) » -> « Abbaye de X » (précision d'homonymie retirée)."""
+    return re.sub(r"\s*\([^)]*\)\s*$", "", str(title or "")).strip()
+
+
+def map_labels(script: dict, scenes: list[dict], cfg: dict) -> tuple[str, str]:
+    """(étiquette, seconde ligne) : nom du sujet, ou de sa commune s'il est trop long.
+
+    Jamais le lieu d'une autre scène ni celui que renvoie le géocodeur. Anciens scripts sans page source :
+    lieu de la scène 1 (le sujet, par construction du prompt).
+    """
+    pick = script.get("pick") or {}
+    subject = _subject_name(pick.get("source_title") or "")
+    commune = str(pick.get("commune") or "").strip()
+    region = str(pick.get("region") or "").split("(")[0].strip()
+    max_chars = int(cfg.get("label_max_chars", 26))
+    if subject and (len(subject) <= max_chars or not commune):
+        return subject, (commune if commune and commune.lower() not in subject.lower() else "")
+    if commune:
+        return commune, ""
+    first = (scenes[0] if scenes else {}).get("location_name") or ""
+    return str(first).strip() or region, ""
+
+
 def pick_map_target(script: dict, scenes: list[dict], cfg: dict, geocoder=None) -> MapTarget | None:
     """Scène et coordonnées de la carte, ou None (pas de carte : la scène garde son visuel habituel)."""
     if not cfg.get("enabled"):
@@ -147,18 +180,25 @@ def pick_map_target(script: dict, scenes: list[dict], cfg: dict, geocoder=None) 
 
     first = scenes[0] if scenes else {}
     pick = script.get("pick") or {}
-    label = (scene.get("location_name") or first.get("location_name") or pick.get("region") or "").strip()
+    label, sublabel = map_labels(script, scenes, cfg)
 
     coords = _valid_coords(pick.get("lat"), pick.get("lon"))
     source = "wikipedia"
-    if coords is None and cfg.get("geocode_fallback", True) and first.get("location_name"):
-        query = ", ".join(x for x in (first.get("location_name"), first.get("location_country")) if x)
-        coords = geocoder(query)
+    if coords is None and cfg.get("geocode_fallback", True):
+        # le sujet et sa commune d'abord, puis la commune seule, puis le lieu de la scène 1 (anciens scripts)
+        subject, commune = _subject_name(pick.get("source_title") or ""), str(pick.get("commune") or "").strip()
+        queries = [", ".join(x for x in (subject, commune, "France") if x) if subject else "",
+                   f"{commune}, France" if commune else "",
+                   ", ".join(x for x in (first.get("location_name"), first.get("location_country")) if x)]
+        for query in dict.fromkeys(q for q in queries if q):
+            coords = geocoder(query)
+            if coords:
+                break
         source = "nominatim"
     if coords is None:
         print("🗺️ Pas de coordonnées pour le lieu : pas de carte, visuel habituel.")
         return None
-    return MapTarget(index=idx, lat=coords[0], lon=coords[1], label=label, source=source)
+    return MapTarget(index=idx, lat=coords[0], lon=coords[1], label=label, source=source, sublabel=sublabel)
 
 
 # ==========================================
@@ -187,6 +227,22 @@ def load_layers(maps_dir: str = str(MAPS_DIR)) -> dict:
         return json.loads(Path(maps_dir, name).read_text(encoding="utf-8"))["features"]
 
     return {"regions": read("france_regions.geojson"), "countries": read("countries.geojson")}
+
+
+@functools.lru_cache(maxsize=1)
+def load_cities(maps_dir: str = str(MAPS_DIR)) -> list[dict]:
+    """Villes françaises (Natural Earth, domaine public) : [{name, lat, lon, pop}]."""
+    try:
+        return json.loads(Path(maps_dir, "france_cities.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+
+
+def distance_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
+    """Distance orthodromique (haversine)."""
+    p1, p2 = math.radians(lat1), math.radians(lat2)
+    a = math.sin((p2 - p1) / 2) ** 2 + math.cos(p1) * math.cos(p2) * math.sin(math.radians(lon2 - lon1) / 2) ** 2
+    return 2 * 6371 * math.asin(math.sqrt(min(a, 1.0)))
 
 
 def _point_in_ring(lon: float, lat: float, ring) -> bool:
@@ -260,10 +316,13 @@ class MapRenderer:
     OVERVIEW_BOX = (50, 560, 900, 1330)       # la France entière tient dans ce cadre au départ
 
     def __init__(self, lat: float, lon: float, label: str, cfg: dict | None = None,
-                 width: int = 1080, height: int = 1920, fps: int = 30, supersample: int = 2):
+                 width: int = 1080, height: int = 1920, fps: int = 30, supersample: int = 2,
+                 sublabel: str = ""):
         cfg = map_settings({"map_scene": cfg or {}})
+        self.cfg = cfg
         self.lat, self.lon = lat, lon
         self.label = (label or "").strip().upper()
+        self.sublabel = (sublabel or "").strip().upper()
         self.width, self.height, self.fps = width, height, fps
         self.ss = supersample
         self.layers = load_layers()
@@ -300,7 +359,9 @@ class MapRenderer:
         self.font_region = ImageFont.truetype(str(FONT_PATH), int(42 * sx))
         self.tagline = str(cfg.get("tagline") or "").strip().upper()
         self.font_tag = ImageFont.truetype(str(FONT_PATH), int(40 * sx))
+        self.font_city = ImageFont.truetype(str(FONT_PATH), int(38 * sx))
         self.label_below = self._choose_label_side()
+        self.landmark = self._choose_landmark() if cfg.get("landmark", True) else None
 
     # --- projection ---
     def _wrap(self, lon: float) -> float:
@@ -317,8 +378,9 @@ class MapRenderer:
 
     @staticmethod
     def _ease(t: float) -> float:
+        """Décélération seule (ease-out) : la caméra bouge dès la première image, puis se pose."""
         t = min(max(t, 0.0), 1.0)
-        return t * t * (3 - 2 * t)
+        return 1 - (1 - t) ** 3
 
     def frame_at(self, progress: float) -> Frame:
         """Zoom : position interpolée linéairement, échelle géométriquement (vitesse perçue constante)."""
@@ -431,8 +493,9 @@ class MapRenderer:
     def _label_lines(self):
         """[(texte, police, accent)] : nom du lieu, région, puis accroche de marque (noir sur jaune)."""
         lines = [(self.label, self.font_label, False)] if self.label else []
-        if lines and self.region_name and self.region_name.upper() not in self.label:
-            lines.append((self.region_name.upper(), self.font_region, False))
+        second = self.sublabel or self.region_name.upper()
+        if lines and second and second not in self.label:
+            lines.append((second, self.font_region, False))
         if self.tagline:
             lines.append((self.tagline, self.font_tag, True))
         return lines
@@ -498,14 +561,92 @@ class MapRenderer:
             y += self._line_height(font, accent)
         img.paste(overlay, (0, 0), overlay)
 
-    def render_frame(self, t: float, duration: float) -> Image.Image:
-        """Déroulé : 12 % de plan large, zoom jusqu'à 62 %, puis point qui pulse et nom du lieu.
+    # --- repère : grande ville la plus proche ---
+    SAFE_BOX = (40, 620, 930, 1400)            # entre le bandeau-titre et les sous-titres, à gauche de x = 930
+    CITY_DOT = 10
+    MARKER_CLEARANCE = 45                      # point jaune et son contour (les anneaux translucides passent dessous)
 
-        Le point apparaît un peu avant la fin du zoom et suit la carte jusqu'à l'arrêt.
+    def _city_label_boxes(self, x: float, y: float, name: str):
+        """Positions possibles du nom à côté du point de la ville : à droite, à gauche, au-dessus, dessous."""
+        sx = self.width / 1080
+        w, h, gap = self.font_city.getlength(name), self.font_city.size * 1.15, 18 * sx
+        yield (x + gap, y - h / 2, x + gap + w, y + h / 2)
+        yield (x - gap - w, y - h / 2, x - gap, y + h / 2)
+        yield (x - w / 2, y - gap - h, x + w / 2, y - gap)
+        yield (x - w / 2, y + gap, x + w / 2, y + gap + h)
+
+    def _choose_landmark(self) -> dict | None:
+        """Ville la plus proche, assez grande, visible à la fin du zoom sans gêner le point ni l'étiquette.
+
+        Retourne {name, lat, lon, box} ou None (aucune ville ne tient dans la zone sûre).
         """
-        hold, zoom_end = 0.12 * duration, 0.62 * duration
-        frame = self.frame_at((t - hold) / max(zoom_end - hold, 1e-6))
+        min_pop = self.cfg["landmark_min_population" if self.metro else "landmark_min_population_overseas"]
+        sx, sy = self.width / 1080, self.height / 1920
+        safe = (self.SAFE_BOX[0] * sx, self.SAFE_BOX[1] * sy, self.SAFE_BOX[2] * sx, self.SAFE_BOX[3] * sy)
+        label_box = self._label_box(self.label_below, self.to_screen(self.end, self.lon, self.lat))
+        mx, my = self.to_screen(self.end, self.lon, self.lat)
+
+        def overlaps(a, b):
+            return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
+
+        cities = sorted((c for c in load_cities() if c.get("pop", 0) >= min_pop),
+                        key=lambda c: distance_km(self.lat, self.lon, c["lat"], c["lon"]))
+        for city in cities:
+            if distance_km(self.lat, self.lon, city["lat"], city["lon"]) < float(self.cfg["landmark_min_km"]):
+                return None                    # le sujet est dans la grande ville : son nom suffit
+            x, y = self.to_screen(self.end, city["lon"], city["lat"])
+            if not (safe[0] <= x <= safe[2] and safe[1] <= y <= safe[3]):
+                continue                       # hors champ à la fin du zoom : ville suivante
+            if math.hypot(x - mx, y - my) < self.MARKER_CLEARANCE * sx:
+                continue                       # collée au point jaune : illisible
+            dot = (x - self.CITY_DOT * sx, y - self.CITY_DOT * sx, x + self.CITY_DOT * sx, y + self.CITY_DOT * sx)
+            if overlaps(dot, label_box):
+                continue
+            name = city["name"].upper()
+            for box in self._city_label_boxes(x, y, name):
+                inside = safe[0] <= box[0] and box[2] <= safe[2] and safe[1] <= box[1] and box[3] <= safe[3]
+                clear = not overlaps(box, label_box) and not overlaps(
+                    box, (mx - self.MARKER_CLEARANCE * sx, my - self.MARKER_CLEARANCE * sx,
+                          mx + self.MARKER_CLEARANCE * sx, my + self.MARKER_CLEARANCE * sx))
+                if inside and clear:
+                    return {"name": name, "lat": city["lat"], "lon": city["lon"], "offset": (box[0] - x, box[1] - y)}
+        return None
+
+    def _draw_landmark(self, img: Image.Image, frame: Frame, alpha: float) -> None:
+        """Point blanc et nom de la ville, qui suivent la carte pendant le zoom."""
+        if not self.landmark or alpha <= 0:
+            return
+        x, y = self.to_screen(frame, self.landmark["lon"], self.landmark["lat"])
+        if not (-200 <= x <= self.width + 200 and -200 <= y <= self.height + 200):
+            return
+        overlay = Image.new("RGBA", img.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        a, r, sx = int(255 * alpha), self.CITY_DOT * self.width / 1080, self.width / 1080
+        d.ellipse([x - r - 3 * sx, y - r - 3 * sx, x + r + 3 * sx, y + r + 3 * sx], fill=(0, 0, 0, a))
+        d.ellipse([x - r, y - r, x + r, y + r], fill=(255, 255, 255, a))
+        ox, oy = self.landmark["offset"]
+        d.text((x + ox, y + oy), self.landmark["name"], font=self.font_city, fill=(255, 255, 255, a),
+               stroke_width=max(int(self.font_city.size * 0.08), 3), stroke_fill=(0, 0, 0, a))
+        img.paste(overlay, (0, 0), overlay)
+
+    @staticmethod
+    def zoom_end(duration: float) -> float:
+        return 0.62 * duration
+
+    def camera(self, t: float, duration: float) -> Frame:
+        """Vue à l'instant t : le zoom part de la première image (aucun plan fixe au début)."""
+        return self.frame_at(t / max(self.zoom_end(duration), 1e-6))
+
+    def render_frame(self, t: float, duration: float) -> Image.Image:
+        """Déroulé : le zoom commence dès la première image et finit à 62 % ; le point qui pulse et le nom
+        du lieu apparaissent juste avant la fin du zoom. Le repère (grande ville) apparaît dès le tiers.
+        """
+        zoom_end = self.zoom_end(duration)
+        frame = self.camera(t, duration)
         img = self.draw_map(frame)
+        landmark_start = 0.3 * duration
+        if t >= landmark_start:
+            self._draw_landmark(img, frame, min((t - landmark_start) / (0.1 * duration), 1.0))
         marker_start = zoom_end - 0.15 * duration
         if t >= marker_start:
             pos = self.to_screen(frame, self.lon, self.lat)
@@ -527,7 +668,8 @@ def render_map_scene(target: MapTarget, duration: float, output_path: str, cfg: 
     """Écrit un .mp4 muet de `duration` secondes. Retourne False (sans lever) en cas d'échec."""
     started = time.time()
     try:
-        renderer = MapRenderer(target.lat, target.lon, target.label, cfg, width=width, height=height, fps=fps)
+        renderer = MapRenderer(target.lat, target.lon, target.label, cfg, width=width, height=height, fps=fps,
+                               sublabel=target.sublabel)
         n = frame_count(duration, fps)
         process = (
             ffmpeg.input("pipe:", format="rawvideo", pix_fmt="rgb24", s=f"{width}x{height}", r=fps)
@@ -545,7 +687,8 @@ def render_map_scene(target: MapTarget, duration: float, output_path: str, cfg: 
         if code != 0 or not os.path.exists(output_path):
             raise RuntimeError(f"ffmpeg a échoué (code {code})")
         print(f"🗺️ Carte : {target.label or '?'} ({target.lat:.4f}, {target.lon:.4f}, source {target.source}, "
-              f"région {renderer.region_name or 'inconnue'}) — {n} images en {time.time() - started:.1f} s")
+              f"région {renderer.region_name or 'inconnue'}, repère "
+              f"{(renderer.landmark or {}).get('name', 'aucun')}) — {n} images en {time.time() - started:.1f} s")
         return True
     except Exception as e:
         print(f"⚠️ Carte animée impossible ({e}) : la scène garde son visuel habituel.")

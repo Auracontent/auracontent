@@ -350,11 +350,42 @@ class LLMClient:
             raise ValueError("Contenu vide du LLM.")
         return content.strip()
 
+    @staticmethod
+    def model_allowed(model: str, allowed: list[str] | None) -> bool:
+        """`allowed` : fragments de nom (« gemini », « gpt-oss-120b »). None = tous les modèles."""
+        return allowed is None or any(str(a).lower() in str(model).lower() for a in allowed)
+
     def call_with_fallback(self, messages, temperature=1.0, json_mode=False,
-                           max_completion_tokens=3000, hard_token_cap=7500):
+                           max_completion_tokens=3000, hard_token_cap=7500,
+                           allowed_models: list[str] | None = None, wait_rounds: int = 0, wait_seconds: float = 60):
+        """Cascade des fournisseurs. Avec `allowed_models`, seuls ces modèles sont essayés ; s'ils échouent
+        tous (quota par minute), on attend `wait_seconds` puis on recommence, `wait_rounds` fois au plus,
+        plutôt que de descendre vers un modèle plus petit."""
+        for round_ in range(wait_rounds + 1):
+            try:
+                return self._call_providers(messages, temperature, json_mode, max_completion_tokens,
+                                            hard_token_cap, allowed_models)
+            except RuntimeError:
+                alive = [p for p in self.providers if self.model_allowed(p["model"], allowed_models)]
+                if round_ == wait_rounds or not alive:
+                    raise
+                print(f"⏳ Modèles autorisés saturés ({', '.join(allowed_models or [])}) : attente de "
+                      f"{wait_seconds:.0f} s avant un nouvel essai ({round_ + 1}/{wait_rounds}).")
+                time.sleep(wait_seconds)
+        raise RuntimeError("inaccessible")
+
+    def _call_providers(self, messages, temperature, json_mode, max_completion_tokens, hard_token_cap,
+                        allowed_models=None):
         providers = self.providers
         if not providers:
             raise RuntimeError("Aucune clé API LLM (GEMINI / GROQ / OPENROUTER) configurée.")
+        if allowed_models is not None:
+            skipped = [p["model"] for p in providers if not self.model_allowed(p["model"], allowed_models)]
+            providers = [p for p in providers if self.model_allowed(p["model"], allowed_models)]
+            if skipped:
+                print(f"ℹ️ Modèles écartés pour cet appel (trop petits) : {', '.join(skipped)}")
+            if not providers:
+                raise RuntimeError(f"Aucun modèle autorisé disponible ({', '.join(allowed_models)}).")
 
         last_error = None
         prompt_tokens = _estimate_prompt_tokens(messages)
@@ -445,12 +476,13 @@ class LLMClient:
         raise RuntimeError(f"Échec total après tous les fournisseurs LLM ({', '.join(self.order)}). Dernière erreur : {last_error}")
 
     def call_json_with_retry(self, messages, temperature=1.0, max_json_retries=2,
-                             max_completion_tokens=6000, hard_token_cap=7500):
+                             max_completion_tokens=6000, hard_token_cap=7500, **routing):
+        """`routing` : allowed_models, wait_rounds, wait_seconds (voir call_with_fallback)."""
         last_error = None
         for attempt in range(max_json_retries):
             content = self.call_with_fallback(
                 messages, temperature=temperature, json_mode=True,
-                max_completion_tokens=max_completion_tokens, hard_token_cap=hard_token_cap,
+                max_completion_tokens=max_completion_tokens, hard_token_cap=hard_token_cap, **routing,
             )
             try:
                 try:

@@ -10,7 +10,8 @@ SUJET :
 Génère {n} hooks en français, lus à voix haute en ouverture de la vidéo.
 
 RÈGLES D'UN HOOK QUI RETIENT :
-1. 6 à 12 mots, prononçables en moins de 3 secondes.
+1. 6 à 12 mots, prononçables en moins de 3 secondes. Vocabulaire parlé, aucun adjectif décoratif.
+1b. L'accroche ne reprend JAMAIS le titre mot pour mot : elle l'ouvre autrement.
 2. Un détail CONCRET et précis tiré des faits : un chiffre, un nom, une date, un lieu, un objet.
 3. Une boucle ouverte : le spectateur doit sentir qu'il manque une pièce que seule la suite de la vidéo donne.
 4. Commence directement par le fait le plus étonnant. Pas de préambule.

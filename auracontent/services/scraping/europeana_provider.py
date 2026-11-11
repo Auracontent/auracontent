@@ -17,6 +17,8 @@ class EuropeanaProvider:
         self.history = history
         # strip : un espace / retour à la ligne collé dans un Secret GitHub rend la clé invalide (401)
         self.api_key = (os.getenv("EUROPEAN_API_KEY") or os.getenv("EUROPEANA_API_KEY") or "").strip() or None
+        self.last_text = ""   # titre + description de la dernière notice retenue (contrôle des homonymes)
+        self.last_url = ""
 
     @staticmethod
     def _text(value) -> str:
@@ -54,12 +56,13 @@ class EuropeanaProvider:
             if not item_id or not urls or is_used(self.history, "europeana", item_id):
                 continue
             text = f"{self._text(item.get('title'))} {self._text(item.get('dcDescriptionLangAware') or item.get('dcDescription'))}"
-            candidates.append((calculate_relevance(query, text), item_id, urls[0]))
+            candidates.append((calculate_relevance(query, text), item_id, urls[0], text))
 
-        for score, item_id, url in sorted(candidates, reverse=True)[:3]:
+        for score, item_id, url, text in sorted(candidates, reverse=True)[:3]:
             if score < MIN_RELEVANCE:
                 break
             if download_file(url, output_path, min_bytes=MIN_IMAGE_BYTES):
+                self.last_text, self.last_url = text, url
                 mark_used(self.history, "europeana", item_id)
                 print(f"✅ Europeana OK (Score {score:.2f})")
                 return True

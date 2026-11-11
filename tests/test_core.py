@@ -1,5 +1,6 @@
 """Tests rapides (< 30 s), sans clé API : lancés en CI à chaque push."""
 import json
+import math
 import random
 import shutil
 
@@ -401,7 +402,8 @@ def test_map_target_prefers_wikipedia_then_geocodes():
         return 49.25, 4.03
 
     target = pick_map_target({"pick": {"lat": 48.85, "lon": 2.35}}, scenes, cfg, geocoder=geocoder)
-    assert (target.index, target.lat, target.source, target.label) == (1, 48.85, "wikipedia", "Reims")
+    # sans page source (ancien script) : lieu de la scène 1, jamais celui de la scène qui reçoit la carte
+    assert (target.index, target.lat, target.source, target.label) == (1, 48.85, "wikipedia", "Cathédrale de Reims")
     assert calls == []                                              # coordonnées Wikipédia : pas de réseau
 
     target = pick_map_target({"pick": {}}, scenes, cfg, geocoder=geocoder)
@@ -442,7 +444,7 @@ def test_map_render_failure_keeps_usual_visual(monkeypatch, tmp_path):
     vp = pl.VideoPipeline.__new__(pl.VideoPipeline)
     vp.channel, vp.name, vp.work_dir = FakeChannel(), "mystery", tmp_path
     fetched = []
-    vp._fetch_scene_asset = lambda scene, counted=False: fetched.append(scene["id"]) or "usual.jpg"
+    vp._fetch_scene_asset = lambda scene, **k: fetched.append(scene["id"]) or "usual.jpg"
     scenes = [{"id": 1, "duration": 3.0}, {"id": 2, "duration": 4.0}]
     target = MapTarget(1, 49.25, 4.03, "Reims", "wikipedia")
 
@@ -481,10 +483,9 @@ def test_fetch_assets_leaves_map_scene_for_later(monkeypatch, tmp_path):
     monkeypatch.setattr(pl, "AssetManager", FakeManager)
     vp = pl.VideoPipeline.__new__(pl.VideoPipeline)
     vp.channel, vp.name, vp.work_dir = FakeChannel(), "mystery", tmp_path
-    vp._fetch_scene_asset = lambda scene, counted=False: f"scene{scene['id']}.jpg"
+    vp._fetch_scene_asset = lambda scene, **k: f"scene{scene['id']}.jpg"
     scenes = [{"id": 1}, {"id": 2, "location_name": "Reims"}, {"id": 3}]
     assert vp._fetch_assets(scenes, skip={1}) == ["scene1.jpg", None, "scene3.jpg"]
-    assert vp._query_counts == {"reims": 1}          # le repli éventuel tient compte de ce lieu
 
 
 def test_geocode_is_cached_and_never_repeated(monkeypatch, tmp_path):
@@ -603,3 +604,466 @@ def test_map_tagline_is_optional_and_stays_in_safe_zone():
         assert tagged._label_lines()[-1][0] == "C’EST ARRIVÉ ICI" and tagged._label_lines()[-1][2]
         x0, y0, x1, y1 = tagged._label_box(tagged.label_below)
         assert x0 >= 40 and x1 <= 930 and y0 > 610 and y1 < 1200   # entre bandeau et sous-titres
+
+
+# ---------- Qualité du contenu (fix/qualite-contenu) ----------
+def _info(width=3000, height=2000, mime="image/jpeg", license="CC BY-SA 4.0", nonfree="false", desc=""):
+    return {"mime": mime, "width": width, "height": height, "url": "https://x/orig.jpg",
+            "thumburl": "https://x/thumb.jpg",
+            "extmetadata": {"LicenseShortName": {"value": license}, "NonFree": {"value": nonfree},
+                            "ImageDescription": {"value": desc}}}
+
+
+def test_article_images_stop_before_navboxes_and_decode_names():
+    from auracontent.services.visuals.subject_images import article_file_titles
+
+    html = ('<a href="/wiki/Fichier:Chaux-les-Passavant,_l%27abbaye.jpg">x</a>'
+            '<a href="/wiki/Fichier:Cour_et_b%C3%A2timents.jpg">x</a>'
+            '<a href="/wiki/Fichier:Cour_et_b%C3%A2timents.jpg">doublon</a>'
+            '<div class="navbox collapsible"><a href="/wiki/Fichier:Notre-Dame_de_Paris.jpg">hors sujet</a></div>')
+    assert article_file_titles(html) == ["File:Chaux-les-Passavant, l'abbaye.jpg", "File:Cour et bâtiments.jpg"]
+
+
+@pytest.mark.parametrize("title, info, ok", [
+    ("File:Façade.jpg", _info(), True),
+    ("File:Façade.jpg", _info(license="Public domain"), True),
+    ("File:Façade.jpg", _info(width=999), False),                        # moins de 1000 px de large
+    ("File:Façade.jpg", _info(license="CC BY-NC-SA 4.0"), False),        # pas d'usage commercial
+    ("File:Façade.jpg", _info(license="CC BY-ND 2.0"), False),           # pas de recadrage
+    ("File:Façade.jpg", _info(license=""), False),                       # licence inconnue
+    ("File:Façade.jpg", _info(nonfree="true"), False),
+    ("File:Façade.svg", _info(mime="image/svg+xml"), False),
+    ("File:Logo monument historique.jpg", _info(), False),
+    ("File:Blason de Reims.png", _info(mime="image/png"), False),
+    ("File:Doubs department location map.jpg", _info(), False),
+    ("File:Pictogramme église.png", _info(mime="image/png"), False),
+])
+def test_usable_image_rules(title, info, ok):
+    from auracontent.services.visuals.subject_images import usable
+
+    assert usable(info, title) is ok
+
+
+def test_homonyms_need_commune_or_department(monkeypatch):
+    """Catégorie devinée (pas de P373) et recherche de documents : la description doit nommer le lieu."""
+    from auracontent.services.visuals import subject_images as si
+
+    good = si.SubjectImage("A.jpg", "File:A.jpg", "u", 3000, 2000, "commons", "Abbaye vue de Chaux-lès-Passavant")
+    other = si.SubjectImage("B.jpg", "File:B.jpg", "u", 3000, 2000, "commons", "Abbaye de la Grâce-Dieu, Gironde")
+    monkeypatch.setattr(si, "article_images", lambda *a, **k: [])
+    monkeypatch.setattr(si, "category_images", lambda *a, **k: [good, other])
+    terms = ["Chaux-lès-Passavant", "Doubs"]
+    guessed = si.collect_subject_images("Abbaye X (Doubs)", None, {"documents": False}, terms)
+    assert [i.key for i in guessed] == ["A.jpg"]
+    trusted = si.collect_subject_images("Abbaye X (Doubs)", "Abbaye X", {"documents": False}, terms)
+    assert [i.key for i in trusted] == ["A.jpg", "B.jpg"]                  # catégorie donnée par Wikidata
+    assert si.mentions_place("CHAUX LES PASSAVANT, vue", terms)          # casse, accents et tirets ignorés
+    assert si.place_query(terms) == '("Chaux-lès-Passavant" OR "Doubs")'
+    assert si.document_images("Abbaye X", []) == []                       # sans lieu connu : aucune recherche
+
+
+def test_pool_limits_each_file_to_two_uses_never_twice_in_a_row():
+    from auracontent.services.visuals.subject_images import SubjectImage, SubjectImagePool
+
+    imgs = [SubjectImage(k, k, k, 3000, 2000, o) for k, o in (("doc", "document"), ("a", "article"), ("c", "commons"))]
+    pool = SubjectImagePool(imgs, max_uses=2)
+    assert [i.key for i in pool.candidates()] == ["a", "c", "doc"]        # ordre de priorité (a), (b), (c)
+    for key in ("a", "c", "doc"):
+        pool.record(key)
+    assert pool.candidates() == []                                         # plus aucun fichier neuf
+    assert [i.key for i in pool.candidates(avoid="doc", first_use_only=False)] == ["a", "c"]
+    for key in ("a", "c", "doc"):
+        pool.record(key)
+    assert pool.candidates(first_use_only=False) == []                     # 2 emplois chacun au plus
+
+
+def _fake_manager(monkeypatch, tmp_path, images, europeana=False, ai=True, video=True):
+    from auracontent.services.visuals import asset_manager as am
+    from auracontent.services.visuals.subject_images import SubjectImage
+
+    monkeypatch.setattr(am, "load_history", lambda: {})
+
+    def fake_download(url, path, **k):
+        open(path, "wb").write(url.encode() * 50)
+        return True
+
+    monkeypatch.setattr(am, "download_file", fake_download)
+    m = am.AssetManager({"subject_images": {"enabled": True}})
+    m.europeana.get_image = lambda q, path: europeana and fake_download("europeana", path)
+    m.europeana.last_text, m.europeana.last_url = "Gravure, Chaux-lès-Passavant", "europeana"
+    m._generate_ai = lambda prompt, path: ai and fake_download(f"ai{len(m.tally)}{m.tally['ai']}", path)
+    m.videos.fetch_background = lambda q, path: video and fake_download(f"video{m.tally['video']}", path)
+    m.prepare_subject({"source_title": "Abbaye X (Doubs)", "commune": "Chaux-lès-Passavant", "department": "Doubs",
+                       "region": "Bourgogne-Franche-Comté"}, era="late 18th century",
+                      images=[SubjectImage(k, f"File:{k}", f"https://img/{k}", 3000, 2000, o) for k, o in images])
+    return m
+
+
+def test_every_scene_follows_source_priority(monkeypatch, tmp_path):
+    """(a)/(b) neufs -> Europeana -> second emploi -> image générée -> vidéo, pour TOUTES les scènes."""
+    m = _fake_manager(monkeypatch, tmp_path, [("a1", "article"), ("c1", "commons")], europeana=True)
+    remaining = ["gravure unique"]                       # Europeana : une seule notice pertinente
+    m.europeana.get_image = lambda q, path: bool(remaining) and open(path, "wb").write(remaining.pop().encode() * 99) > 0
+    out = str(tmp_path / "x")
+    generic = {"id": 1, "scene_type": "generic", "stock_search": "old iron key", "image_prompt": "iron key"}
+    sources = []
+    for _ in range(6):
+        ok, source = m.get_scene_asset(generic, out)
+        sources.append((source, m.last_origin))
+    assert sources[:2] == [("wiki", "article"), ("wiki", "commons")]       # même une scène 'generic'
+    assert sources[2] == ("europeana", "europeana")
+    assert sources[3][0] == "wiki" and sources[4][0] == "wiki"            # second emploi des photos du lieu
+    assert sources[5] == ("ai", "ai")                                      # Pexels n'est jamais venu avant
+    assert "Wikipédia 2, Commons 2, Europeana 1, image générée 1" == m.tally_report()
+
+
+def test_stock_video_only_as_last_resort(monkeypatch, tmp_path):
+    m = _fake_manager(monkeypatch, tmp_path, [], ai=False)
+    ok, source = m.get_scene_asset({"id": 1, "stock_search": "candle"}, str(tmp_path / "x"))
+    assert (ok, source) == (True, "video")
+
+
+def test_period_prompt_has_era_region_and_no_modern_objects(monkeypatch, tmp_path):
+    m = _fake_manager(monkeypatch, tmp_path, [])
+    prompt = m.period_prompt({"image_prompt": "monks carrying stones", "event_context": "monks leave"})
+    assert "late 18th century" in prompt and "Chaux-lès-Passavant, Bourgogne-Franche-Comté, France" in prompt
+    assert "no modern objects" in prompt and prompt.startswith("monks carrying stones")
+    assert m.archive_query({"scene_type": "generic"}) == "Abbaye X Chaux-lès-Passavant"
+    assert m.archive_query({"scene_type": "specific", "location_name": "Cloître"}) == "Cloître Chaux-lès-Passavant"
+
+
+def test_archive_without_place_is_rejected_as_homonym(monkeypatch, tmp_path):
+    m = _fake_manager(monkeypatch, tmp_path, [], europeana=True, ai=True)
+    m.europeana.last_text = "Abbaye X, Gironde"
+    ok, source = m.get_scene_asset({"id": 1}, str(tmp_path / "x"))
+    assert source == "ai"
+
+
+def test_same_file_never_more_than_twice(monkeypatch, tmp_path):
+    """La limite porte sur le contenu du fichier, quelle que soit la source qui le renvoie."""
+    m = _fake_manager(monkeypatch, tmp_path, [], ai=True, video=False)
+    m._generate_ai = lambda prompt, path: open(path, "wb").write(b"meme image" * 100) > 0
+    out = str(tmp_path / "x")
+    assert m._generate_ai("p", out) and m._accept(out, "ai")
+    assert not m._accept(out, "ai")                         # jamais deux fois de suite
+    m.last_key = None
+    assert m._accept(out, "ai")
+    m.last_key = None
+    assert not m._accept(out, "ai")                         # troisième emploi refusé
+
+
+@pytest.mark.parametrize("duration, index, expected", [(7.0, 0, 3), (3.0, 0, 1), (7.0, 1, 2), (8.5, 2, 3), (4.0, 3, 1)])
+def test_shot_count_follows_voice_duration(duration, index, expected):
+    from auracontent.core.pipeline import VideoPipeline
+
+    cfg = {"max_seconds": 4.0, "first_scene_max_seconds": 3.0, "words_per_second": 2.4, "max_shots_per_scene": 6}
+    assert VideoPipeline.shot_count({"duration": duration}, index, cfg) == expected
+
+
+def test_no_shot_longer_than_limit():
+    from auracontent.services.video.composer import Composer
+
+    for duration, limit in ((7.3, 3.0), (8.0, 4.0), (11.9, 4.0), (2.0, 3.0)):
+        frames = Composer.shot_frames(duration, limit, 30)
+        assert sum(frames) == math.ceil(duration * 30 - 1e-6)
+        assert max(frames) / 30 <= limit + 1e-9 and max(frames) - min(frames) <= 1
+
+
+def test_fetch_assets_gives_each_scene_enough_shots(tmp_path):
+    from auracontent.core import pipeline as pl
+
+    class FakeChannel:
+        name = "mystery"
+
+        def section(self, key):
+            return {"video_composer": {"shots": {"enabled": True}}}.get(key, {})
+
+    class FakeManager:
+        def __init__(self, cfg):
+            pass
+
+    vp = pl.VideoPipeline.__new__(pl.VideoPipeline)
+    vp.channel, vp.name, vp.work_dir = FakeChannel(), "mystery", tmp_path
+    pl_manager, pl.AssetManager = pl.AssetManager, FakeManager
+    try:
+        vp._fetch_scene_asset = lambda scene, suffix="", **k: f"s{scene['id']}{suffix}.jpg"
+        scenes = [{"id": 1, "duration": 7.0}, {"id": 2, "duration": 7.0}, {"id": 3, "duration": 5.0},
+                  {"id": 4, "duration": 2.0, "role": "cta", "reuse_previous_asset": True}]
+        assets = vp._fetch_assets(scenes, skip={1})
+    finally:
+        pl.AssetManager = pl_manager
+    assert assets[0] == {"shots": ["s1a.jpg", "s1b.jpg", "s1c.jpg"], "max_shot": 3.0}
+    assert assets[1] is None                                               # carte, fabriquée après la voix
+    assert assets[2] == {"shots": ["s3a.jpg", "s3b.jpg"], "max_shot": 4.0}
+    assert assets[3] == {"shots": ["s3b.jpg"], "max_shot": 4.0}            # CTA : dernier plan seulement
+
+
+def test_report_warns_when_stock_video_used_in_several_scenes(capsys):
+    from auracontent.core import pipeline as pl
+
+    class FakeChannel:
+        def section(self, key):
+            return {}
+
+    vp = pl.VideoPipeline.__new__(pl.VideoPipeline)
+    vp.channel = FakeChannel()
+    vp._scene_origins = {0: ["article", "commons"], 2: ["video"], 3: ["video", "ai"], 1: ["map"]}
+    lines = vp.report_sources()
+    assert any("Pexels / Pixabay utilisé dans 2 scènes (scènes 3, 4)" in line for line in lines)
+    vp._scene_origins = {0: ["video"], 1: ["article"]}
+    assert not any("⚠️" in line for line in vp.report_sources())
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg absent")
+def test_landscape_photo_fills_screen_and_pans(tmp_path):
+    """Paysage : plein écran (aucun fond flou) et déplacement visible entre la première et la dernière image."""
+    import ffmpeg
+    from PIL import Image
+
+    from auracontent.services.video.composer import Composer
+
+    image = tmp_path / "wide.jpg"
+    img = Image.new("RGB", (1800, 900))
+    img.putdata([(x * 255 // 1800, 120, 255 - x * 255 // 1800) for y in range(900) for x in range(1800)])
+    img.save(image, quality=95)
+    voice = tmp_path / "voice.wav"
+    ffmpeg.input("sine=duration=2", f="lavfi").output(str(voice), ac=2, ar=48000).run(quiet=True)
+
+    composer = Composer({"video_width": 360, "video_height": 640, "fps": 15, "image_full_screen": True,
+                         "pan_speed": 0.2}, channel_name="mystery")
+    composer.temp_dir = str(tmp_path)
+    out = composer.process_scene({"id": "p", "audio_path": str(voice), "duration": 2.0},
+                                 {"shots": [str(image)], "max_shot": 4.0})
+    frames = []
+    for t in (0.05, 1.9):
+        png = tmp_path / f"f{t}.png"
+        ffmpeg.input(out, ss=t).output(str(png), vframes=1).run(quiet=True)
+        frames.append(Image.open(png).convert("RGB"))
+    first = frames[0]
+    top, middle = first.getpixel((180, 20)), first.getpixel((180, 320))
+    assert all(abs(a - b) < 12 for a, b in zip(top, middle))   # même colonne de l'image : pas de bande floue
+    assert abs(frames[0].getpixel((180, 320))[0] - frames[1].getpixel((180, 320))[0]) > 8   # ça bouge
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg absent")
+def test_multi_shot_scene_keeps_duration(tmp_path):
+    import ffmpeg
+    from PIL import Image
+
+    from auracontent.services.video.composer import Composer
+
+    shots = []
+    for i, color in enumerate(((200, 40, 40), (40, 200, 40), (40, 40, 200))):
+        path = tmp_path / f"s{i}.jpg"
+        Image.new("RGB", (900, 1600), color).save(path)
+        shots.append(str(path))
+    voice = tmp_path / "voice.wav"
+    ffmpeg.input("sine=duration=7", f="lavfi").output(str(voice), ac=2, ar=48000).run(quiet=True)
+    composer = Composer({"video_width": 180, "video_height": 320, "fps": 10, "image_full_screen": True},
+                        channel_name="mystery")
+    composer.temp_dir = str(tmp_path)
+    out = composer.process_scene({"id": "m", "audio_path": str(voice), "duration": 7.0},
+                                 {"shots": shots, "max_shot": 3.0})
+    assert 6.9 <= float(ffmpeg.probe(out)["format"]["duration"]) <= 7.6
+    colors = []
+    for t in (1.0, 3.5, 6.0):                                   # trois plans de 2,33 s
+        png = tmp_path / f"c{t}.png"
+        ffmpeg.input(out, ss=t).output(str(png), vframes=1).run(quiet=True)
+        colors.append(max(range(3), key=lambda c: Image.open(png).convert("RGB").getpixel((90, 100))[c]))
+    assert colors == [0, 1, 2]
+
+
+def test_map_label_is_subject_or_commune_never_geocoder():
+    from auracontent.services.visuals.map_scene import map_labels, map_settings, pick_map_target
+
+    cfg = map_settings({"map_scene": {"enabled": True}})
+    scenes = [{"id": 1, "location_name": "Cloître"}, {"id": 2, "location_name": "Cascade voisine"}]
+    pick = {"source_title": "Abbaye de la Grâce-Dieu (Doubs)", "commune": "Chaux-lès-Passavant",
+            "region": "Bourgogne-Franche-Comté"}
+    assert map_labels({"pick": pick}, scenes, cfg) == ("Abbaye de la Grâce-Dieu", "Chaux-lès-Passavant")
+    long_pick = {**pick, "source_title": "Trésor de la cathédrale Saint-Étienne de Sens"}
+    assert map_labels({"pick": long_pick}, scenes, cfg) == ("Chaux-lès-Passavant", "")
+    calls = []
+    target = pick_map_target({"pick": pick}, scenes, cfg, geocoder=lambda q: calls.append(q) or (47.24, 6.36))
+    assert target.label == "Abbaye de la Grâce-Dieu" and target.source == "nominatim"
+    assert calls == ["Abbaye de la Grâce-Dieu, Chaux-lès-Passavant, France"]   # le sujet, pas une autre scène
+
+
+def test_map_zoom_starts_on_first_frame_and_shows_nearest_big_city():
+    from auracontent.services.visuals.map_scene import MapRenderer
+
+    r = MapRenderer(47.2436, 6.3656, "Abbaye de la Grâce-Dieu", sublabel="Chaux-lès-Passavant")
+    assert r.camera(1 / 30, 6.0).scale > r.start.scale * 1.01            # aucun plan fixe au début
+    assert r.landmark["name"] == "BESANÇON"
+    x, y = r.to_screen(r.end, r.landmark["lon"], r.landmark["lat"])
+    assert 40 <= x <= 930 and 620 <= y <= 1400
+    assert r._label_lines()[1][0] == "CHAUX-LÈS-PASSAVANT"
+    assert MapRenderer(49.2583, 4.0317, "Reims").landmark is None        # le sujet EST la grande ville
+
+
+def _mystery_brain(llm=None):
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.channels.mystery.brain import MysteryBrain
+
+    return MysteryBrain(config=load_channel_config("mystery"), llm=llm)
+
+
+class _ScriptedLLM:
+    def __init__(self, *answers):
+        self.answers, self.calls = list(answers), []
+
+    def call_json_with_retry(self, messages, **k):
+        self.calls.append(messages)
+        answer = self.answers.pop(0)
+        if isinstance(answer, Exception):
+            raise answer
+        return answer
+
+
+def test_hooks_rated_zero_or_equal_to_title_are_regenerated():
+    topic = "Le Mont-Saint-Michel a servi de prison pendant 70 ans"
+    llm = _ScriptedLLM(
+        {"hooks": [{"text": "Le Mont-Saint-Michel a servi de prison pendant 70 ans", "score": 9},
+                   {"text": "Des moines, puis des forçats derrière ces murs", "score": 0}]},
+        {"hooks": [{"text": "Pendant 70 ans, on y enfermait des prisonniers", "score": 7}]},
+    )
+    hooks = _mystery_brain(llm).generate_hook_variants(topic)
+    assert [h["text"] for h in hooks] == ["Pendant 70 ans, on y enfermait des prisonniers"]
+    assert len(llm.calls) == 2
+
+    never = _ScriptedLLM(*[{"hooks": [{"text": topic, "score": 8}]}] * 3)
+    with pytest.raises(RuntimeError):
+        _mystery_brain(never).generate_hook_variants(topic)    # jamais d'accroche par défaut
+
+
+def test_style_flags_long_sentences_and_decorative_adjectives():
+    brain = _mystery_brain()
+    scenes = [{"id": 1, "text": "Les moines partent en 1791. L'abbaye est vendue."},
+              {"id": 2, "text": "Sur ce plateau escarpé, les religieux bâtissent un monastère qui deviendra ensuite "
+                                "un lieu de pèlerinage connu."},
+              {"id": 3, "text": "Un rôle majeur. Des pentes escarpées."}]
+    issues = brain.check_style(scenes)
+    assert len(issues) == 3
+    assert "scène 2 : phrase de 17 mots" in issues[0] and "escarpé" in issues[1]
+    assert "escarpées" in issues[2] and "majeur" in issues[2]
+
+
+def test_at_least_four_specific_scenes_out_of_six():
+    brain = _mystery_brain()
+    assert brain.min_specific(6) == 4
+    scenes = [{"id": i, "scene_type": "specific" if i < 3 else "generic"} for i in range(6)]
+    assert brain.check_specific_count(scenes)
+    scenes[3]["scene_type"] = "specific"
+    assert brain.check_specific_count(scenes) == []
+
+
+def test_headline_needs_verb_or_number_and_not_only_places():
+    llm = _ScriptedLLM({"verbe": True}, {"verbe": False}, RuntimeError("quota"))
+    brain = _mystery_brain(llm)
+    brain.last_pick = {"source_title": "Abbaye de la Grâce-Dieu (Doubs)", "commune": "Chaux-lès-Passavant"}
+    scenes = [{"location_name": "Abbaye de la Grâce-Dieu"}]
+    brain.validate_headline({"on_screen_title": "EN 1791 | L'ABBAYE VIDÉE", "scenes": scenes})   # chiffre : pas de LLM
+    assert llm.calls == []
+    with pytest.raises(ValueError, match="noms de lieux"):
+        brain.validate_headline({"on_screen_title": "GRÂCE-DIEU | CHAUX-LÈS-PASSAVANT", "scenes": scenes})
+    brain.validate_headline({"on_screen_title": "L'ABBAYE | VENDUE AUX ENCHÈRES", "scenes": scenes})
+    with pytest.raises(ValueError, match="ni verbe ni chiffre"):
+        brain.validate_headline({"on_screen_title": "L'ABBAYE | ET SES MOINES", "scenes": scenes})
+    with pytest.raises(ValueError):                             # LLM indisponible : rejeté, jamais accepté
+        brain.validate_headline({"on_screen_title": "L'ABBAYE | ET SES MOINES", "scenes": scenes})
+
+
+def test_title_without_reversal_is_rejected():
+    source = {"title": "Abbaye X", "extract": "..."}
+    assert _mystery_brain(_ScriptedLLM({"retournement": True, "raison": "vendue"})).has_reversal("t", source)[0]
+    assert not _mystery_brain(_ScriptedLLM({"retournement": False})).has_reversal("Fondée en 1139", source)[0]
+    assert not _mystery_brain(_ScriptedLLM(RuntimeError("quota"))).has_reversal("t", source)[0]
+
+
+def test_topic_needs_enough_images_and_falls_back_to_best_illustrated(monkeypatch, capsys):
+    from auracontent.channels.mystery import brain as mb
+
+    monkeypatch.setattr(mb, "load_global_history", lambda: [])
+    monkeypatch.setattr(mb, "load_used_sources", lambda: set())
+    monkeypatch.setattr(mb, "load_last_regions", lambda **k: [])
+    monkeypatch.setattr(mb, "load_last_categories", lambda **k: [])
+    monkeypatch.setattr(mb, "place_details", lambda qid: {"commune": "C"})
+    pages = iter([{"title": f"Lieu {i}", "url": "u", "extract": "x"} for i in range(10)])
+    counts = {"Lieu 0": 2, "Lieu 1": 4, "Lieu 2": 1}
+    brain = _mystery_brain()
+    brain._find_source = lambda region, category, used: next(pages)
+    brain.count_source_images = lambda source, details: counts.get(source["title"], 0)
+    titles = []
+    brain._accept_title = lambda trial, used: titles.append(trial["source"]["title"]) or f"Titre {trial['source']['title']}"
+    assert brain.pick_topic() == "Titre Lieu 1"                # 10 essais, aucun à 5 images : le mieux illustré
+    assert titles == ["Lieu 1"] and brain.last_pick["source_images"] == 4
+    out = capsys.readouterr().out
+    assert "« Lieu 0 » : 2 image(s) exploitable(s) (minimum 5)" in out and "Essai 10/10" in out
+
+    pages = iter([{"title": f"Lieu {i}", "url": "u", "extract": "x"} for i in range(10)])
+    counts.update({"Lieu 1": 7})
+    assert brain.pick_topic() == "Titre Lieu 1"                # seuil atteint : retenu tout de suite
+    assert brain.last_pick["commune"] == "C"
+
+
+def test_script_uses_only_large_models_and_waits(monkeypatch):
+    from auracontent.core.brain import llm_client as lc
+
+    client = lc.LLMClient()
+    providers = [{"model": "gemini-3.6-flash"}, {"model": "llama-3.3-70b"}, {"model": "openai/gpt-oss-20b"}]
+    monkeypatch.setattr(lc.LLMClient, "providers", property(lambda self: providers))
+    monkeypatch.setattr(lc.time, "sleep", lambda s: None)
+    seen, results = [], [RuntimeError("429"), "ok"]
+
+    def fake_call(self, messages, temperature, json_mode, mct, cap, allowed):
+        seen.append([p["model"] for p in providers if self.model_allowed(p["model"], allowed)])
+        r = results.pop(0)
+        if isinstance(r, Exception):
+            raise r
+        return r
+
+    monkeypatch.setattr(lc.LLMClient, "_call_providers", fake_call)
+    assert client.call_with_fallback([], allowed_models=["gemini", "gpt-oss-120b"], wait_rounds=2) == "ok"
+    assert seen == [["gemini-3.6-flash"], ["gemini-3.6-flash"]]          # jamais llama-70b ni gpt-oss-20b
+    brain = _mystery_brain()
+    routing = brain.script_routing()
+    assert "gpt-oss-120b" in routing["allowed_models"] and not lc.LLMClient.model_allowed("openai/gpt-oss-20b",
+                                                                                         routing["allowed_models"])
+
+
+def test_gallica_keeps_public_domain_records_only():
+    from auracontent.services.scraping.gallica_provider import parse_records
+
+    xml = """<srw:searchRetrieveResponse xmlns:srw="http://www.loc.gov/zing/srw/"
+      xmlns:oai_dc="http://www.openarchives.org/OAI/2.0/oai_dc/" xmlns:dc="http://purl.org/dc/elements/1.1/">
+      <srw:records><srw:record><srw:recordData><oai_dc:dc>
+        <dc:title>Abbaye de la Grâce-Dieu : gravure</dc:title>
+        <dc:identifier>https://gallica.bnf.fr/ark:/12148/btv1b8451602x</dc:identifier>
+        <dc:rights>domaine public</dc:rights></oai_dc:dc></srw:recordData></srw:record>
+      <srw:record><srw:recordData><oai_dc:dc><dc:title>Photo récente</dc:title>
+        <dc:identifier>https://gallica.bnf.fr/ark:/12148/btv1b0000000a</dc:identifier>
+        <dc:rights>restricted use</dc:rights></oai_dc:dc></srw:recordData></srw:record></srw:records>
+      </srw:searchRetrieveResponse>"""
+    records = parse_records(xml)
+    assert [(r["ark"], r["public"]) for r in records] == [("ark:/12148/btv1b8451602x", True),
+                                                           ("ark:/12148/btv1b0000000a", False)]
+    assert parse_records("<html>Cloudflare</html") == []
+
+
+def test_place_details_walks_up_to_the_department(monkeypatch):
+    from auracontent.services.scraping import wikipedia
+
+    def claim(prop, qid):
+        return {prop: [{"rank": "normal", "mainsnak": {"datavalue": {"value": {"id": qid}}}}]}
+
+    entities = {
+        "Q1": {"claims": {**claim("P131", "Q2"), "P373": [{"mainsnak": {"datavalue": {"value": "Abbaye X"}}}]}},
+        "Q2": {"labels": {"fr": {"value": "Chaux-lès-Passavant"}}, "claims": claim("P131", "Q3")},
+        "Q3": {"labels": {"fr": {"value": "canton de Vercel"}}, "claims": {**claim("P31", "Q18524218"),
+                                                                           **claim("P131", "Q4")}},
+        "Q4": {"labels": {"fr": {"value": "Doubs"}}, "claims": claim("P31", "Q6465")},
+    }
+    monkeypatch.setattr(wikipedia, "_wikidata", lambda params: {"entities": {params["ids"]: entities[params["ids"]]}})
+    assert wikipedia.place_details("Q1") == {"commons_category": "Abbaye X", "commune": "Chaux-lès-Passavant",
+                                             "department": "Doubs"}
+    assert wikipedia.place_details(None) == {}

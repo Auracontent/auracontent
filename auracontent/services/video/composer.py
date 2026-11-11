@@ -1,5 +1,6 @@
 """Compositeur vidéo vertical : scènes, sous-titres, mixage audio et watermark."""
 from __future__ import annotations
+import math
 import os
 import random
 import shutil
@@ -119,6 +120,10 @@ class Composer:
         self.source_credit_size = config.get("source_credit_size", 18)
         self.source_credit_alpha = config.get("source_credit_alpha", 0.52)
         self.source_credit_labels = config.get("source_credit_labels", {})
+
+        # Cadrage des images fixes : plein écran (paysage recadré + panoramique lent) au lieu du fond flou
+        self.image_full_screen = config.get("image_full_screen", False)
+        self.pan_speed = config.get("pan_speed", 0.06)   # fraction de la largeur de l'écran par seconde
 
         # Titre accrocheur à l'écran (scène 1)
         self.overlay_duration = config.get("overlay_duration", 3.0)
@@ -281,6 +286,62 @@ class Composer:
             .setpts("PTS-STARTPTS")
         )
 
+    def _is_landscape(self, path: str) -> bool:
+        return self._image_aspect(path) > (self.video_width / self.video_height) * 1.25
+
+    def _pan_clip(self, path: str, duration: float, reverse: bool = False):
+        """Photo en paysage recadrée plein écran, avec un déplacement horizontal lent (jamais de fond flou)."""
+        w, h = self.video_width, self.video_height
+        scaled_h = int(h * 1.04) // 2 * 2                   # légère marge verticale : aucun bord visible
+        scaled_w = int(self._image_aspect(path) * scaled_h) // 2 * 2
+        travel = max(min(scaled_w - w, self.pan_speed * w * duration), 0)
+        x0 = (scaled_w - w - travel) / 2                    # déplacement centré sur le milieu de l'image
+        x = f"{x0 + travel:.2f}-{travel:.2f}*t/{duration:.3f}" if reverse else f"{x0:.2f}+{travel:.2f}*t/{duration:.3f}"
+        return (
+            ffmpeg.input(path, loop=1, framerate=self.fps, t=duration)
+            .filter("scale", -2, scaled_h)
+            .filter("crop", w, h, x=x, y="(ih-oh)/2")
+            .filter("setsar", 1)
+            .filter("trim", duration=duration)
+            .setpts("PTS-STARTPTS")
+        )
+
+    def _still_clip(self, path: str, duration: float, motion: int = 0):
+        """Image fixe en mouvement. Mouvements alternés : zoom avant, panoramique ou zoom arrière."""
+        if not self.image_full_screen:
+            return self._zoompan_clip(path, duration, ZOOM_IN_EXPR if motion % 2 == 0 else ZOOM_OUT_EXPR)
+        if self._is_landscape(path):
+            return self._pan_clip(path, duration, reverse=motion % 2 == 1)
+        return self._zoompan_clip(path, duration, ZOOM_IN_EXPR if motion % 2 == 0 else ZOOM_OUT_EXPR)
+
+    @staticmethod
+    def shot_frames(total_duration: float, max_shot: float, fps: int) -> list[int]:
+        """Images par plan : ceil(durée / max_shot) plans de longueurs égales à une image près."""
+        total = max(math.ceil(total_duration * fps - 1e-6), 1)
+        count = max(math.ceil(total_duration / max(max_shot, 0.1) - 1e-6), 1)
+        base, extra = divmod(total, count)
+        return [base + (1 if i < extra else 0) for i in range(count)]
+
+    def _build_shots_video(self, scene_id, total_duration: float, shots: list[str], max_shot: float):
+        """Plusieurs visuels de `max_shot` secondes au plus. Retourne (flux, [(début, fin, chemin)])."""
+        frames = self.shot_frames(total_duration, max_shot, self.fps)
+        if len(frames) > len(shots) > 0:
+            print(f"  ⚠️ Scène {scene_id} : {len(frames)} plans pour {len(shots)} visuel(s), certains reviennent.")
+        streams, windows, start = [], [], 0.0
+        for j, n in enumerate(frames):
+            path = shots[j % len(shots)]
+            duration = n / self.fps + (SECOND_IMAGE_EXTRA_DURATION if j == len(frames) - 1 else 0.0)
+            if is_video_file(path):
+                offset = (j // len(shots)) * max_shot      # un clip repris montre un autre passage
+                length = get_duration(path)
+                streams.append(self._loop_and_crop(path, duration, ss=offset % length if length > 0 else 0))
+            else:
+                streams.append(self._still_clip(path, duration, motion=j))
+            windows.append((start, start + duration, path))
+            start += duration
+        stream = streams[0] if len(streams) == 1 else ffmpeg.concat(*streams, v=1, a=0)
+        return stream, windows
+
     def _build_scene_video(
         self,
         scene_id,
@@ -308,8 +369,8 @@ class Composer:
         duration_b = max(
             (total_duration / 2) + SECOND_IMAGE_EXTRA_DURATION, MIN_SEGMENT_DURATION
         )
-        stream_a = self._zoompan_clip(path_a, duration_a, ZOOM_IN_EXPR)
-        stream_b = self._zoompan_clip(path_b, duration_b, ZOOM_OUT_EXPR)
+        stream_a = self._still_clip(path_a, duration_a, motion=0)
+        stream_b = self._still_clip(path_b, duration_b, motion=1)
         return ffmpeg.concat(stream_a, stream_b, v=1, a=0), path_a
 
     def _add_overlay_title(self, video_stream, text: str, duration: float):
@@ -392,7 +453,8 @@ class Composer:
                 )
         return video_stream
 
-    def _add_source_credit(self, video_stream, text: str):
+    def _add_source_credit(self, video_stream, text: str, enable: str | None = None):
+        extra = {"enable": enable} if enable else {}
         return video_stream.filter(
             "drawtext",
             text=escape_drawtext(text),
@@ -405,6 +467,7 @@ class Composer:
             shadowy=1,
             x="30",
             y=self.source_credit_y,
+            **extra,
         )
 
     def process_scene(
@@ -421,15 +484,22 @@ class Composer:
 
         try:
             scene_audio = self._build_scene_audio(audio_path, scene, total_duration)
-            video_stream, source_path = self._build_scene_video(
-                scene_id, total_duration, image_pair, bg_video_path, bg_offset
-            )
-
-            source_text = ""
-            if not bg_video_path and source_path:
-                source_text = self._resolve_source_credit(source_path)
-            if source_text:
-                video_stream = self._add_source_credit(video_stream, source_text)
+            if not bg_video_path and isinstance(image_pair, dict) and image_pair.get("shots"):
+                video_stream, windows = self._build_shots_video(
+                    scene_id, total_duration, image_pair["shots"], float(image_pair.get("max_shot", 4.0))
+                )
+                for start, end, path in windows:   # crédit propre à chaque plan
+                    label = self._resolve_source_credit(path)
+                    video_stream = self._add_source_credit(video_stream, label, f"between(t,{start:.3f},{end:.3f})")
+            else:
+                video_stream, source_path = self._build_scene_video(
+                    scene_id, total_duration, image_pair, bg_video_path, bg_offset
+                )
+                source_text = ""
+                if not bg_video_path and source_path:
+                    source_text = self._resolve_source_credit(source_path)
+                if source_text:
+                    video_stream = self._add_source_credit(video_stream, source_text)
 
             if scene.get("overlay_text"):
                 video_stream = self._add_overlay_title(video_stream, scene["overlay_text"], total_duration)
