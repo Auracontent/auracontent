@@ -1448,3 +1448,105 @@ def test_overseas_island_fills_a_third_of_the_screen(lat, lon):
     assert r._island_width() * r.end.scale >= 1080 / 3
     x, y = r.to_screen(r.end, lon, lat)
     assert (round(x), round(y)) == r.ANCHOR                     # le point reste au même endroit
+
+
+# ---------- Mascotte (feat/mascotte) ----------
+MASCOT_DIR = "assets/mystery/images"
+
+
+def test_mascot_is_off_unless_configured():
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.services.visuals.mascot import mascot_files, mascot_settings
+
+    assert mascot_settings(None)["enabled"] is False and mascot_files(mascot_settings({}), "mystery") == {}
+    for channel in ("finance", "kids"):                      # autres chaînes : pas de section `mascot`
+        assert mascot_settings((load_channel_config(channel) or {}).get("mascot"))["enabled"] is False
+    cfg = mascot_settings(load_channel_config("mystery")["mascot"])
+    assert cfg["enabled"] and set(mascot_files(cfg, "mystery")) == {"curieux", "surpris", "clin"}
+
+
+def test_mascot_expression_per_scene():
+    from auracontent.services.visuals.mascot import expression_for, mascot_settings
+
+    cfg = mascot_settings({"enabled": True})
+    scenes = [{"role": "hook"}, {"role": "context"}, {"role": "reveal"}, {"role": "tension"}, {"role": "cta"}]
+    assert [expression_for(s, i, len(scenes), cfg, skip={1}) for i, s in enumerate(scenes)] == \
+        ["curieux", None, "surpris", "curieux", "clin"]
+    assert expression_for({"role": "reveal"}, 4, 5, cfg) == "clin"            # la dernière scène prime
+
+
+def test_mascot_lands_tip_on_the_place_with_a_bounce():
+    from auracontent.services.visuals.mascot import landing, load_mascot, tip_of
+    from auracontent.services.visuals.map_scene import MapRenderer
+
+    img = load_mascot(f"{MASCOT_DIR}/mascotte_curieux.png", 190)
+    tx, ty = tip_of(img)
+    assert img.height == 190 and abs(tx - img.width / 2) < 4 and ty > 0.95 * img.height   # pointe en bas, au centre
+    assert landing(0.0, 190)[0] < -100 and landing(1.0, 190)[:3] == (0.0, 1.0, 1.0)   # tombe, puis posée
+    contact, mid_hop = landing(0.281, 190), landing(0.42, 190)
+    assert contact[0] > -1 and contact[2] < 0.9                           # au contact : écrasée
+    assert mid_hop[0] < -25                                               # puis un rebond
+    r = MapRenderer(47.6392, 4.3889, "Abbaye de Fontenay", mascot_path=f"{MASCOT_DIR}/mascotte_curieux.png")
+    frame = r.render_frame(5.9, 6.0)
+    x, y = r.ANCHOR
+    rr, g, b = frame.getpixel((x, y - 60))                                # corps de l'épingle au-dessus du lieu
+    assert rr > 200 and g > 170 and b < 80
+    mx0, my0, mx1, my1 = r._marker_box(x, y)
+    lx0, ly0, lx1, ly1 = r._label_box(r.label_below)
+    assert ly0 >= my1 or ly1 <= my0                                       # l'étiquette ne couvre pas la mascotte
+
+
+def test_mascot_corner_clears_headline_subtitles_and_ui():
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.services.video.composer import Composer
+
+    cfg = load_channel_config("mystery")
+    c = Composer(cfg["video_composer"], channel_name="mystery", mascot=cfg["mascot"])
+    x, y = c.mascot_position()
+    lines, _ = c._headline_lines("EN 1793, LA FLÈCHE | DEVAIT ÊTRE RASÉE PAR LA COMMUNE")
+    size = c._headline_font_size_for(lines)
+    assert len(lines) == 3 and y > c.headline_y + 3 * int(size * 1.34) + int(size * 0.16)
+    assert y + cfg["mascot"]["height"] < 1920 - 613 - 110 and x + 100 < 930 and x >= 30
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg absent")
+def test_scene_shows_the_mascot_in_its_corner(tmp_path):
+    import ffmpeg
+    from PIL import Image
+
+    from auracontent.services.video.composer import Composer
+
+    image = tmp_path / "bg.jpg"
+    Image.new("RGB", (1080, 1920), (20, 30, 60)).save(image)
+    voice = tmp_path / "v.wav"
+    ffmpeg.input("sine=duration=1", f="lavfi").output(str(voice), ac=2, ar=48000).run(quiet=True)
+    c = Composer({"video_width": 1080, "video_height": 1920, "fps": 10}, channel_name="mystery",
+                 mascot={"enabled": True})
+    c.temp_dir = str(tmp_path)
+    out = c.process_scene({"id": "m", "audio_path": str(voice), "duration": 1.0, "mascot": "surpris"}, str(image))
+    png = tmp_path / "f.png"
+    ffmpeg.input(out, ss=0.5).output(str(png), vframes=1).run(quiet=True)
+    x, y = c.mascot_position()
+    r, g, b = Image.open(png).convert("RGB").getpixel((x + 30, y + 75))    # corps jaune de l'épingle
+    assert r > 200 and g > 160 and b < 90
+
+
+def test_pipeline_assigns_mascot_and_skips_the_map_scene():
+    from auracontent.core import pipeline as pl
+
+    class FakeChannel:
+        def __init__(self, mascot):
+            self.mascot = mascot
+
+        def section(self, key):
+            return {"mascot": self.mascot}.get(key, {})
+
+    vp = pl.VideoPipeline.__new__(pl.VideoPipeline)
+    vp.channel = FakeChannel({"enabled": True})
+    scenes = [{"role": "hook"}, {"role": "context", "map": {"lat": 1}}, {"role": "reveal"}, {"role": "cta"}]
+    vp._assign_mascot(scenes)
+    assert [s.get("mascot") for s in scenes] == ["curieux", None, "surpris", "clin"]
+    vp.channel = FakeChannel({})                                          # désactivée : rien n'est posé
+    fresh = [{"role": "hook"}]
+    vp._assign_mascot(fresh)
+    assert "mascot" not in fresh[0]

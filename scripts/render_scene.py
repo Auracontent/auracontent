@@ -4,6 +4,7 @@
     python -m scripts.render_scene clip.mp4    # ta propre vidéo
     python -m scripts.render_scene --map       # carte animée (Reims, Ajaccio, Saint-Denis de La Réunion)
     python -m scripts.render_scene --qualite   # ouverture en plans de 3 s, paysage plein écran, carte + repère
+    python -m scripts.render_scene --mascotte  # mascotte : carte (posée), révélation (surpris), fin (clin)
 
 Tout est hors ligne (voix = bip, sous-titres factices). Le mode --map habille la scène comme la vidéo
 finale (sous-titres, crédit, filigrane, bandeau-titre) et extrait trois images dans output/map_preview/.
@@ -14,7 +15,6 @@ import os
 import sys
 
 import ffmpeg
-
 from auracontent.channels.base_channel import load_channel_config
 from auracontent.services.video.composer import Composer
 from auracontent.services.visuals.map_scene import MapTarget, frame_count, map_settings, render_map_scene
@@ -225,7 +225,80 @@ def render_quality_previews() -> bool:
     return all(results)
 
 
+MASCOT_HEADLINE = "EN 1793, LA FLÈCHE | DEVAIT ÊTRE RASÉE PAR LA COMMUNE"   # 3 lignes : cas le plus haut
+
+
+def render_mascot_previews() -> bool:
+    """Trois images de la mascotte, habillées comme la vidéo finale, dans output/mascot_preview/."""
+    from auracontent.services.visuals.mascot import mascot_files, mascot_settings
+    from PIL import Image
+
+    config = load_channel_config("mystery")
+    composer = Composer(config.get("video_composer"), channel_name="mystery", mascot=config.get("mascot"))
+    mascot = mascot_settings(config.get("mascot"))
+    files = mascot_files(mascot, "mystery")
+    out_dir = os.path.join(str(OUTPUT_DIR), "mascot_preview")
+    os.makedirs(out_dir, exist_ok=True)
+    results = [set(files) == {"curieux", "surpris", "clin"}]
+
+    # position : sous le bandeau (3 lignes), au-dessus des sous-titres, à gauche de la zone d'interface
+    lines, _ = composer._headline_lines(MASCOT_HEADLINE)
+    size = composer._headline_font_size_for(lines)
+    headline_bottom = composer.headline_y + len(lines) * int(size * 1.34) + int(size * 0.16)
+    x, y = composer.mascot_position()
+    with Image.open(files["curieux"]) as img:
+        box = img.getchannel("A").getbbox()
+        w = round((box[2] - box[0]) * mascot["height"] / (box[3] - box[1]))
+    subtitles_top = 1920 - 613 - 110          # MarginV 92/288 de 1920, une ligne de 100 px environ
+    ok = headline_bottom < y and y + mascot["height"] < subtitles_top and x + w < 930 and y > 200
+    print(f"{'✅' if ok else '❌'} mascotte en ({x}, {y}), {w} x {mascot['height']} px : bandeau jusqu'à y "
+          f"{headline_bottom} ({len(lines)} lignes), sous-titres à partir de y ≈ {subtitles_top}")
+    results.append(ok)
+
+    previews = []
+    voice = os.path.join(composer.temp_dir, "m_voice.wav")
+    srt = os.path.join(composer.temp_dir, "m_subs.srt")
+    images = sorted(glob.glob(os.path.join("assets", "shared", "images", "fallback_*.jpg")))
+    for name, expression, text, picture in (
+        ("2_revelation_surpris", "surpris", "MAIS LA FLÈCHE EST SAUVÉE", images[1]),
+        ("3_derniere_scene_clin", "clin", "ET VOUS, VOUS L'AURIEZ SAUVÉE ?", images[3]),
+    ):
+        make_fake_voice(voice, 4.0)
+        with open(srt, "w", encoding="utf-8") as f:
+            f.write(f"1\n00:00:00,200 --> 00:00:03,800\n{text}\n")
+        scene = {"id": f"m_{name}", "audio_path": voice, "duration": 4.0, "srt_path": srt, "mood": "tense",
+                 "mascot": expression}
+        rendered = composer.process_scene(scene, {"shots": [picture], "max_shot": 4.0})
+        dressed = os.path.join(composer.temp_dir, f"m_{name}.mp4")
+        if not rendered or not composer.add_watermark(rendered, dressed, headline=MASCOT_HEADLINE):
+            print(f"❌ {name} : rendu impossible")
+            return False
+        png = os.path.join(out_dir, f"{name}.png")
+        ffmpeg.input(dressed, ss=2.0).output(png, vframes=1).run(overwrite_output=True, quiet=True)
+        previews.append(png)
+
+    clip = os.path.join(composer.temp_dir, "scene_map_mascotte.mp4")
+    target = QUALITY_MAP                     # lieu d'essai quelconque (abbaye de Fontenay)
+    if not render_map_scene(target, MAP_DURATION, clip, cfg=map_settings(config.get("visuals")), fps=composer.fps,
+                            mascot_path=files["curieux"], mascot_height=int(mascot["map_height"])):
+        return False
+    make_fake_voice(voice, MAP_DURATION)
+    rendered = composer.process_scene({"id": "m_map", "audio_path": voice, "duration": MAP_DURATION,
+                                       "mood": "tense"}, (clip, clip))
+    dressed = os.path.join(composer.temp_dir, "m_map_dressed.mp4")
+    if not rendered or not composer.add_watermark(rendered, dressed, headline="EN 1791 | L'ABBAYE EST VENDUE"):
+        return False
+    png = os.path.join(out_dir, "1_carte_mascotte_posee.png")
+    ffmpeg.input(dressed, ss=MAP_DURATION - 0.4).output(png, vframes=1).run(overwrite_output=True, quiet=True)
+    previews.insert(0, png)
+    for path in previews:
+        print(f"    🖼️ {path}")
+    return all(results)
+
+
 if __name__ == "__main__":
+    if "--mascotte" in sys.argv[1:]:
+        sys.exit(0 if render_mascot_previews() else 1)
     if "--map" in sys.argv[1:]:
         sys.exit(0 if render_map_previews() else 1)
     if "--qualite" in sys.argv[1:]:

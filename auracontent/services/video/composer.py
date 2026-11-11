@@ -60,7 +60,8 @@ class Composer:
     Applique le pipeline visuel : scènes -> sous-titres -> watermark -> mixage audio.
     """
 
-    def __init__(self, channel_config: dict | None = None, channel_name: str | None = None):
+    def __init__(self, channel_config: dict | None = None, channel_name: str | None = None,
+                 mascot: dict | None = None):
         # assets/<chaîne>/{music,images} propres à la chaîne, assets/shared/ pour le commun
         shared_dir = os.path.join(str(ASSETS_DIR), "shared")
         channel_dir = os.path.join(str(ASSETS_DIR), channel_name) if channel_name else shared_dir
@@ -144,6 +145,33 @@ class Composer:
         self.headline_y = config.get("headline_y", 230)
         self.headline_margin_x = config.get("headline_margin_x", 70)
         self.headline_accent_color = config.get("headline_accent_color", "0xFFD400")
+
+        # Mascotte (section `mascot` du YAML) : petite épingle à gauche, sous le bandeau-titre
+        from auracontent.services.visuals.mascot import mascot_files, mascot_settings
+
+        self.mascot_cfg = mascot_settings(mascot)
+        self.mascot_files = mascot_files(self.mascot_cfg, channel_name) if channel_name else {}
+
+    def mascot_position(self) -> tuple[int, int]:
+        """Coin gauche sous le bandeau-titre (3 lignes au plus), au-dessus des sous-titres et du crédit."""
+        cfg = self.mascot_cfg
+        if cfg.get("y") is not None:
+            return int(cfg["x"]), int(cfg["y"])
+        line_height = int(self.headline_font_size * 1.34)
+        accent_pad = int(self.headline_font_size * 0.16)      # cartouche jaune de la chute
+        bottom = self.headline_y + self.headline_max_lines * line_height + accent_pad
+        return int(cfg["x"]), bottom + int(cfg["gap"])
+
+    def _add_mascot(self, video_stream, expression: str | None):
+        path = self.mascot_files.get(expression or "")
+        if not path:
+            return video_stream
+        from auracontent.services.visuals.mascot import overlay_png
+
+        png = overlay_png(path, int(self.mascot_cfg["height"]), os.path.join(self.temp_dir, "mascot"))
+        x, y = self.mascot_position()
+        sprite = ffmpeg.input(png, loop=1, framerate=self.fps).video.filter("format", "rgba")
+        return ffmpeg.overlay(video_stream, sprite, x=x, y=y, shortest=1, eof_action="repeat")
 
     # Musique et effets sonores
     def set_background_music(self, mood: str = "intriguing") -> None:
@@ -503,6 +531,9 @@ class Composer:
 
             if scene.get("overlay_text"):
                 video_stream = self._add_overlay_title(video_stream, scene["overlay_text"], total_duration)
+
+            if scene.get("mascot"):
+                video_stream = self._add_mascot(video_stream, scene["mascot"])
 
             srt_path = scene.get("srt_path")
             if srt_path and os.path.exists(srt_path):
