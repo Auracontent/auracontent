@@ -12,6 +12,25 @@ brain:
   factcheck: "strict"
   default_country_hint: null
 
+  # Choix du sujet : chaque essai doit être bien illustré et son titre doit contenir un retournement
+  topic_attempts: 10            # essais de sujet ; si aucun ne passe, le sujet testé le mieux illustré
+  min_source_images: 5          # images exploitables du lieu (article source + catégorie Commons) :
+                                # licence libre, 1000 px de large au moins, ni logo, ni carte, ni blason
+
+  # Script : jamais de modèle plus petit que gpt-oss-120b ; si ces modèles sont saturés, on attend
+  script_models: ["gemini", "gpt-oss-120b", "qwen3-235b", "deepseek-chat"]   # fragments de nom
+  script_wait_rounds: 3
+  script_wait_seconds: 60
+  min_specific_ratio: 0.66      # au moins 4 scènes 'specific' sur 6 (le vrai lieu à l'image)
+
+  # Style parlé : phrases courtes, aucun adjectif décoratif (variantes au féminin et au pluriel incluses)
+  style:
+    max_sentence_words: 12
+    banned_words: ["majeur", "incessant", "escarpé", "imposant", "majestueux", "grandiose", "somptueux",
+                   "prestigieux", "emblématique", "remarquable", "magnifique", "spectaculaire", "saisissant",
+                   "fascinant", "impressionnant", "splendide", "pittoresque", "séculaire", "millénaire",
+                   "verdoyant", "luxuriant", "paisible", "sombre"]
+
   topic_rules: |
     Fait historique RÉEL, vérifiable, peu connu du grand public.
     Respecter EXACTEMENT la localisation réelle du fait.
@@ -146,6 +165,18 @@ video_composer:
     ai: "Illustration générée par IA"
     osm: "Carte : Natural Earth · Lieu : © OpenStreetMap"   # avant « map » : le premier qui correspond gagne
     map: "Carte : Natural Earth"
+    gallica: "Source : Gallica / BnF"
+
+  # Rythme : aucun plan de plus de 4 s (3 s dans la scène 1) ; une scène plus longue reçoit plusieurs
+  # visuels. La carte animée, animation continue, est la seule exception.
+  shots:
+    enabled: true
+    max_seconds: 4.0
+    first_scene_max_seconds: 3.0
+    max_shots_per_scene: 6
+  # Cadrage : photos en paysage recadrées plein écran avec un panoramique lent (plus de fond flou)
+  image_full_screen: true
+  pan_speed: 0.06               # fraction de la largeur de l'écran parcourue par seconde
 
 # Visuels
 visuals:
@@ -159,6 +190,22 @@ visuals:
   ai_base_style: "cinematic realistic documentary still, photorealistic, atmospheric depth, subtle film grain, dramatic but natural lighting, rich natural textures, high visual clarity, strictly centered subject, extreme wide shot, vertical 9:16 composition, subject kept inside the center safe zone, clean space near the top and bottom for captions"
   ai_negative_prompt: "text, logo, watermark, subtitles, borders, split screen, multiple frames, deformed hands, extra fingers, duplicate people, cropped head, blurry face, cartoon, anime"
   ai_primary_model: "flux"
+  # Images de toutes les scènes, dans cet ordre : (a) article Wikipédia source, (b) catégorie Commons du
+  # lieu, (c) gravures et documents d'époque (Commons, Europeana, Gallica), puis second emploi des images
+  # (a)-(c), (d) image générée datée et située « no modern objects », (e) vidéo de banque d'images.
+  # Le type de scène ('specific' / 'generic') ne sert plus qu'à formuler la requête.
+  subject_images:
+    enabled: true
+    max_uses_per_file: 2        # la limite porte sur le FICHIER : plusieurs photos du même lieu, oui
+    min_width: 1000
+    min_height: 500
+    category_limit: 60
+    documents: true             # gravures, lithographies, cartes postales de Commons
+    europeana: true             # sans effet sans EUROPEANA_API_KEY
+    gallica: false              # BnF : réutilisation commerciale soumise à licence payante, à activer
+                                # seulement si la chaîne n'est pas monétisée ou après accord de la BnF
+    stock_video: true           # (e) dernier recours
+    stock_video_max_scenes: 1   # au-delà, avertissement dans le journal
   ai_fallback_model: "turbo"
   # Carte animée « où ça se passe » (lot 1) : la France, zoom vers la région, point jaune, nom du lieu.
   # Coordonnées : page Wikipédia source, sinon géocodage Nominatim du lieu de la scène 1 ; sans
@@ -172,6 +219,10 @@ visuals:
     overseas_view_km: 4500    # outre-mer : largeur de la vue de départ, centrée sur le territoire
     overseas_zoom: 10.0
     tagline: ""               # accroche de marque à côté du point, facultative : ex. "C’EST ARRIVÉ ICI"
+    label_max_chars: 26       # étiquette : nom du sujet, ou de sa commune s'il est plus long
+    landmark: true            # grande ville la plus proche en repère (point blanc + nom)
+    landmark_min_population: 100000
+    landmark_min_population_overseas: 30000
 # Publication (publish.py) — uniquement des NOMS de variables d'environnement, jamais les valeurs
 publish:
   hf_repo: "soradata/AIShortvideos"   # dataset HF où le générateur dépose les vidéos

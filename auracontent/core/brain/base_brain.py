@@ -115,6 +115,15 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
         per_scene = float(brain_cfg.get("seconds_per_scene", 8))
         return max(5, min(max_scenes, round(duration / per_scene)))
 
+    def script_routing(self) -> dict:
+        """brain.script_models (YAML) : modèles autorisés pour le script ; absent = tous (autres chaînes)."""
+        b = self.config.get("brain", {})
+        allowed = b.get("script_models")
+        if not allowed:
+            return {}
+        return {"allowed_models": list(allowed), "wait_rounds": int(b.get("script_wait_rounds", 3)),
+                "wait_seconds": float(b.get("script_wait_seconds", 60))}
+
     def generate_script(self, topic, chosen_hook=None):
         """Point d'entrée standard pour générer un script."""
         target_scenes = self.target_scene_count()
@@ -157,7 +166,8 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
             data = self.llm.call_json_with_retry(
                 messages,
                 temperature=0.7,
-                max_completion_tokens=min(scene_count * 350 + 1200, 6500)
+                max_completion_tokens=min(scene_count * 350 + 1200, 6500),
+                **self.script_routing(),
             )
 
             scenes = data.get("scenes", [])

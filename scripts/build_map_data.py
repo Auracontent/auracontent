@@ -4,18 +4,26 @@
 
     curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_1_states_provinces.geojson
     curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_admin_0_countries.geojson
+    curl -LO https://raw.githubusercontent.com/nvkelso/natural-earth-vector/master/geojson/ne_10m_populated_places_simple.geojson
     uv run --with shapely python -m scripts.build_map_data <dossier des deux fichiers>
 
 Sorties :
 - france_regions.geojson : 13 régions métropolitaines + 5 DROM, départements fusionnés par région ;
-- countries.geojson      : tous les pays (sauf la France, dessinée par ses régions), pour le contexte.
+- countries.geojson      : tous les pays (sauf la France, dessinée par ses régions), pour le contexte ;
+- france_cities.json     : villes françaises de plus de 30 000 habitants (agglomération), repères de la carte.
+
+Le dernier fichier ne demande pas shapely : `python -m scripts.build_map_data --cities <dossier>`.
 """
 import json
 import sys
 from pathlib import Path
 
-from shapely.geometry import MultiPolygon, mapping, shape
-from shapely.ops import unary_union
+try:   # shapely ne sert qu'aux fonds de carte : --cities s'en passe
+    from shapely.geometry import MultiPolygon, mapping, shape
+    from shapely.ops import unary_union
+except ImportError:
+    MultiPolygon = mapping = shape = unary_union = None
+
 
 OUT_DIR = Path(__file__).resolve().parent.parent / "assets" / "shared" / "maps"
 SIMPLIFY_DEG = 0.004       # ~400 m : invisible même au zoom maximal de la carte (France et voisins)
@@ -63,6 +71,29 @@ def _write(name: str, features: list[dict]) -> None:
     print(f"{path} : {len(features)} entités, {path.stat().st_size / 1e6:.2f} Mo")
 
 
+MIN_CITY_POP = 30_000         # le seuil « grande ville » est appliqué au rendu (visuals.map_scene)
+# Natural Earth abrège ou écorche quelques noms : on rétablit l'orthographe affichée à l'écran
+CITY_NAMES = {"St.-Denis": "Saint-Denis", "St.-Brieuc": "Saint-Brieuc", "St.-Benoit": "Saint-Benoît",
+              "Poitier": "Poitiers", "Basse-terre": "Basse-Terre", "Brive": "Brive-la-Gaillarde"}
+
+
+def build_cities(src: Path) -> None:
+    places = json.loads((src / "ne_10m_populated_places_simple.geojson").read_text(encoding="utf-8"))
+    cities = []
+    for f in places["features"]:
+        p = f["properties"]
+        if "FRA" not in (p.get("adm0_a3"), p.get("sov_a3")) or (p.get("pop_max") or 0) < MIN_CITY_POP:
+            continue
+        name = CITY_NAMES.get(p["name"], p["name"])
+        cities.append({"name": name, "lat": round(p["latitude"], 4), "lon": round(p["longitude"], 4),
+                       "pop": int(p["pop_max"])})
+    cities.sort(key=lambda c: -c["pop"])
+    path = OUT_DIR / "france_cities.json"
+    lines = ",\n".join(json.dumps(c, ensure_ascii=False) for c in cities)   # une ville par ligne : diff lisible
+    path.write_text(f"[\n{lines}\n]\n", encoding="utf-8")
+    print(f"{path} : {len(cities)} villes")
+
+
 def build(src: Path) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -95,4 +126,10 @@ def build(src: Path) -> None:
 
 
 if __name__ == "__main__":
-    build(Path(sys.argv[1] if len(sys.argv) > 1 else "."))
+    args = [a for a in sys.argv[1:] if a != "--cities"]
+    folder = Path(args[0] if args else ".")
+    if "--cities" in sys.argv[1:]:
+        build_cities(folder)
+    else:
+        build(folder)
+        build_cities(folder)

@@ -3,10 +3,12 @@
     python -m scripts.render_scene            # utilise assets/shared/backgrounds/test_bg.mp4
     python -m scripts.render_scene clip.mp4    # ta propre vidéo
     python -m scripts.render_scene --map       # carte animée (Reims, Ajaccio, Saint-Denis de La Réunion)
+    python -m scripts.render_scene --qualite   # ouverture en plans de 3 s, paysage plein écran, carte + repère
 
 Tout est hors ligne (voix = bip, sous-titres factices). Le mode --map habille la scène comme la vidéo
 finale (sous-titres, crédit, filigrane, bandeau-titre) et extrait trois images dans output/map_preview/.
 """
+import glob
 import math
 import os
 import sys
@@ -136,9 +138,98 @@ def render_map_previews() -> bool:
     return all(results)
 
 
+QUALITY_HEADLINE = "EN 1791 | L'ABBAYE EST VENDUE"
+QUALITY_OPENING = 7.0       # scène 1 : 3 plans de 2,33 s (3 s au plus)
+# Lieu d'essai quelconque (aucune règle propre à un sujet) : abbaye de Fontenay, commune de Marmagne
+QUALITY_MAP = MapTarget(1, 47.6392, 4.3889, "Abbaye de Fontenay", "test", sublabel="Marmagne")
+QUALITY_MAP_DURATION = 6.0
+
+
+def _landscape_from(path: str, out: str) -> str:
+    """Bande paysage (16:9) découpée dans une image locale verticale : photo d'essai hors ligne."""
+    from PIL import Image
+
+    with Image.open(path) as img:
+        w = img.width
+        h = w * 9 // 16
+        top = (img.height - h) // 2
+        img.crop((0, top, w, top + h)).convert("RGB").save(out, quality=92)
+    return out
+
+
+def render_quality_previews() -> bool:
+    """Ouverture (3 plans plein écran, panoramique sur les paysages) et carte avec repère, habillées comme
+    la vidéo finale. Trois images dans output/quality_preview/ pour la pull request."""
+    from PIL import Image
+
+    config = load_channel_config("mystery")
+    composer = Composer(config.get("video_composer"), channel_name="mystery")
+    out_dir = os.path.join(str(OUTPUT_DIR), "quality_preview")
+    os.makedirs(out_dir, exist_ok=True)
+    images = sorted(glob.glob(os.path.join("assets", "shared", "images", "fallback_*.jpg")))
+    shots = [_landscape_from(images[0], os.path.join(composer.temp_dir, "q_landscape_1.jpg")), images[1],
+             _landscape_from(images[2], os.path.join(composer.temp_dir, "q_landscape_2.jpg"))]
+    voice = os.path.join(composer.temp_dir, "q_voice.wav")
+    srt = os.path.join(composer.temp_dir, "q_subs.srt")
+    make_fake_voice(voice, QUALITY_OPENING)
+    with open(srt, "w", encoding="utf-8") as f:
+        f.write("1\n00:00:00,300 --> 00:00:03,000\nEN 1791, LES MOINES PARTENT\n\n"
+                "2\n00:00:03,000 --> 00:00:06,500\nL'ABBAYE EST VENDUE\n")
+    results = []
+    max_shot = float(config["video_composer"]["shots"]["first_scene_max_seconds"])
+    frames = Composer.shot_frames(QUALITY_OPENING, max_shot, composer.fps)
+    ok = max(frames) / composer.fps <= max_shot
+    print(f"{'✅' if ok else '❌'} ouverture : {len(frames)} plans de {max(frames) / composer.fps:.2f} s au plus "
+          f"(limite {max_shot} s)")
+    results.append(ok)
+
+    scene = {"id": "q_opening", "audio_path": voice, "duration": QUALITY_OPENING, "srt_path": srt, "mood": "tense"}
+    rendered = composer.process_scene(scene, {"shots": shots, "max_shot": max_shot})
+    dressed = os.path.join(composer.temp_dir, "q_opening_dressed.mp4")
+    if not rendered or not composer.add_watermark(rendered, dressed, headline=QUALITY_HEADLINE):
+        print("❌ ouverture : rendu impossible")
+        return False
+    duration = get_duration(dressed)
+    results.append(abs(duration - QUALITY_OPENING) < 0.6)
+    print(f"{'✅' if results[-1] else '❌'} ouverture : {duration:.2f} s pour {QUALITY_OPENING} s de voix")
+    previews = []
+    for name, t in (("1_ouverture_paysage_plein_ecran", 1.2), ("2_ouverture_plan_suivant", 3.6)):
+        png = os.path.join(out_dir, f"{name}.png")
+        ffmpeg.input(dressed, ss=t).output(png, vframes=1).run(overwrite_output=True, quiet=True)
+        previews.append(png)
+
+    # plein écran : la première et la dernière ligne de l'image ne sont pas le fond flou assombri
+    with Image.open(previews[0]) as img:
+        rgb = img.convert("RGB")
+        edge = [rgb.getpixel((x, 1910)) for x in range(0, 1080, 60)]
+        spread = max(max(c) - min(c) for c in zip(*edge))
+    results.append(spread > 25)
+    print(f"{'✅' if results[-1] else '❌'} paysage plein écran : détails jusqu'au bas de l'image (écart {spread})")
+
+    map_clip = os.path.join(composer.temp_dir, "scene_map_qualite.mp4")   # nom du pipeline : crédit de la carte
+    cfg = map_settings(config.get("visuals"))
+    if not render_map_scene(QUALITY_MAP, QUALITY_MAP_DURATION, map_clip, cfg=cfg, fps=composer.fps):
+        return False
+    results.append(check_map_clip("qualite", map_clip, QUALITY_MAP_DURATION, composer.fps))
+    make_fake_voice(voice, QUALITY_MAP_DURATION)
+    map_scene_dict = {"id": "q_map", "audio_path": voice, "duration": QUALITY_MAP_DURATION, "mood": "tense"}
+    rendered = composer.process_scene(map_scene_dict, (map_clip, map_clip))
+    dressed = os.path.join(composer.temp_dir, "q_map_dressed.mp4")
+    if not rendered or not composer.add_watermark(rendered, dressed, headline=QUALITY_HEADLINE):
+        return False
+    png = os.path.join(out_dir, "3_carte_etiquette_et_repere.png")
+    ffmpeg.input(dressed, ss=QUALITY_MAP_DURATION - 0.4).output(png, vframes=1).run(overwrite_output=True, quiet=True)
+    previews.append(png)
+    for path in previews:
+        print(f"    🖼️ {path}")
+    return all(results)
+
+
 if __name__ == "__main__":
     if "--map" in sys.argv[1:]:
         sys.exit(0 if render_map_previews() else 1)
+    if "--qualite" in sys.argv[1:]:
+        sys.exit(0 if render_quality_previews() else 1)
 
     video_path = sys.argv[1] if len(sys.argv) > 1 else "assets/shared/backgrounds/test_bg.mp4"
     assert os.path.exists(video_path), f"Vidéo introuvable : {video_path}"
