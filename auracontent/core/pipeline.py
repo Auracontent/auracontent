@@ -21,6 +21,7 @@ from auracontent.services.publishing.caption import generate_caption
 from auracontent.services.video.composer import Composer
 from auracontent.services.visuals.asset_manager import AssetManager, subject_settings
 from auracontent.services.visuals.map_scene import MapTarget, map_settings, pick_map_target, render_map_scene
+from auracontent.services.visuals.mascot import expression_for, mascot_files, mascot_settings
 from auracontent.utils.hook_tracker import record_hook_usage
 from auracontent.utils.subtitles import generate_grouped_srt
 from config.settings import ASSETS_DIR, TEMP_DIR
@@ -191,9 +192,12 @@ class VideoPipeline:
         tag = "map_osm" if target.source == "nominatim" else "map"
         out = self.work_dir / "assets" / f"scene_{tag}_{scene['id']}.mp4"
         out.parent.mkdir(parents=True, exist_ok=True)
+        mascot = mascot_settings(self.channel.section("mascot"))
+        mascot_path = mascot_files(mascot, self.name).get("curieux") if mascot.get("on_map") else None
         ok = render_map_scene(
             target, float(scene["duration"]), str(out), cfg=map_settings(self.channel.section("visuals")),
             width=cfg.get("video_width", 1080), height=cfg.get("video_height", 1920), fps=cfg.get("fps", 30),
+            mascot_path=mascot_path, mascot_height=int(mascot["map_height"]),
         )
         if ok:
             assets[target.index] = str(out)        # animation continue : seule exception à la durée des plans
@@ -207,6 +211,17 @@ class VideoPipeline:
             if not scenes[i].get("reuse_previous_asset"):
                 break
             assets[i] = assets[i - 1]
+
+    def _assign_mascot(self, scenes: list[dict]) -> None:
+        """Expression de la mascotte par scène : « curieux », « surpris » à la révélation, « clin » à la fin.
+        La scène de la carte (champ `map`, posé si la carte a été rendue) n'a pas de mascotte dans le coin :
+        elle se pose déjà sur le lieu. Si la carte a échoué, la scène garde la mascotte du coin."""
+        cfg = mascot_settings(self.channel.section("mascot"))
+        if not cfg.get("enabled"):
+            return
+        skip = {i for i, scene in enumerate(scenes) if scene.get("map")} if cfg.get("on_map") else set()
+        for i, scene in enumerate(scenes):
+            scene["mascot"] = expression_for(scene, i, len(scenes), cfg, skip)
 
     # ---------- 2. Voix + sous-titres ----------
     async def _voice(self, scenes: list[dict]) -> list[dict]:
@@ -265,8 +280,11 @@ class VideoPipeline:
             print("🗺️ Carte animée...")
             self._render_map(map_target, scenes, assets)
 
+        self._assign_mascot(scenes)
+
         print("🎞️ Montage...")
-        composer = Composer(self.channel.section("video_composer"), channel_name=self.name)
+        composer = Composer(self.channel.section("video_composer"), channel_name=self.name,
+                            mascot=self.channel.section("mascot"))
         rendered = composer.render_all_scenes(scenes, assets)
         if not rendered:
             raise RuntimeError("aucune scène rendue.")

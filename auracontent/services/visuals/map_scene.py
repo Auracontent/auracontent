@@ -328,7 +328,7 @@ class MapRenderer:
 
     def __init__(self, lat: float, lon: float, label: str, cfg: dict | None = None,
                  width: int = 1080, height: int = 1920, fps: int = 30, supersample: int = 2,
-                 sublabel: str = ""):
+                 sublabel: str = "", mascot_path: str | None = None, mascot_height: int = 190):
         cfg = map_settings({"map_scene": cfg or {}})
         self.cfg = cfg
         self.lat, self.lon = lat, lon
@@ -375,6 +375,13 @@ class MapRenderer:
         self.tagline = str(cfg.get("tagline") or "").strip().upper()
         self.font_tag = ImageFont.truetype(str(FONT_PATH), int(40 * sx))
         self.font_city = ImageFont.truetype(str(FONT_PATH), int(38 * sx))
+        # mascotte posée sur le lieu à la place du point jaune (pointe de l'épingle sur le point)
+        self.mascot = None
+        if mascot_path:
+            from auracontent.services.visuals.mascot import load_mascot, tip_of
+
+            self.mascot = load_mascot(mascot_path, int(mascot_height * width / 1080))
+            self.mascot_tip = tip_of(self.mascot)
         self.label_below = self._choose_label_side()
         self.landmark = self._choose_landmark() if cfg.get("landmark", True) else None
 
@@ -543,7 +550,8 @@ class MapRenderer:
         width = max((font.getlength(text) + (font.size * 0.6 if accent else 0) for text, font, accent in lines),
                     default=0)
         x0 = min(max(px - width / 2, 40 * sx), 930 * sx - width)
-        y0 = py + 70 * sx if below else py - 60 * sx - height
+        above = 60 * sx + (self.mascot.height if getattr(self, "mascot", None) is not None else 0)
+        y0 = py + 70 * sx if below else py - above - height
         return x0, y0, x0 + width, y0 + height
 
     def _choose_label_side(self) -> bool:
@@ -637,7 +645,8 @@ class MapRenderer:
         label_box = self._label_box(self.label_below, self.to_screen(self.end, self.lon, self.lat))
         mx, my = self.to_screen(self.end, self.lon, self.lat)
         clearance = self.MARKER_CLEARANCE * sx
-        marker_box = (mx - clearance, my - clearance, mx + clearance, my + clearance)
+        marker_box = self._marker_box(mx, my) if self.mascot is not None else \
+            (mx - clearance, my - clearance, mx + clearance, my + clearance)
 
         def overlaps(a, b):
             return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
@@ -682,6 +691,28 @@ class MapRenderer:
         """Vue à l'instant t : le zoom part de la première image (aucun plan fixe au début)."""
         return self.frame_at(t / max(self.zoom_end(duration), 1e-6))
 
+    def _marker_box(self, x: float, y: float) -> tuple[float, float, float, float]:
+        """Place occupée par la mascotte posée en (x, y), pointe sur le point."""
+        tx, ty = self.mascot_tip
+        return x - tx, y - ty, x - tx + self.mascot.width, y - ty + self.mascot.height
+
+    def _draw_mascot(self, img: Image.Image, t_since: float, pos: tuple[float, float]) -> None:
+        """La mascotte tombe sur le lieu, s'écrase un peu, rebondit une fois puis reste posée."""
+        from auracontent.services.visuals.mascot import landing
+
+        dy, kx, ky, alpha = landing(t_since, self.mascot.height)
+        if alpha <= 0:
+            return
+        sprite = self.mascot
+        if (kx, ky) != (1.0, 1.0):
+            sprite = sprite.resize((max(round(sprite.width * kx), 1), max(round(sprite.height * ky), 1)), Image.BICUBIC)
+        if alpha < 1:
+            sprite = sprite.copy()
+            sprite.putalpha(sprite.getchannel("A").point(lambda a: int(a * alpha)))
+        tx, ty = self.mascot_tip[0] * kx, self.mascot_tip[1] * ky     # la pointe reste sur le point
+        x, y = pos
+        img.paste(sprite, (round(x - tx), round(y - ty + dy)), sprite)
+
     def render_frame(self, t: float, duration: float) -> Image.Image:
         """Déroulé : le zoom commence dès la première image et finit à 62 % ; le point qui pulse et le nom
         du lieu apparaissent juste avant la fin du zoom. Le repère (grande ville) apparaît dès le tiers.
@@ -695,7 +726,10 @@ class MapRenderer:
         marker_start = zoom_end - 0.15 * duration
         if t >= marker_start:
             pos = self.to_screen(frame, self.lon, self.lat)
-            self._draw_marker(img, t - marker_start, pos)
+            if self.mascot is not None:
+                self._draw_mascot(img, t - marker_start, pos)
+            else:
+                self._draw_marker(img, t - marker_start, pos)
             self._draw_label(img, min((t - zoom_end + 0.1 * duration) / (0.12 * duration), 1.0), pos)
         return img
 
@@ -709,12 +743,13 @@ def frame_count(duration: float, fps: int) -> int:
 
 
 def render_map_scene(target: MapTarget, duration: float, output_path: str, cfg: dict | None = None,
-                     width: int = 1080, height: int = 1920, fps: int = 30) -> bool:
+                     width: int = 1080, height: int = 1920, fps: int = 30, mascot_path: str | None = None,
+                     mascot_height: int = 190) -> bool:
     """Écrit un .mp4 muet de `duration` secondes. Retourne False (sans lever) en cas d'échec."""
     started = time.time()
     try:
         renderer = MapRenderer(target.lat, target.lon, target.label, cfg, width=width, height=height, fps=fps,
-                               sublabel=target.sublabel)
+                               sublabel=target.sublabel, mascot_path=mascot_path, mascot_height=mascot_height)
         n = frame_count(duration, fps)
         process = (
             ffmpeg.input("pipe:", format="rawvideo", pix_fmt="rgb24", s=f"{width}x{height}", r=fps)

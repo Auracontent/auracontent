@@ -242,6 +242,19 @@ visuals:
                               # préfecture la plus proche ; aucun repère si le sujet est dans la grande ville
     landmark_min_population: 100000
     landmark_min_population_overseas: 100000
+# Mascotte « C’est arrivé ici » : épingle jaune expressive (assets/mystery/images/mascotte_<expression>.png).
+# Carte : « curieux » se pose sur le lieu à la place du point jaune, avec un rebond.
+# Vidéo : petite (150 px) à gauche, sous le bandeau-titre et au-dessus des sous-titres ; « curieux » par
+# défaut, « surpris » pendant la révélation (role: reveal), « clin » sur la dernière scène.
+mascot:
+  enabled: true
+  height: 150
+  x: 40                   # la droite de l'écran (x > 930) est couverte par l'interface des plateformes
+  y: null                 # null : juste sous le bandeau-titre (3 lignes au plus)
+  on_map: true
+  map_height: 190
+  reveal_roles: ["reveal"]
+
 # Publication (publish.py) — uniquement des NOMS de variables d'environnement, jamais les valeurs
 publish:
   hf_repo: "soradata/AIShortvideos"   # dataset HF où le générateur dépose les vidéos
