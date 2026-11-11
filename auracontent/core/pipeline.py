@@ -179,7 +179,9 @@ class VideoPipeline:
         assets = self._fetch_assets(scenes, skip={map_target.index} if map_target else None)
 
         print("📝 Légende...")
-        caption = generate_caption(self.llm, title, scenes, self.publish_cfg.get("fallback_hashtags", ""))
+        caption = generate_caption(self.llm, title, scenes, self.publish_cfg.get("fallback_hashtags", ""),
+                                   brand_hashtag=self.publish_cfg.get("brand_hashtag"),
+                                   banned_hashtags=self.publish_cfg.get("banned_hashtags", ()))
 
         print("🎙️ Voix...")
         scenes = asyncio.run(self._voice(scenes))

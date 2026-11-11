@@ -33,6 +33,7 @@
 - [Configuration](#-configuration)
 - [Usage](#-usage)
 - [GitHub Actions](#-github-actions)
+- [Channel: C’est arrivé ici](#-channel-cest-arrivé-ici)
 - [Adding a Channel](#-adding-a-channel)
 - [Troubleshooting](#-troubleshooting)
 - [Contributing](#-contributing)
@@ -44,7 +45,7 @@
 
 **AuraContent** is a Python pipeline that produces and publishes short vertical videos (YouTube Shorts, TikTok) without a face on camera.
 
-Each **channel** (e.g. `mystery` — short documentaries about real, little-known historical events in France) is described by a YAML file. For every run, the pipeline:
+Each **channel** is described by a YAML file. The first one is [**C’est arrivé ici**](#-channel-cest-arrivé-ici) (internal name `mystery`): the hidden stories of French heritage. For every run, the pipeline:
 
 1. picks a topic and writes a fact-checked script with an LLM (sources: Wikipedia);
 2. generates the narration (Gemini TTS, with `edge-tts` as fallback);
@@ -212,6 +213,43 @@ Outputs are written to `output/` and `temp/` (both git-ignored).
 | `test_zernio_con.yml` | manual | Zernio API connectivity check |
 
 Add the variables from `.env.example` as **repository secrets** (Settings → Secrets and variables → Actions). `GITHUB_TOKEN` is provided automatically; `RELEASE_TOKEN` is a personal access token used by the release workflow.
+
+---
+
+## 📍 Channel: C’est arrivé ici
+
+French-language Shorts and TikToks. The channel was renamed in 2026 because more than forty channels used its previous name. **Internal name stays `mystery`**: the code folder, the Hugging Face folder `videos` and the `*_MYSTERY` secrets keep their names, so history and secrets keep working.
+
+**Editorial line.** Every video starts from a real **place or object of French heritage** that can be named and shown (a lost treasure, a monument with a hidden story, a castle with an improbable fate, an absurd local law…), grounded on a Wikipedia page. Crime stories and general science are out. Overseas France is included.
+
+**Visual identity.**
+
+| Element | Rule |
+|---|---|
+| Accent colour | Yellow `#FFD400` only (`0xFFD400` in FFmpeg) |
+| Font | Montserrat Bold (`assets/shared/fonts`) |
+| On-screen text | Capitals, white with black outline |
+| Headline | Permanent two-part banner « STATEMENT \| PUNCHLINE », punchline black on yellow |
+| Subtitles | Capitals, cut at punctuation, numbers in yellow |
+| Watermark | `cest_arrive_ici_watermark.png`, top left, 190 px, 85 % opacity |
+| Safe zone (1080 × 1920) | Nothing important above y = 200, below y = 1440, or right of x = 930 |
+| Hashtags | `#histoire #patrimoine #france #cestarriveici`; the old channel hashtag is stripped automatically |
+
+**YAML options** (`config/channels/mystery.yaml`). Absent options keep the previous behaviour, so other channels are unaffected.
+
+| Option | Lot | Effect |
+|---|---|---|
+| `video_composer.headline_*` | 0 | Permanent headline banner (position, size, accent colour) |
+| `video_composer.subtitle_uppercase`, `subtitle_highlight_color` | 0 | Subtitle style |
+| `visuals.map_scene.enabled`, `scene_index` | 1 | Animated "where it happened" map on scene 2 |
+| `visuals.map_scene.zoom`, `overseas_view_km`, `overseas_zoom` | 1 | Map framing (mainland / overseas) |
+| `visuals.map_scene.geocode_fallback`, `geocoder_url` | 1 | Nominatim fallback when the source page has no coordinates |
+| `visuals.map_scene.tagline` | 10 | Optional brand line under the place name, e.g. `"C’EST ARRIVÉ ICI"` |
+| `video_composer.source_credit_labels.map`, `.osm` | 1 | Map credits (Natural Earth, OpenStreetMap) |
+| `video_composer.watermark_*` | 10 | Watermark file, width, opacity |
+| `publish.fallback_hashtags`, `brand_hashtag`, `banned_hashtags` | 10 | Hashtags: fallback set, brand tag added if missing, old tags removed |
+
+**Visual check offline:** `uv run python -m scripts.render_scene --map` renders the map scene with the headline, subtitles, credit and watermark, and saves frames to `output/map_preview/`.
 
 ---
 

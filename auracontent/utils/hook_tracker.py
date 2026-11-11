@@ -30,7 +30,7 @@ def load_hook_history(channel: str | None = None) -> list[dict]:
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return []
     entries = [e for e in data if isinstance(e, dict)] if isinstance(data, list) else []
-    # Les anciennes entrées sans "channel" viennent de Minute Mystère
+    # Les anciennes entrées sans "channel" viennent de la chaîne mystery (avant le multi-chaînes)
     return [e for e in entries if channel is None or e.get("channel", "mystery") == channel]
 
 
