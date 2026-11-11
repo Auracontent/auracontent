@@ -6,7 +6,8 @@ encodé par FFmpeg en un .mp4 muet de la durée exacte de la scène. Le Composer
 Fonds de carte : Natural Earth (domaine public), voir assets/shared/maps/README.md.
 Coordonnées : page Wikipédia source (prop=coordinates), sinon géocodage Nominatim du sujet et de sa commune.
 Étiquette : le nom du sujet (page source) ou de sa commune, jamais un lieu deviné par le LLM ou le géocodeur.
-Repère : la grande ville la plus proche (assets/shared/maps/france_cities.json, Natural Earth).
+Repère : la grande ville la plus proche (assets/shared/maps/france_cities.json, Natural Earth) ; à défaut,
+la préfecture la plus proche (france_prefectures.json, Wikidata) ; aucun si le sujet est dans la grande ville.
 """
 from __future__ import annotations
 
@@ -72,12 +73,13 @@ def map_settings(visuals_cfg: dict | None) -> dict:
     cfg.setdefault("geocoder_url", NOMINATIM_URL)
     cfg.setdefault("zoom", 3.0)                 # métropole : vue finale 3 fois plus serrée que la France entière
     cfg.setdefault("overseas_view_km", 4500)    # outre-mer : largeur de la vue de départ
-    cfg.setdefault("overseas_zoom", 10.0)     # Réunion : ~130 px de large à la fin
+    cfg.setdefault("overseas_zoom", 10.0)       # zoom final minimal (relevé pour les petites îles)
+    cfg.setdefault("overseas_island_fraction", 0.4)   # l'île du sujet occupe au moins 40 % de la largeur
     cfg.setdefault("tagline", "")               # accroche de marque sous le nom du lieu (facultative)
     cfg.setdefault("label_max_chars", 26)       # au-delà, l'étiquette prend le nom de la commune
     cfg.setdefault("landmark", True)            # grande ville la plus proche en repère
     cfg.setdefault("landmark_min_population", 100_000)
-    cfg.setdefault("landmark_min_population_overseas", 30_000)
+    cfg.setdefault("landmark_min_population_overseas", 100_000)
     cfg.setdefault("landmark_min_km", 6)        # plus près, c'est la même ville : pas de repère
     return cfg
 
@@ -230,6 +232,15 @@ def load_layers(maps_dir: str = str(MAPS_DIR)) -> dict:
 
 
 @functools.lru_cache(maxsize=1)
+def load_prefectures(maps_dir: str = str(MAPS_DIR)) -> list[dict]:
+    """Préfectures des départements et collectivités (Wikidata, CC0) : [{name, department, code, lat, lon}]."""
+    try:
+        return json.loads(Path(maps_dir, "france_prefectures.json").read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+
+
+@functools.lru_cache(maxsize=1)
 def load_cities(maps_dir: str = str(MAPS_DIR)) -> list[dict]:
     """Villes françaises (Natural Earth, domaine public) : [{name, lat, lon, pop}]."""
     try:
@@ -352,7 +363,11 @@ class MapRenderer:
             scale0 = (self.OVERVIEW_BOX[2] - self.OVERVIEW_BOX[0]) * sx / deg
             px, py = self._xy(lon, lat)
             self.start = Frame(px, py, scale0)
-            self.end = Frame(px, py, scale0 * float(cfg["overseas_zoom"]))
+            end_scale = scale0 * float(cfg["overseas_zoom"])
+            island = self._island_width()
+            if island:   # petite île : zoom resserré jusqu'à ce qu'elle occupe la part voulue de l'écran
+                end_scale = max(end_scale, float(cfg["overseas_island_fraction"]) * width / island)
+            self.end = Frame(px, py, end_scale)
 
         self._prepare_rings()
         self.font_label = self._fit_font(self.label, 84, int(820 * sx))
@@ -362,6 +377,21 @@ class MapRenderer:
         self.font_city = ImageFont.truetype(str(FONT_PATH), int(38 * sx))
         self.label_below = self._choose_label_side()
         self.landmark = self._choose_landmark() if cfg.get("landmark", True) else None
+
+    def _island_width(self) -> float | None:
+        """Largeur projetée (degrés fois cos lat) de l'île qui porte le point : l'anneau qui le contient, sinon
+        le plus proche (côte simplifiée). None sans territoire connu."""
+        if not self.region:
+            return None
+        rings = [r for r in _rings(self.region["geometry"]) if len(r) >= 3]
+        if not rings:
+            return None
+        ring = next((r for r in rings if _point_in_ring(self.lon, self.lat, r)), None)
+        if ring is None:
+            ring = min(rings, key=lambda r: min((x - self.lon) ** 2 + (y - self.lat) ** 2 for x, y in r))
+        xs = [self._wrap(x) for x, _ in ring]
+        width = (max(xs) - min(xs)) * self.kx
+        return width if width > 0 else None
 
     # --- projection ---
     def _wrap(self, lon: float) -> float:
@@ -576,40 +606,55 @@ class MapRenderer:
         yield (x - w / 2, y + gap, x + w / 2, y + gap + h)
 
     def _choose_landmark(self) -> dict | None:
-        """Ville la plus proche, assez grande, visible à la fin du zoom sans gêner le point ni l'étiquette.
+        """Repère visible à la fin du zoom, sans gêner le point ni l'étiquette.
 
-        Retourne {name, lat, lon, box} ou None (aucune ville ne tient dans la zone sûre).
+        1. la grande ville la plus proche (landmark_min_population) ; aucun repère si le sujet est dedans ;
+        2. sinon, si aucune grande ville ne tient à l'écran, la préfecture la plus proche (hors celle du sujet).
+        Retourne {name, lat, lon, offset, kind} ou None.
         """
         min_pop = self.cfg["landmark_min_population" if self.metro else "landmark_min_population_overseas"]
+        min_km = float(self.cfg["landmark_min_km"])
+
+        def by_distance(places):
+            return sorted(places, key=lambda c: distance_km(self.lat, self.lon, c["lat"], c["lon"]))
+
+        cities = by_distance(c for c in load_cities() if c.get("pop", 0) >= min_pop)
+        if cities and distance_km(self.lat, self.lon, cities[0]["lat"], cities[0]["lon"]) < min_km:
+            return None                        # le sujet est dans la grande ville : son nom suffit
+        for kind, places in (("ville", cities), ("préfecture", by_distance(load_prefectures()))):
+            for place in places:
+                if distance_km(self.lat, self.lon, place["lat"], place["lon"]) < min_km:
+                    continue                   # la préfecture du sujet lui-même : déjà dans l'étiquette
+                spot = self._place_landmark(place)
+                if spot:
+                    return {**spot, "kind": kind}
+        return None
+
+    def _place_landmark(self, place: dict) -> dict | None:
+        """Position du point et du nom d'un repère dans la zone sûre, ou None s'il ne tient pas."""
         sx, sy = self.width / 1080, self.height / 1920
         safe = (self.SAFE_BOX[0] * sx, self.SAFE_BOX[1] * sy, self.SAFE_BOX[2] * sx, self.SAFE_BOX[3] * sy)
         label_box = self._label_box(self.label_below, self.to_screen(self.end, self.lon, self.lat))
         mx, my = self.to_screen(self.end, self.lon, self.lat)
+        clearance = self.MARKER_CLEARANCE * sx
+        marker_box = (mx - clearance, my - clearance, mx + clearance, my + clearance)
 
         def overlaps(a, b):
             return a[0] < b[2] and b[0] < a[2] and a[1] < b[3] and b[1] < a[3]
 
-        cities = sorted((c for c in load_cities() if c.get("pop", 0) >= min_pop),
-                        key=lambda c: distance_km(self.lat, self.lon, c["lat"], c["lon"]))
-        for city in cities:
-            if distance_km(self.lat, self.lon, city["lat"], city["lon"]) < float(self.cfg["landmark_min_km"]):
-                return None                    # le sujet est dans la grande ville : son nom suffit
-            x, y = self.to_screen(self.end, city["lon"], city["lat"])
-            if not (safe[0] <= x <= safe[2] and safe[1] <= y <= safe[3]):
-                continue                       # hors champ à la fin du zoom : ville suivante
-            if math.hypot(x - mx, y - my) < self.MARKER_CLEARANCE * sx:
-                continue                       # collée au point jaune : illisible
-            dot = (x - self.CITY_DOT * sx, y - self.CITY_DOT * sx, x + self.CITY_DOT * sx, y + self.CITY_DOT * sx)
-            if overlaps(dot, label_box):
-                continue
-            name = city["name"].upper()
-            for box in self._city_label_boxes(x, y, name):
-                inside = safe[0] <= box[0] and box[2] <= safe[2] and safe[1] <= box[1] and box[3] <= safe[3]
-                clear = not overlaps(box, label_box) and not overlaps(
-                    box, (mx - self.MARKER_CLEARANCE * sx, my - self.MARKER_CLEARANCE * sx,
-                          mx + self.MARKER_CLEARANCE * sx, my + self.MARKER_CLEARANCE * sx))
-                if inside and clear:
-                    return {"name": name, "lat": city["lat"], "lon": city["lon"], "offset": (box[0] - x, box[1] - y)}
+        x, y = self.to_screen(self.end, place["lon"], place["lat"])
+        if not (safe[0] <= x <= safe[2] and safe[1] <= y <= safe[3]):
+            return None                        # hors champ à la fin du zoom
+        if math.hypot(x - mx, y - my) < clearance:
+            return None                        # collé au point jaune : illisible
+        dot = (x - self.CITY_DOT * sx, y - self.CITY_DOT * sx, x + self.CITY_DOT * sx, y + self.CITY_DOT * sx)
+        if overlaps(dot, label_box):
+            return None
+        name = place["name"].upper()
+        for box in self._city_label_boxes(x, y, name):
+            inside = safe[0] <= box[0] and box[2] <= safe[2] and safe[1] <= box[1] and box[3] <= safe[3]
+            if inside and not overlaps(box, label_box) and not overlaps(box, marker_box):
+                return {"name": name, "lat": place["lat"], "lon": place["lon"], "offset": (box[0] - x, box[1] - y)}
         return None
 
     def _draw_landmark(self, img: Image.Image, frame: Frame, alpha: float) -> None:

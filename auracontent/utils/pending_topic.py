@@ -9,7 +9,7 @@ Fichier : assets/shared/state/pending_topics.json, une entrée par chaîne, sync
 from __future__ import annotations
 
 import json
-from datetime import UTC, datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 
 from auracontent.services.publishing.state_sync import STATE_DIR
 

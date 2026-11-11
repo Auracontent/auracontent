@@ -235,11 +235,13 @@ visuals:
     zoom: 3.0                 # métropole : vue finale 3 fois plus serrée que la France entière
     overseas_view_km: 4500    # outre-mer : largeur de la vue de départ, centrée sur le territoire
     overseas_zoom: 10.0
+    overseas_island_fraction: 0.4   # outre-mer : l'île du sujet occupe au moins 40 % de la largeur à la fin
     tagline: ""               # accroche de marque à côté du point, facultative : ex. "C’EST ARRIVÉ ICI"
     label_max_chars: 26       # étiquette : nom du sujet, ou de sa commune s'il est plus long
-    landmark: true            # grande ville la plus proche en repère (point blanc + nom)
+    landmark: true            # grande ville la plus proche en repère (point blanc + nom) ; à défaut, la
+                              # préfecture la plus proche ; aucun repère si le sujet est dans la grande ville
     landmark_min_population: 100000
-    landmark_min_population_overseas: 30000
+    landmark_min_population_overseas: 100000
 # Publication (publish.py) — uniquement des NOMS de variables d'environnement, jamais les valeurs
 publish:
   hf_repo: "soradata/AIShortvideos"   # dataset HF où le générateur dépose les vidéos
