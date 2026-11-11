@@ -10,9 +10,12 @@
 Sorties :
 - france_regions.geojson : 13 régions métropolitaines + 5 DROM, départements fusionnés par région ;
 - countries.geojson      : tous les pays (sauf la France, dessinée par ses régions), pour le contexte ;
-- france_cities.json     : villes françaises de plus de 30 000 habitants (agglomération), repères de la carte.
+- france_cities.json     : villes françaises de plus de 30 000 habitants (agglomération), repères de la carte ;
+- france_prefectures.json: préfectures (chefs-lieux des départements et collectivités), repère de secours.
 
-Le dernier fichier ne demande pas shapely : `python -m scripts.build_map_data --cities <dossier>`.
+Les deux derniers fichiers ne demandent pas shapely :
+    python -m scripts.build_map_data --cities <dossier>
+    python -m scripts.build_map_data --prefectures      # interroge Wikidata (CC0), réseau nécessaire
 """
 import json
 import sys
@@ -94,6 +97,48 @@ def build_cities(src: Path) -> None:
     print(f"{path} : {len(cities)} villes")
 
 
+WIKIDATA_SPARQL = "https://query.wikidata.org/sparql"
+# Chefs-lieux en vigueur (ni énoncé terminé, ni rang déprécié) des entités qui ont un code de département
+PREFECTURES_QUERY = """SELECT ?code ?depLabel ?capLabel ?rank (SAMPLE(?coord) AS ?c) WHERE {
+  ?dep wdt:P2586 ?code .
+  ?dep p:P36 ?st . ?st ps:P36 ?cap ; wikibase:rank ?rank .
+  FILTER(?rank != wikibase:DeprecatedRank)
+  FILTER NOT EXISTS { ?st pq:P582 ?end }
+  FILTER NOT EXISTS { ?dep wdt:P576 ?gone }
+  ?cap wdt:P625 ?coord .
+  SERVICE wikibase:label { bd:serviceParam wikibase:language "fr". }
+} GROUP BY ?code ?depLabel ?capLabel ?rank"""
+
+
+def build_prefectures() -> None:
+    import os
+    import re
+
+    import requests
+
+    agent = f"AuraContentMapData/1.0 ({os.getenv('WIKIMEDIA_CONTACT', 'contact non configuré')})"
+    r = requests.get(WIKIDATA_SPARQL, params={"query": PREFECTURES_QUERY}, timeout=120,
+                     headers={"Accept": "application/sparql-results+json", "User-Agent": agent})
+    r.raise_for_status()
+    by_code: dict[str, list[dict]] = {}
+    for b in r.json()["results"]["bindings"]:
+        lon, lat = map(float, re.findall(r"-?\d+(?:\.\d+)?", b["c"]["value"])[:2])
+        by_code.setdefault(b["code"]["value"], []).append({
+            "name": b["capLabel"]["value"], "department": b["depLabel"]["value"], "code": b["code"]["value"],
+            "lat": round(lat, 4), "lon": round(lon, 4), "preferred": b["rank"]["value"].endswith("PreferredRank")})
+    prefectures = []
+    for code in sorted(by_code):
+        rows = by_code[code]
+        rows = [x for x in rows if x["preferred"]] or rows      # rang « préféré » quand il existe (Rhône : Lyon)
+        for x in rows:
+            x.pop("preferred")
+            prefectures.append(x)
+    path = OUT_DIR / "france_prefectures.json"
+    lines = ",\n".join(json.dumps(x, ensure_ascii=False) for x in prefectures)
+    path.write_text(f"[\n{lines}\n]\n", encoding="utf-8")
+    print(f"{path} : {len(prefectures)} préfectures ({len(by_code)} départements et collectivités)")
+
+
 def build(src: Path) -> None:
     OUT_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -126,9 +171,11 @@ def build(src: Path) -> None:
 
 
 if __name__ == "__main__":
-    args = [a for a in sys.argv[1:] if a != "--cities"]
+    args = [a for a in sys.argv[1:] if not a.startswith("--")]
     folder = Path(args[0] if args else ".")
-    if "--cities" in sys.argv[1:]:
+    if "--prefectures" in sys.argv[1:]:
+        build_prefectures()
+    elif "--cities" in sys.argv[1:]:
         build_cities(folder)
     else:
         build(folder)

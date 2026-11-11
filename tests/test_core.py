@@ -1413,3 +1413,38 @@ def test_topic_sources_try_anecdotes_first_then_keywords(monkeypatch):
 def test_anecdote_region_matches_yaml_regions(lat, lon, expected):
     brain = _mystery_brain()
     assert brain.region_of({"coordinates": {"lat": lat, "lon": lon}})["name"].startswith(expected)
+
+
+# ---------- Finitions de la carte (fix/finitions) ----------
+@pytest.mark.parametrize("name, lat, lon, landmark, kind", [
+    ("Reims", 49.2583, 4.0317, None, None),                   # le sujet est dans la grande ville
+    ("Saint-Denis", -20.8789, 55.4481, None, None),           # idem outre-mer
+    ("Ajaccio", 41.9192, 8.7386, "BASTIA", "préfecture"),     # aucune grande ville : préfecture la plus proche
+    ("Abbaye", 47.2436, 6.3656, "BESANÇON", "ville"),
+])
+def test_landmark_big_city_then_prefecture(name, lat, lon, landmark, kind):
+    from auracontent.services.visuals.map_scene import MapRenderer
+
+    r = MapRenderer(lat, lon, name)
+    assert (r.landmark or {}).get("name") == landmark and (r.landmark or {}).get("kind") == kind
+    if r.landmark:
+        x, y = r.to_screen(r.end, r.landmark["lon"], r.landmark["lat"])
+        assert 40 <= x <= 930 and 620 <= y <= 1400
+
+
+def test_prefectures_cover_departments_and_overseas():
+    from auracontent.services.visuals.map_scene import load_prefectures
+
+    prefectures = load_prefectures()
+    assert len(prefectures) >= 101 and {"Ajaccio", "Bastia", "Privas", "Foix", "Mamoudzou"} <= {p["name"] for p in prefectures}
+
+
+@pytest.mark.parametrize("lat, lon", [(-20.8789, 55.4481), (14.6, -61.07), (16.0, -61.73), (-12.78, 45.23)])
+def test_overseas_island_fills_a_third_of_the_screen(lat, lon):
+    """Réunion, Martinique, Guadeloupe, Mayotte : l'île du sujet occupe au moins un tiers de la largeur."""
+    from auracontent.services.visuals.map_scene import MapRenderer
+
+    r = MapRenderer(lat, lon, "Lieu")
+    assert r._island_width() * r.end.scale >= 1080 / 3
+    x, y = r.to_screen(r.end, lon, lat)
+    assert (round(x), round(y)) == r.ANCHOR                     # le point reste au même endroit
