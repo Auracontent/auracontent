@@ -39,8 +39,22 @@ def _search_titles(query: str, limit: int) -> list[str]:
     return [hit["title"] for hit in data.get("query", {}).get("search", [])]
 
 
+def _coordinates(page: dict) -> dict | None:
+    """Coordonnées principales de la page (prop=coordinates), sur Terre uniquement."""
+    for c in page.get("coordinates") or []:
+        if c.get("globe", "earth") != "earth":
+            continue
+        try:
+            lat, lon = float(c["lat"]), float(c["lon"])
+        except (KeyError, TypeError, ValueError):
+            continue
+        if -90 <= lat <= 90 and -180 <= lon <= 180:
+            return {"lat": lat, "lon": lon}
+    return None
+
+
 def _fetch_page(title: str) -> dict | None:
-    data = _get({"action": "query", "prop": "extracts|info|pageprops", "titles": title,
+    data = _get({"action": "query", "prop": "extracts|info|pageprops|coordinates", "titles": title,
                  "explaintext": 1, "inprop": "url", "redirects": 1})
     pages = (data or {}).get("query", {}).get("pages", [])
     if not pages or pages[0].get("missing"):
@@ -51,11 +65,14 @@ def _fetch_page(title: str) -> dict | None:
     extract = (page.get("extract") or "").strip()
     if not MIN_EXTRACT_CHARS <= len(extract) <= MAX_EXTRACT_CHARS:
         return None
-    return {"title": page["title"], "url": page.get("fullurl", ""), "extract": extract}
+    return {"title": page["title"], "url": page.get("fullurl", ""), "extract": extract,
+            "coordinates": _coordinates(page)}
 
 
 def find_candidates(query: str, limit: int = 8, exclude: set[str] | None = None) -> list[dict]:
-    """Pages exploitables pour `query` : [{"title", "url", "extract"}], dans l'ordre de pertinence.
+    """Pages exploitables pour `query` : [{"title", "url", "extract", "coordinates"}], par pertinence.
+
+    `coordinates` : {"lat", "lon"} de la page (lieu de l'article), ou None.
 
     `exclude` : titres (en minuscules) à ignorer, par exemple les sources déjà utilisées.
     """

@@ -334,3 +334,194 @@ def test_headline_splits_statement_and_punchline():
     lines, accent = composer._headline_lines("Mont-Saint-Michel | 70 ans de prison")
     assert lines == ["MONT-SAINT-MICHEL", "70 ANS DE PRISON"] and accent == 1
     assert composer._headline_lines("") == ([], 0)
+
+
+# ---------- Carte animée (lot 1) ----------
+MAP_PLACES = [("Reims", 49.2583, 4.0317, "Grand Est", True),
+              ("Ajaccio", 41.9192, 8.7386, "Corse", True),            # au fond du golfe : région la plus proche
+              ("Saint-Denis", -20.8789, 55.4481, "Réunion", False)]
+
+
+def test_wikipedia_page_keeps_primary_coordinates(monkeypatch):
+    from auracontent.services.scraping import wikipedia
+
+    page = {"title": "Trésor de Gourdon", "fullurl": "https://fr.wikipedia.org/wiki/T", "extract": "x" * 2000,
+            "coordinates": [{"lat": 10.0, "lon": 20.0, "globe": "moon"}, {"lat": 46.64, "lon": 4.45, "globe": "earth"}]}
+    monkeypatch.setattr(wikipedia, "_get", lambda params, retries=2: {"query": {"pages": [page]}})
+    assert wikipedia._fetch_page("Trésor de Gourdon")["coordinates"] == {"lat": 46.64, "lon": 4.45}
+
+    page.pop("coordinates")
+    assert wikipedia._fetch_page("Trésor de Gourdon")["coordinates"] is None
+
+
+@pytest.mark.parametrize("name, lat, lon, region, metro", MAP_PLACES)
+def test_map_finds_region_and_framing(name, lat, lon, region, metro):
+    from auracontent.services.visuals.map_scene import find_region, is_metropolitan
+
+    assert find_region(lat, lon)["properties"]["name"] == region
+    assert is_metropolitan(lat, lon) is metro
+
+
+@pytest.mark.parametrize("name, lat, lon, region, metro", MAP_PLACES)
+def test_map_point_lands_on_place(name, lat, lon, region, metro):
+    """À la fin du zoom, le lieu est sous le point, dans la zone sûre (x < 930, 200 < y < 1440)."""
+    from auracontent.services.visuals.map_scene import ACCENT, MapRenderer
+
+    renderer = MapRenderer(lat, lon, name)
+    x, y = renderer.to_screen(renderer.end, lon, lat)
+    assert (round(x), round(y)) == renderer.ANCHOR
+    assert x < 930 and 200 < y < 1440
+    img = renderer.render_frame(5.9, 6.0)
+    assert img.size == (1080, 1920)
+    r, g, b = img.getpixel((round(x), round(y)))
+    assert abs(r - ACCENT[0]) < 20 and abs(g - ACCENT[1]) < 20 and b < 60      # point jaune
+    lx0, ly0, lx1, ly1 = renderer._label_box(renderer.label_below)
+    assert lx1 <= 930 and ly0 > 610 and ly1 < 1200                            # entre bandeau et sous-titres
+
+
+def test_map_target_disabled_by_default():
+    from auracontent.services.visuals.map_scene import map_settings, pick_map_target
+
+    script = {"pick": {"lat": 49.25, "lon": 4.03}}
+    scenes = [{"id": 1, "location_name": "Reims"}, {"id": 2}]
+    assert map_settings({})["enabled"] is False                  # finance, kids : pas de section map_scene
+    assert pick_map_target(script, scenes, map_settings({})) is None
+
+
+def test_map_target_prefers_wikipedia_then_geocodes():
+    from auracontent.services.visuals.map_scene import map_settings, pick_map_target
+
+    cfg = map_settings({"map_scene": {"enabled": True}})
+    scenes = [{"id": 1, "location_name": "Cathédrale de Reims", "location_country": "France"},
+              {"id": 2, "location_name": "Reims"}, {"id": 3, "role": "cta", "reuse_previous_asset": True}]
+    calls = []
+
+    def geocoder(query):
+        calls.append(query)
+        return 49.25, 4.03
+
+    target = pick_map_target({"pick": {"lat": 48.85, "lon": 2.35}}, scenes, cfg, geocoder=geocoder)
+    assert (target.index, target.lat, target.source, target.label) == (1, 48.85, "wikipedia", "Reims")
+    assert calls == []                                              # coordonnées Wikipédia : pas de réseau
+
+    target = pick_map_target({"pick": {}}, scenes, cfg, geocoder=geocoder)
+    assert (target.lat, target.source) == (49.25, "nominatim")
+    assert calls == ["Cathédrale de Reims, France"]                 # lieu de la scène 1
+
+    assert pick_map_target({"pick": {}}, scenes, cfg, geocoder=lambda q: None) is None
+    cta = map_settings({"map_scene": {"enabled": True, "scene_index": 2}})
+    assert pick_map_target({"pick": {"lat": 48.85, "lon": 2.35}}, scenes, cta) is None   # jamais sur la scène CTA
+
+
+@pytest.mark.skipif(not shutil.which("ffmpeg"), reason="ffmpeg absent")
+def test_map_clip_has_exact_duration_and_format(tmp_path):
+    import ffmpeg
+
+    from auracontent.services.visuals.map_scene import MapTarget, frame_count, render_map_scene
+
+    out = tmp_path / "map.mp4"
+    assert render_map_scene(MapTarget(1, 49.2583, 4.0317, "Reims", "test"), 0.5, str(out), fps=30)
+    probe = ffmpeg.probe(str(out), count_frames=None)
+    video = next(s for s in probe["streams"] if s["codec_type"] == "video")
+    assert (video["width"], video["height"], video["r_frame_rate"]) == (1080, 1920, "30/1")
+    assert int(video["nb_read_frames"]) == frame_count(0.5, 30) == 15
+    assert not any(s["codec_type"] == "audio" for s in probe["streams"])
+
+
+def test_map_render_failure_keeps_usual_visual(monkeypatch, tmp_path):
+    """Carte impossible -> la scène reçoit son visuel habituel ; carte réussie -> le .mp4 de la carte."""
+    from auracontent.core import pipeline as pl
+    from auracontent.services.visuals.map_scene import MapTarget
+
+    class FakeChannel:
+        name = "mystery"
+
+        def section(self, key):
+            return {"visuals": {"map_scene": {"enabled": True}}}.get(key, {})
+
+    vp = pl.VideoPipeline.__new__(pl.VideoPipeline)
+    vp.channel, vp.name, vp.work_dir = FakeChannel(), "mystery", tmp_path
+    fetched = []
+    vp._fetch_scene_asset = lambda scene, counted=False: fetched.append(scene["id"]) or "usual.jpg"
+    scenes = [{"id": 1, "duration": 3.0}, {"id": 2, "duration": 4.0}]
+    target = MapTarget(1, 49.25, 4.03, "Reims", "wikipedia")
+
+    monkeypatch.setattr(pl, "render_map_scene", lambda *a, **k: False)
+    assets = ["a.jpg", None]
+    vp._render_map(target, scenes, assets)
+    assert assets == ["a.jpg", "usual.jpg"] and fetched == [2] and "map" not in scenes[1]
+
+    durations = []
+    monkeypatch.setattr(pl, "render_map_scene", lambda t, d, out, **k: durations.append(d) or True)
+    assets = ["a.jpg", None]
+    vp._render_map(target, scenes, assets)
+    assert assets[1].endswith("scene_map_2.mp4") and durations == [4.0]   # durée réelle de la voix
+    assert scenes[1]["map"]["source"] == "wikipedia"
+
+    # la scène CTA qui suit reprend le visuel de la scène 2 (la carte), pas l'emplacement vide
+    scenes.append({"id": 3, "duration": 2.0, "role": "cta", "reuse_previous_asset": True})
+    assets = ["a.jpg", None, None]
+    vp._render_map(target, scenes, assets)
+    assert assets[2] == assets[1] and assets[1].endswith("scene_map_2.mp4")
+
+
+def test_fetch_assets_leaves_map_scene_for_later(monkeypatch, tmp_path):
+    from auracontent.core import pipeline as pl
+
+    class FakeManager:
+        def __init__(self, cfg):
+            pass
+
+    class FakeChannel:
+        name = "mystery"
+
+        def section(self, key):
+            return {}
+
+    monkeypatch.setattr(pl, "AssetManager", FakeManager)
+    vp = pl.VideoPipeline.__new__(pl.VideoPipeline)
+    vp.channel, vp.name, vp.work_dir = FakeChannel(), "mystery", tmp_path
+    vp._fetch_scene_asset = lambda scene, counted=False: f"scene{scene['id']}.jpg"
+    scenes = [{"id": 1}, {"id": 2, "location_name": "Reims"}, {"id": 3}]
+    assert vp._fetch_assets(scenes, skip={1}) == ["scene1.jpg", None, "scene3.jpg"]
+    assert vp._query_counts == {"reims": 1}          # le repli éventuel tient compte de ce lieu
+
+
+def test_geocode_is_cached_and_never_repeated(monkeypatch, tmp_path):
+    """Politique Nominatim : résultats en cache, la même requête n'est jamais renvoyée (même un échec)."""
+    from auracontent.services.visuals import map_scene
+
+    monkeypatch.setattr(map_scene, "GEOCODE_CACHE", tmp_path / "geocode_cache.json")
+    monkeypatch.setattr(map_scene, "NOMINATIM_MIN_INTERVAL", 0)
+    calls = []
+
+    class Resp:
+        def __init__(self, hits):
+            self.hits = hits
+
+        def raise_for_status(self):
+            pass
+
+        def json(self):
+            return self.hits
+
+    def fake_get(url, params, headers, timeout):
+        calls.append((params["q"], headers["User-Agent"]))
+        return Resp([{"lat": "49.2536", "lon": "4.0339"}] if "Reims" in params["q"] else [])
+
+    monkeypatch.setattr(map_scene.requests, "get", fake_get)
+    assert map_scene.geocode_nominatim("Cathédrale de Reims", user_agent="test/1.0") == (49.2536, 4.0339)
+    assert map_scene.geocode_nominatim("  cathédrale de  REIMS ", user_agent="test/1.0") == (49.2536, 4.0339)
+    assert map_scene.geocode_nominatim("Lieu introuvable", user_agent="test/1.0") is None
+    assert map_scene.geocode_nominatim("Lieu introuvable", user_agent="test/1.0") is None
+    assert [q for q, _ in calls] == ["Cathédrale de Reims", "Lieu introuvable"]
+    assert all(agent == "test/1.0" for _, agent in calls)
+
+
+def test_map_credit_mentions_openstreetmap_only_when_geocoded():
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.services.video.composer import Composer
+
+    composer = Composer(load_channel_config("mystery")["video_composer"], channel_name="mystery")
+    assert composer._resolve_source_credit("temp/mystery/assets/scene_map_2.mp4") == "Carte : Natural Earth"
+    assert "OpenStreetMap" in composer._resolve_source_credit("temp/mystery/assets/scene_map_osm_2.mp4")

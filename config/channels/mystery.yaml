@@ -143,6 +143,8 @@ video_composer:
     pixabay: "Illustration : Pexels / Pixabay"
     videvo: "Illustration : Pexels / Pixabay"
     ai: "Illustration générée par IA"
+    osm: "Carte : Natural Earth · Lieu : © OpenStreetMap"   # avant « map » : le premier qui correspond gagne
+    map: "Carte : Natural Earth"
 
 # Visuels
 visuals:
@@ -157,6 +159,17 @@ visuals:
   ai_negative_prompt: "text, logo, watermark, subtitles, borders, split screen, multiple frames, deformed hands, extra fingers, duplicate people, cropped head, blurry face, cartoon, anime"
   ai_primary_model: "flux"
   ai_fallback_model: "turbo"
+  # Carte animée « où ça se passe » (lot 1) : la France, zoom vers la région, point jaune, nom du lieu.
+  # Coordonnées : page Wikipédia source, sinon géocodage Nominatim du lieu de la scène 1 ; sans
+  # coordonnées ou en cas d'erreur, la scène garde son visuel habituel. Absent = désactivé.
+  map_scene:
+    enabled: true
+    scene_index: 1            # 0 = première scène ; 1 = scène 2 (le visuel de la scène 2 est remplacé)
+    geocode_fallback: true    # Nominatim (OpenStreetMap) si la page Wikipédia n'a pas de coordonnées
+    geocoder_url: "https://nominatim.openstreetmap.org/search"   # remplaçable sans toucher au code
+    zoom: 3.0                 # métropole : vue finale 3 fois plus serrée que la France entière
+    overseas_view_km: 4500    # outre-mer : largeur de la vue de départ, centrée sur le territoire
+    overseas_zoom: 10.0
 # Publication (publish.py) — uniquement des NOMS de variables d'environnement, jamais les valeurs
 publish:
   hf_repo: "soradata/AIShortvideos"   # dataset HF où le générateur dépose les vidéos

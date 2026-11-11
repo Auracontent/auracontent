@@ -66,6 +66,7 @@ Everything can run in **GitHub Actions**: no server required.
 | 🎣 **Hook optimisation** | A bandit tracker learns which hooks perform best using Zernio analytics. |
 | 🗣️ **Voiceover** | Gemini TTS narration in a single request, split on silences; `edge-tts` fallback. |
 | 🖼️ **Visuals** | Pexels, Pixabay, Wikimedia, Europeana, Internet Archive, Cloudflare FLUX and Pollinations, with local fallback images. |
+| 🗺️ **Animated map** | "Where it happened" scene: France, zoom to the region, pulsing yellow dot and place name. Coordinates from the Wikipedia source page, else Nominatim. Settings in `visuals.map_scene`. |
 | ✂️ **Automated editing** | FFmpeg composition with subtitles, background music, SFX and loudness check. |
 | 🤗 **Shared state** | Videos, captions and history (used topics, hook stats) are synced to Hugging Face, so runs never repeat themselves. |
 | 📱 **Publishing** | YouTube + TikTok via Zernio, with TikTok draft fallback. |
@@ -247,3 +248,7 @@ See [CONTRIBUTING.md](CONTRIBUTING.md). Commits must follow [Conventional Commit
 ## 📄 License
 
 [MIT](LICENSE)
+
+**Third-party data**
+- Map backgrounds (`assets/shared/maps/`) come from [Natural Earth](https://www.naturalearthdata.com/), which is in the **public domain**. "Made with Natural Earth."
+- When the source page has no coordinates, the place is geocoded with [Nominatim](https://nominatim.org/) (© OpenStreetMap contributors, [ODbL](https://www.openstreetmap.org/copyright)). The pipeline follows its [usage policy](https://operations.osmfoundation.org/policies/nominatim/): at most one request per second, an identifying User-Agent (`WIKIMEDIA_CONTACT`), cached results (`geocode_cache.json`, synced with the history) and on-screen attribution. The service can be swapped via `visuals.map_scene.geocoder_url`, or disabled with `geocode_fallback: false`.
