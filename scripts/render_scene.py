@@ -4,7 +4,7 @@
     python -m scripts.render_scene clip.mp4    # ta propre vidéo
     python -m scripts.render_scene --map       # carte animée (Reims, Ajaccio, Saint-Denis de La Réunion)
     python -m scripts.render_scene --qualite   # ouverture en plans de 3 s, paysage plein écran, carte + repère
-    python -m scripts.render_scene --mascotte  # mascotte : carte (posée), révélation (surpris), fin (clin)
+    python -m scripts.render_scene --mascotte  # mascotte : carte (posée), révélation (curieux puis surpris), fin (clin)
 
 Tout est hors ligne (voix = bip, sous-titres factices). Le mode --map habille la scène comme la vidéo
 finale (sous-titres, crédit, filigrane, bandeau-titre) et extrait trois images dans output/map_preview/.
@@ -259,23 +259,27 @@ def render_mascot_previews() -> bool:
     voice = os.path.join(composer.temp_dir, "m_voice.wav")
     srt = os.path.join(composer.temp_dir, "m_subs.srt")
     images = sorted(glob.glob(os.path.join("assets", "shared", "images", "fallback_*.jpg")))
-    for name, expression, text, picture in (
-        ("2_revelation_surpris", "surpris", "MAIS LA FLÈCHE EST SAUVÉE", images[1]),
-        ("3_derniere_scene_clin", "clin", "ET VOUS, VOUS L'AURIEZ SAUVÉE ?", images[3]),
+    # révélation : « curieux », puis « surpris » pendant la phrase de la révélation seulement (1,5 à 4 s)
+    for name, expression, text, picture, surprise, frames in (
+        ("2_revelation", "curieux", "MAIS LA FLÈCHE EST SAUVÉE", images[1], (1.5, 4.0),
+         {"2a_avant_la_revelation_curieux": 0.8, "2b_phrase_de_la_revelation_surpris": 2.5}),
+        ("3_derniere_scene_clin", "clin", "ET VOUS, VOUS L'AURIEZ SAUVÉE ?", images[3], None,
+         {"3_derniere_scene_clin": 2.0}),
     ):
         make_fake_voice(voice, 4.0)
         with open(srt, "w", encoding="utf-8") as f:
             f.write(f"1\n00:00:00,200 --> 00:00:03,800\n{text}\n")
         scene = {"id": f"m_{name}", "audio_path": voice, "duration": 4.0, "srt_path": srt, "mood": "tense",
-                 "mascot": expression}
+                 "mascot": expression, "mascot_surprise": surprise}
         rendered = composer.process_scene(scene, {"shots": [picture], "max_shot": 4.0})
         dressed = os.path.join(composer.temp_dir, f"m_{name}.mp4")
         if not rendered or not composer.add_watermark(rendered, dressed, headline=MASCOT_HEADLINE):
             print(f"❌ {name} : rendu impossible")
             return False
-        png = os.path.join(out_dir, f"{name}.png")
-        ffmpeg.input(dressed, ss=2.0).output(png, vframes=1).run(overwrite_output=True, quiet=True)
-        previews.append(png)
+        for frame_name, t in frames.items():
+            png = os.path.join(out_dir, f"{frame_name}.png")
+            ffmpeg.input(dressed, ss=t).output(png, vframes=1).run(overwrite_output=True, quiet=True)
+            previews.append(png)
 
     clip = os.path.join(composer.temp_dir, "scene_map_mascotte.mp4")
     target = QUALITY_MAP                     # lieu d'essai quelconque (abbaye de Fontenay)

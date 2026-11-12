@@ -8,6 +8,16 @@ from auracontent.core.brain.llm_client import LLMClient
 from auracontent.utils.text_utils import _title_tokens
 
 _PLACEHOLDER = re.compile(r"\{(\w+)\}")
+
+
+class VeracityIssue(str):
+    """Avertissement du contrôle de véracité (fait absent de la source, phrase sans fait) : jamais ignoré.
+
+    À la limite d'essais, le script n'est pas accepté : le sujet est abandonné (TopicRejected)."""
+
+
+class TopicRejected(RuntimeError):
+    """Le sujet ne peut pas donner un script véridique : on l'abandonne et on passe au suivant."""
 _SECTION_HEADER = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
 
@@ -170,6 +180,8 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
                 print(f"⚠️ Nouvelle tentative avec {candidate_count} scènes pour respecter le budget.")
             try:
                 return self._generate_script_attempt(topic, candidate_count, chosen_hook, max_retries)
+            except TopicRejected:
+                raise                     # moins de scènes ne rendrait pas le script plus vrai
             except (RuntimeError, ValueError) as e:
                 last_error = e
                 print(f"❌ Échec de génération avec {candidate_count} scènes : {e}")
@@ -217,7 +229,11 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
                 if not last:
                     correction_feedback = "CORRECTIONS OBLIGATOIRES :\n" + "\n".join(f"- {i}" for i in issues)
                     continue
-                print("⚠️ Script généré avec des avertissements ignorés (limite d'essais atteinte) :")
+                blocking = [i for i in issues if isinstance(i, VeracityIssue)]
+                if blocking:
+                    raise TopicRejected("contrôle de véracité en échec après "
+                                        f"{max_retries + 1} essais : " + " ; ".join(blocking))
+                print("⚠️ Script généré avec des avertissements de style ignorés (limite d'essais atteinte) :")
                 for i in issues:
                     print(f"   - {i}")
                 data["unresolved_issues"] = issues

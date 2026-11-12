@@ -13,10 +13,11 @@ CATÉGORIE VISÉE : {forced_category}
 
 RÈGLES DU TITRE :
 1. 45 à 70 caractères, 12 mots au plus. Les 40 premiers caractères portent l'essentiel : la suite est coupée à l'affichage.
-2. Il nomme le lieu ou l'objet exact (ville, monument, œuvre) et contient au moins un élément précis : chiffre, date ou nom propre.
+2. Il nomme l'objet ou l'édifice exact dont parle la source ({focus}) et contient au moins un élément précis PRÉSENT DANS LA SOURCE : un chiffre, une date ou un nom propre. Une date ou un chiffre n'est permis que s'il figure mot pour mot dans la source : sinon, n'en mets pas.
 3. Il contient une tension : ce qui s'est passé contredit ce que l'on attendrait.
 4. INTERDITS : les superlatifs vagues (« le plus », « incroyable », « sombre », « fou », « bizarre », « hallucinant »), les mots « mystère », « secret », « énigme » employés seuls, les MAJUSCULES d'emphase, les emojis, les hashtags, les points d'exclamation.
 5. Fidèle à la source : lieu, époque et personnages exacts, aucun détail inventé.
+6. Le titre pose une question à laquelle la source répond : la vidéo devra y répondre.
 
 EXEMPLES DU NIVEAU ATTENDU (ne les réutilise pas) :
 - « Le Mont-Saint-Michel a servi de prison pendant 70 ans »

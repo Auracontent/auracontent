@@ -689,7 +689,8 @@ def _fake_manager(monkeypatch, tmp_path, images, europeana=False, ai=True, video
 
     monkeypatch.setattr(am, "download_file", fake_download)
     m = am.AssetManager({"subject_images": {"enabled": True}})
-    m.europeana.get_image = lambda q, path: europeana and fake_download("europeana", path)
+    m.europeana.get_image = lambda q, path, accept=None: europeana and (accept is None or accept(
+        m.europeana.last_text)) and fake_download("europeana", path)
     m.europeana.last_text, m.europeana.last_url = "Gravure, Chaux-lès-Passavant", "europeana"
     m._generate_ai = lambda prompt, path: ai and fake_download(f"ai{len(m.tally)}{m.tally['ai']}", path)
     m.videos.fetch_background = lambda q, path: video and fake_download(f"video{m.tally['video']}", path)
@@ -703,7 +704,8 @@ def test_every_scene_follows_source_priority(monkeypatch, tmp_path):
     """(a)/(b) neufs -> Europeana -> second emploi -> image générée -> vidéo, pour TOUTES les scènes."""
     m = _fake_manager(monkeypatch, tmp_path, [("a1", "article"), ("c1", "commons")], europeana=True)
     remaining = ["gravure unique"]                       # Europeana : une seule notice pertinente
-    m.europeana.get_image = lambda q, path: bool(remaining) and open(path, "wb").write(remaining.pop().encode() * 99) > 0
+    m.europeana.get_image = lambda q, path, accept=None: bool(remaining) and open(path, "wb").write(
+        remaining.pop().encode() * 99) > 0
     out = str(tmp_path / "x")
     generic = {"id": 1, "scene_type": "generic", "stock_search": "old iron key", "image_prompt": "iron key"}
     sources = []
@@ -925,15 +927,187 @@ def test_hooks_rated_zero_or_equal_to_title_are_regenerated():
     llm = _ScriptedLLM(
         {"hooks": [{"text": "Le Mont-Saint-Michel a servi de prison pendant 70 ans", "score": 9},
                    {"text": "Des moines, puis des forçats derrière ces murs", "score": 0}]},
-        {"hooks": [{"text": "Pendant 70 ans, on y enfermait des prisonniers", "score": 7}]},
+        {"hooks": [{"text": "Pendant 70 ans, on y enfermait des prisonniers"}]},
+        {"notes": [{"index": 0, "phrase_complete": True, "verbe": "enfermait", "score": 7}]},   # gros modèle
     )
     hooks = _mystery_brain(llm).generate_hook_variants(topic)
     assert [h["text"] for h in hooks] == ["Pendant 70 ans, on y enfermait des prisonniers"]
-    assert len(llm.calls) == 2
+    assert hooks[0]["score"] == 7 and len(llm.calls) == 3
 
     never = _ScriptedLLM(*[{"hooks": [{"text": topic, "score": 8}]}] * 3)
     with pytest.raises(RuntimeError):
         _mystery_brain(never).generate_hook_variants(topic)    # jamais d'accroche par défaut
+
+
+def test_hook_rating_uses_big_models_and_needs_a_conjugated_verb():
+    hooks = [{"text": "Une statue, un saint, un général gaulois"}, {"text": "Ce saint a le visage d'un Gaulois"}]
+    llm = _ScriptedLLM({"notes": [{"index": 0, "phrase_complete": False, "verbe": None, "score": 9},
+                                  {"index": 1, "phrase_complete": True, "verbe": "a", "score": 6}]})
+    captured = {}
+    llm.call_json_with_retry = lambda messages, **k: captured.update(k) or llm.answers.pop(0)
+    brain = _mystery_brain(llm)
+    rated = brain.rate_hooks(hooks, "t")
+    assert [h["text"] for h in rated] == ["Ce saint a le visage d'un Gaulois"]
+    assert "gpt-oss-20b" not in captured["allowed_models"] and "gpt-oss-120b" in captured["allowed_models"]
+
+
+def test_dates_and_numbers_must_be_in_the_source():
+    from auracontent.channels.mystery.brain import claim_issues, numbers_in, title_format
+
+    source = ("Dans l'église Saint-Sigismond de Larressingle, la statue du saint patron est une réduction de "
+              "celle de Vercingétorix. Le monument d'Aimé Millet domine Alise-Sainte-Reine depuis 1865, "
+              "au XIXe siècle.")
+    assert numbers_in("1 200 moines au XIXe siècle") == {"1200", "19"}
+    assert claim_issues("Larressingle : en 1865, le saint prend un visage gaulois", source, "titre") == []
+    assert "1450" in claim_issues("En 1450, la statue de Larressingle change de visage", source, "titre")[0]
+    assert claim_issues("Trois statues changent de visage", source, "titre")       # « trois » absent
+    assert claim_issues("Ce saint a les traits de Vercingétorix", source, "accroche") == []   # nom propre
+    assert "ni chiffre" in claim_issues("Ce saint a un drôle de visage", source, "accroche")[0]
+    undated = "La statue du saint patron de Larressingle reprend le visage de Vercingétorix."
+    formats = {title_format(undated) for _ in range(60)}
+    assert not any("année" in f or "chiffre" in f for f in formats)             # jamais sans date ni chiffre
+
+
+def test_headline_rejects_a_date_absent_from_the_source():
+    brain = _mystery_brain(_ScriptedLLM())
+    brain._source = {"title": "Larressingle", "extract": "La statue de Larressingle copie Vercingétorix."}
+    with pytest.raises(ValueError, match="1450"):
+        brain.validate_headline({"on_screen_title": "EN 1450 | LE SAINT GAULOIS", "scenes": []})
+
+
+def test_veracity_warning_at_the_limit_rejects_the_topic():
+    from auracontent.core.brain.base_brain import TopicRejected
+
+    brain = _mystery_brain(_ScriptedLLM(*[{"scenes": [{"id": 1, "text": "x"}]}] * 3))
+    brain.target_scene_count = lambda: 5
+    brain._validate_script_base = lambda data: None
+    brain.validate_script_specifics = lambda data, topic: None
+    brain.config["brain"]["scene_count_tolerance"] = 10
+    calls = []
+    brain.check_script_logic = lambda topic, data: calls.append(1) or [
+        brain_module().VeracityIssue("scène 1 : date absente de la source"), "scène 1 : phrase de 14 mots"]
+    with pytest.raises(TopicRejected, match="date absente"):
+        brain.generate_script("t")
+    assert len(calls) == 3                         # pas de nouvel essai avec moins de scènes : sujet abandonné
+
+    style_only = _mystery_brain(_ScriptedLLM(*[{"scenes": [{"id": 1, "text": "x"}]}] * 3))
+    style_only.target_scene_count = lambda: 5
+    style_only.validate_script_specifics = lambda data, topic: None
+    style_only.config["brain"]["scene_count_tolerance"] = 10
+    style_only.check_script_logic = lambda topic, data: ["scène 1 : phrase de 14 mots"]
+    assert style_only.generate_script("t")["unresolved_issues"]   # le style seul reste un avertissement
+
+
+def brain_module():
+    from auracontent.core.brain import base_brain
+
+    return base_brain
+
+
+def test_strict_factcheck_unavailable_never_passes():
+    brain = _mystery_brain(_ScriptedLLM(RuntimeError("quota")))
+    brain._source = {"title": "X", "extract": "y" * 2000}
+    with pytest.raises(RuntimeError, match="véracité indisponible"):
+        brain._llm_factcheck("t", [{"id": 1, "text": "a"}], {})
+    brain = _mystery_brain(_ScriptedLLM({"issues": ["« s'inspire des gravures » : absent de la source"]}))
+    brain._source = {"title": "X", "extract": "y" * 2000, "facts": ["f1"], "answer": "r"}
+    issues = brain._llm_factcheck("t", [{"id": 1, "text": "a"}], {})
+    assert isinstance(issues[0], brain_module().VeracityIssue)
+
+
+def test_rejected_topic_moves_to_the_next_one(monkeypatch, tmp_path):
+    from auracontent.core.brain import global_brain as gb
+    from auracontent.core.brain.base_brain import TopicRejected
+    from auracontent.utils import pending_topic as pt
+
+    monkeypatch.setattr(pt, "PENDING_PATH", tmp_path / "pending.json")
+
+    class Brain:
+        last_pick = {}
+        picks = []
+
+        def pick_topic(self):
+            n = len(self.picks) + 1
+            self.picks.append(n)
+            self.last_pick = {"source_title": f"Page {n}", "anecdote_id": str(n)}
+            return f"Sujet {n}"
+
+        def generate_hook_variants(self, topic, **k):
+            return [{"text": "accroche", "pattern": "chiffre"}]
+
+        def generate_script(self, topic, chosen_hook=None):
+            if topic == "Sujet 1":
+                raise TopicRejected("fait absent de la source")
+            return {"scenes": []}
+
+        def export_state(self):
+            return {}
+
+        def restore_state(self, state):
+            pass
+
+    class Channel:
+        brain = Brain()
+
+        def section(self, key):
+            return {"brain": {"veracity_topic_rounds": 3}}.get(key, {})
+
+    g = gb.GlobalBrain.__new__(gb.GlobalBrain)
+    g.channels, g.output_dir = {"mystery": Channel()}, tmp_path
+    monkeypatch.setattr(gb, "save_global_history", lambda *a, **k: None)
+    monkeypatch.setattr(gb, "compute_pattern_scores", lambda *a: {})
+    monkeypatch.setattr(gb, "load_hook_history", lambda c: [])
+    path = g.run_channel("mystery", previous_stats_list=[])
+    assert '"topic": "Sujet 2"' in path.read_text(encoding="utf-8")
+    titles, ids = pt.load_rejected("mystery")
+    assert titles == {"page 1"} and ids == {"1"}                 # plus jamais proposé
+    assert pt.load_pending("mystery") is None
+
+
+def test_facts_extraction_rejects_thin_or_unanswered_topics():
+    trial = {"source": {"title": "Larressingle", "extract": "x", "anecdote": "a"}, "focus": ["statue"]}
+    thin = _mystery_brain(_ScriptedLLM({"faits": ["f1", "f2", "f3"], "reponse": "r"}))
+    assert not thin.extract_facts(dict(trial), "t")              # moins de 4 faits
+    unanswered = _mystery_brain(_ScriptedLLM({"faits": ["f1", "f2", "f3", "f4"], "reponse": None}))
+    assert not unanswered.extract_facts(dict(trial), "t")       # la source ne répond pas au titre
+    ok = _mystery_brain(_ScriptedLLM({"faits": ["f1", "f2", "f3", "f4"], "reponse": "Le sculpteur a réduit..."}))
+    t = dict(trial)
+    assert ok.extract_facts(t, "t") and t["answer"].startswith("Le sculpteur")
+
+
+def test_short_material_gives_a_short_video(monkeypatch):
+    monkeypatch.delenv("VIDEO_DURATION", raising=False)
+    brain = _mystery_brain()
+    brain._source = {"facts": ["f"] * 5}
+    assert brain.target_scene_count() == 3                       # environ 24 s plutôt que 45
+    brain._source = {"facts": ["f"] * 9}
+    assert brain.target_scene_count() > 3
+
+
+def test_script_prompt_carries_anecdote_cited_articles_and_facts():
+    brain = _mystery_brain()
+    brain._source = {"title": "Larressingle", "extract": "Commune du Gers.", "anecdote": "La statue copie Vercingétorix.",
+                     "anecdote_caption": "Statue de saint Sigismond",
+                     "related": [{"title": "Monument à Vercingétorix (Millet)", "extract": "Statue de 1865."}],
+                     "facts": ["La statue est une réduction de celle d'Aimé Millet."], "answer": "Réduction.",
+                     "focus": ["statue de saint Sigismond"]}
+    messages = brain.build_script_prompt("t", 3, {"text": "h"})
+    user = messages[1]["content"]
+    for part in ("La statue copie Vercingétorix", "Statue de saint Sigismond", "Statue de 1865",
+                 "réduction de celle d'Aimé Millet", "RÉPONSE", "justifier une image"):
+        assert part in user
+
+
+def test_reveal_sentence_is_located_in_its_scene():
+    from auracontent.channels.mystery.brain import MysteryBrain
+
+    data = {"reveal_sentence": "Le saint a le visage de Vercingétorix.",
+            "scenes": [{"text": "Une statue. Un saint."}, {"text": "Mais regardez bien. Le saint a le visage de "
+                                                                    "Vercingétorix."}]}
+    MysteryBrain.locate_reveal(data)
+    assert data["scenes"][1]["reveal_sentence"] == "Le saint a le visage de Vercingétorix."
+    with pytest.raises(ValueError):
+        MysteryBrain.locate_reveal({"reveal_sentence": "Phrase absente.", "scenes": data["scenes"]})
 
 
 def test_style_flags_long_sentences_and_decorative_adjectives():
@@ -993,7 +1167,7 @@ def test_topic_needs_enough_images_and_falls_back_to_best_illustrated(monkeypatc
     brain = _mystery_brain()
     brain._anecdotes = []                                      # « Le saviez-vous ? » vide : repli mots-clés
     brain._find_source = lambda region, category, used: next(pages)
-    brain.count_source_images = lambda source, details: counts.get(source["title"], 0)
+    brain.count_source_images = lambda source, details, focus=None: (counts.get(source["title"], 0),) * 2
     titles = []
     brain._accept_title = lambda trial, used: titles.append(trial["source"]["title"]) or f"Titre {trial['source']['title']}"
     assert brain.pick_topic() == "Titre Lieu 1"                # 10 essais, aucun à 5 images : le mieux illustré
@@ -1470,8 +1644,9 @@ def test_mascot_expression_per_scene():
 
     cfg = mascot_settings({"enabled": True})
     scenes = [{"role": "hook"}, {"role": "context"}, {"role": "reveal"}, {"role": "tension"}, {"role": "cta"}]
+    # « surpris » n'est jamais choisi d'après le rôle de la scène : seulement pendant la phrase de la révélation
     assert [expression_for(s, i, len(scenes), cfg, skip={1}) for i, s in enumerate(scenes)] == \
-        ["curieux", None, "surpris", "curieux", "clin"]
+        ["curieux", None, "curieux", "curieux", "clin"]
     assert expression_for({"role": "reveal"}, 4, 5, cfg) == "clin"            # la dernière scène prime
 
 
@@ -1543,10 +1718,158 @@ def test_pipeline_assigns_mascot_and_skips_the_map_scene():
 
     vp = pl.VideoPipeline.__new__(pl.VideoPipeline)
     vp.channel = FakeChannel({"enabled": True})
-    scenes = [{"role": "hook"}, {"role": "context", "map": {"lat": 1}}, {"role": "reveal"}, {"role": "cta"}]
+    reveal = "La statue reprend le visage de Vercingétorix."
+    scenes = [{"id": 1, "role": "hook"}, {"id": 2, "role": "context", "map": {"lat": 1}},
+              {"id": 3, "role": "context", "duration": 8.0, "reveal_sentence": reveal,
+               "text": "Le sculpteur part d'un modèle connu. " + reveal},
+              {"id": 4, "role": "reveal", "text": "Fin.", "duration": 3}]
     vp._assign_mascot(scenes)
-    assert [s.get("mascot") for s in scenes] == ["curieux", None, "surpris", "clin"]
+    assert [s.get("mascot") for s in scenes] == ["curieux", None, "curieux", "clin"]
+    start, end = scenes[2]["mascot_surprise"]              # « surpris » pendant la phrase de la révélation
+    assert 3.5 < start < 4.0 and end == 8.0
+    assert "mascot_surprise" not in scenes[3]              # pas d'après le rôle « reveal »
     vp.channel = FakeChannel({})                                          # désactivée : rien n'est posé
     fresh = [{"role": "hook"}]
     vp._assign_mascot(fresh)
     assert "mascot" not in fresh[0]
+
+
+@pytest.mark.parametrize("title, categories, excluded", [
+    ("File:32194-Larressingle-Routes-Hydro.png", "Larressingle|Road maps of communes in Gers", True),
+    ("File:Sols.png", "", True),
+    ("File:argile.jpg", "", True),
+    ("File:Larressingle - Église - 01.jpg", "Église Saint-Sigismond de Larressingle", False),
+    ("File:Vue du village.jpg", "Geological maps of Gers", True),          # catégorie seule
+    ("File:Église, plan au sol.jpg", "", True),
+    ("File:Bas-relief du portail.jpg", "", False),
+    ("File:Carte postale ancienne de l'abbaye.jpg", "Cartes postales de la Marne", False),
+    ("File:Église 2025.jpg", "Files with coordinates missing SDC location of creation", False),
+])
+def test_maps_plans_and_diagrams_are_excluded(title, categories, excluded):
+    from auracontent.services.visuals.subject_images import is_map_or_diagram
+
+    assert is_map_or_diagram(title, categories) is excluded
+
+
+def test_png_excluded_when_channel_allows_only_jpeg():
+    from auracontent.services.visuals.subject_images import usable
+
+    info = {"mime": "image/png", "width": 3000, "height": 2000,
+            "extmetadata": {"LicenseShortName": {"value": "CC BY-SA 4.0"}}}
+    assert usable(info, "File:Vue.png")
+    assert not usable(info, "File:Vue.png", allowed_mime={"image/jpeg"})
+
+
+def test_object_names_match_files_and_titles():
+    from auracontent.services.visuals.subject_images import is_distinctive, mentions_focus, name_matches
+
+    place = ["Larressingle", "Gers"]
+    assert name_matches("Larressingle (32) Église Saint-Sigismond 11.JPG", "église Saint-Sigismond", place)
+    assert not name_matches("Larressingle Gers 6 mairie.jpg", "église Saint-Sigismond", place)
+    assert mentions_focus("Larressingle : la statue du saint patron copie un Gaulois",
+                          ["statue de saint Sigismond", "église Saint-Sigismond"], place)
+    assert not mentions_focus("Larressingle, le village fortifié du Gers", ["statue de saint Sigismond"], place)
+    assert is_distinctive("Pont du Gard") and not is_distinctive("Abbaye X")
+
+
+def test_object_images_come_first_then_the_commune(monkeypatch):
+    from auracontent.services.visuals import subject_images as si
+
+    def img(name, origin, desc=""):
+        return si.SubjectImage(name, f"File:{name}", f"u/{name}", 2000, 1500, origin, desc or name)
+
+    monkeypatch.setattr(si, "object_images", lambda names, place, files, limit, **k: [img("Statue.jpg", "object")])
+    monkeypatch.setattr(si, "article_images", lambda title, **k: [
+        img("Larressingle Gers 1.jpg", "article"), img("Larressingle (32) Église Saint-Sigismond 02.JPG", "article")])
+    monkeypatch.setattr(si, "category_images", lambda cat, limit, **k: [img("Mairie.jpg", "commons")])
+    images = si.collect_subject_images("Larressingle", "Larressingle", {"documents": False},
+                                       place_terms=["Larressingle", "Gers"],
+                                       focus=["statue de saint Sigismond", "église Saint-Sigismond"])
+    assert [i.origin for i in images] == ["object", "article", "object", "commons"]
+    assert si.focus_image_count(images) == 2
+    pool = si.SubjectImagePool(images)
+    assert [i.key for i in pool.candidates()][:2] == ["Statue.jpg", "Larressingle (32) Église Saint-Sigismond 02.JPG"]
+
+
+def test_topic_without_object_image_is_discarded(monkeypatch):
+    from auracontent.channels.mystery import brain as mb
+
+    for name in ("load_global_history",):
+        monkeypatch.setattr(mb, name, lambda: [])
+    monkeypatch.setattr(mb, "load_used_sources", lambda: set())
+    monkeypatch.setattr(mb, "load_rejected", lambda channel: (set(), set()))
+    monkeypatch.setattr(mb, "load_last_regions", lambda **k: [])
+    monkeypatch.setattr(mb, "load_last_categories", lambda **k: [])
+    monkeypatch.setattr(mb, "place_details", lambda qid: {"commune": "C"})
+    pages = iter([{"title": f"Lieu {i}", "url": "u", "extract": "x"} for i in range(10)])
+    brain = _mystery_brain()
+    brain._anecdotes = []
+    brain._find_source = lambda region, category, used: next(pages)
+    brain.count_source_images = lambda source, details, focus=None: (30, 0)    # 30 photos, aucune de l'objet
+    brain._accept_title = lambda trial, used: "Titre"
+    with pytest.raises(RuntimeError):
+        brain.pick_topic(max_attempts=3)
+
+
+def test_commune_article_is_its_own_commune(monkeypatch):
+    from auracontent.services.scraping import wikipedia as wp
+
+    entities = {
+        "Q1": {"labels": {"fr": {"value": "Larressingle"}},
+               "claims": {"P31": [{"mainsnak": {"datavalue": {"value": {"id": "Q484170"}}}}],
+                          "P131": [{"rank": "normal", "mainsnak": {"datavalue": {"value": {"id": "Q2"}}}}]}},
+        "Q2": {"labels": {"fr": {"value": "Gers"}},
+               "claims": {"P31": [{"mainsnak": {"datavalue": {"value": {"id": "Q6465"}}}}]}},
+    }
+    monkeypatch.setattr(wp, "_wikidata", lambda params: {"entities": {params["ids"]: entities[params["ids"]]}})
+    assert wp.place_details("Q1") == {"commune": "Larressingle", "department": "Gers"}   # pas « canton de... »
+
+
+def test_anecdote_keeps_its_illustration_and_cited_articles():
+    from auracontent.services.scraping.anecdotes import parse_anecdotes
+
+    line = ("* <!--@ID_14652-->[[Fichier:Larressingle (32) Église Saint-Sigismond 11.JPG|40px|droite|Statue de "
+            "[[Sigismond (saint)|saint Sigismond]] dans l’église de [[Larressingle]].]]Dans l’église Saint-Sigismond "
+            "de '''[[Larressingle]]''', la statue du [[Sigismond (saint)|saint patron]] ''(photo)'' est une réduction "
+            "de [[Vercingétorix (Millet)|celle de Vercingétorix]].")
+    a = parse_anecdotes(line)[0]
+    assert a["target"] == "Larressingle" and a["file"] == "Larressingle (32) Église Saint-Sigismond 11.JPG"
+    assert a["caption"] == "Statue de saint Sigismond dans l'église de Larressingle."
+    assert a["links"] == ["Sigismond (saint)", "Vercingétorix (Millet)"]
+
+
+def test_corner_mascot_has_no_drop_shadow():
+    from auracontent.services.visuals.mascot import load_mascot
+
+    path = "assets/mystery/images/mascotte_curieux.png"
+    with_shadow, without = load_mascot(path, None, True), load_mascot(path, None, False)
+
+    def faint(img):
+        a = img.getchannel("A")
+        return sum(1 for y in range(int(img.height * 0.88), img.height) for x in range(img.width)
+                   if 0 < a.getpixel((x, y)) <= 70)
+
+    assert faint(with_shadow) > 2000 and faint(without) < 300
+    assert without.height <= with_shadow.height
+
+
+def test_documents_get_reserved_shots(monkeypatch, tmp_path):
+    m = _fake_manager(monkeypatch, tmp_path, [("a1", "article"), ("a2", "article"), ("a3", "article"),
+                                              ("d1", "document")])
+    m.subject_cfg["document_shots"] = 1
+    out = str(tmp_path / "x")
+    origins = []
+    for sid in (1, 2, 3, 4):
+        m.get_scene_asset({"id": sid}, out)
+        origins.append(m.last_origin)
+    assert origins == ["article", "article", "document", "article"]     # même si les photos suffisent
+
+
+def test_archive_queries_widen_to_the_building_name(monkeypatch, tmp_path):
+    m = _fake_manager(monkeypatch, tmp_path, [])
+    m.subject.update(focus=["statue de saint Sigismond", "église Saint-Sigismond"], commune="Larressingle",
+                     place_terms=["Larressingle", "Gers"])
+    assert m.archive_queries({}) == ["église Saint-Sigismond Larressingle", "église Saint-Sigismond"]
+    m.subject.update(focus=["Abbaye de la Grâce-Dieu"], place_terms=["Chaux-lès-Passavant", "Doubs"])
+    assert m.archive_notice_ok("Gravure de l'abbaye de la Grâce-Dieu", "Abbaye de la Grâce-Dieu")   # distinctif
+    assert not m.archive_notice_ok("Abbaye X, Gironde", "Abbaye X")

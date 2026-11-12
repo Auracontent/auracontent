@@ -16,6 +16,17 @@ brain:
   topic_attempts: 10            # essais de sujet ; si aucun ne passe, le sujet testé le mieux illustré
   min_source_images: 5          # images exploitables du lieu (article source + catégorie Commons) :
                                 # licence libre, 1000 px de large au moins, ni logo, ni carte, ni blason
+                                # + au moins UNE image de l'objet ou de l'édifice nommé, sinon sujet écarté
+
+  # Véracité : un avertissement du contrôle de véracité n'est jamais ignoré. À la limite d'essais, le sujet
+  # est abandonné (plus jamais proposé) et on passe au suivant, jusqu'à ce nombre de sujets par exécution.
+  veracity_topic_rounds: 3
+  # Matière : faits utilisables sur le sujet précis, extraits de la source avant d'écrire (gros modèle).
+  # Moins de min_facts faits, ou une source qui ne répond pas à la question du titre : sujet écarté.
+  min_facts: 4
+  require_title_answer: true
+  # Matière courte (max_facts faits au plus) : vidéo de 20 à 25 s plutôt qu'un script étiré
+  short_video: {max_facts: 6, seconds: 24, min_scenes: 3}
 
   # Sources de sujets, essayées dans l'ordre : anecdotes « Le saviez-vous ? » de Wikipédia (lieu ou objet
   # situé en France, d'après Wikidata), puis recherche Wikipédia par mots-clés aléatoires (repli)
@@ -25,14 +36,17 @@ brain:
     archives_per_run: 2       # années lues par exécution (tirées au hasard), plus la page d'accueil
     include_home: true
     sample: 200               # anecdotes examinées par exécution (Wikidata interrogé par lots de 50)
+    cited_articles: 3         # articles cités par l'anecdote, ajoutés à la source (résumé introductif)
+    cited_article_chars: 1500
 
   # Script : jamais de modèle plus petit que gpt-oss-120b ; si ces modèles sont saturés, on attend.
   # Le fact-check passe aussi par ces modèles (véracité).
   script_models: ["gemini", "gpt-oss-120b", "qwen3-235b", "deepseek-chat"]   # fragments de nom
   script_wait_rounds: 3
   script_wait_seconds: 60
-  # Tâches simples (choix de page, titre, retournement, doublon, accroches, bandeau, légende) : petits
-  # modèles. S'ils échouent tous, repli sur les autres modèles, sauf ceux du script (Gemini et gros modèles).
+  # Notation des accroches (phrase complète, verbe conjugué, note) et extraction des faits : ces modèles.
+  # Tâches simples (choix de page, objet de l'anecdote, titre, retournement, doublon, génération des
+  # accroches, bandeau, légende) : petits modèles. S'ils échouent tous, repli sur les autres modèles, sauf ceux du script (Gemini et gros modèles).
   simple_models: ["gpt-oss-20b", "llama-3.1-8b", "llama-4-scout", "gpt-4.1-mini", "gpt-4o-mini",
                   "glm-4.5-flash", "qwen-flash"]
   scene_count_tolerance: 1      # script accepté à une scène près de la cible
@@ -223,6 +237,9 @@ visuals:
                                 # seulement si la chaîne n'est pas monétisée ou après accord de la BnF
     stock_video: true           # (e) dernier recours
     stock_video_max_scenes: 1   # au-delà, avertissement dans le journal
+    allowed_mime: ["image/jpeg"]  # photos seulement : les PNG du lieu sont presque toujours des cartes ou
+                                  # des schémas (« Routes-Hydro.png », « Sols.png »)
+    document_shots: 2           # variété : 1 ou 2 plans réservés aux documents d'époque s'il en existe
   ai_fallback_model: "turbo"
   # Carte animée « où ça se passe » (lot 1) : la France, zoom vers la région, point jaune, nom du lieu.
   # Coordonnées : page Wikipédia source, sinon géocodage Nominatim du lieu de la scène 1 ; sans
@@ -245,7 +262,8 @@ visuals:
 # Mascotte « C’est arrivé ici » : épingle jaune expressive (assets/mystery/images/mascotte_<expression>.png).
 # Carte : « curieux » se pose sur le lieu à la place du point jaune, avec un rebond.
 # Vidéo : petite (150 px) à gauche, sous le bandeau-titre et au-dessus des sous-titres ; « curieux » par
-# défaut, « surpris » pendant la révélation (role: reveal), « clin » sur la dernière scène.
+# défaut, « surpris » pendant la phrase de la révélation (reveal_sentence du script), « clin » sur la
+# dernière scène. Ombre portée seulement sur la carte, pas dans le coin.
 mascot:
   enabled: true
   height: 150
@@ -253,7 +271,6 @@ mascot:
   y: null                 # null : juste sous le bandeau-titre (3 lignes au plus)
   on_map: true
   map_height: 190
-  reveal_roles: ["reveal"]
 
 # Publication (publish.py) — uniquement des NOMS de variables d'environnement, jamais les valeurs
 publish:

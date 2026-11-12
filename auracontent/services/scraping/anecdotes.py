@@ -84,8 +84,25 @@ def plain_text(wikitext: str) -> str:
     return re.sub(r"\s+([.,;:!?)])", r"\1", text).strip(" *")
 
 
+ARTICLE_LINK_RE = re.compile(r"\[\[([^\]|#:]+)(?:#[^\]|]*)?(?:\|[^\]]*)?\]\]")
+
+
+def _illustration(line: str) -> tuple[str | None, str]:
+    """(fichier, légende) de l'illustration de l'anecdote : « [[Fichier:X.JPG|40px|droite|Légende]] »."""
+    match = FILE_RE.search(COMMENT_RE.sub("", line))
+    if not match:
+        return None, ""
+    inner = match.group(0)[2:-2]
+    name = inner.split("|", 1)[0].split(":", 1)[1].strip()
+    params = re.split(r"\|(?![^\[]*\]\])", inner)[1:]
+    caption = next((p for p in reversed(params) if p.strip() and not re.fullmatch(
+        r"\s*(\d+px|droite|gauche|centre|right|left|center|vignette|thumb|upright[=0-9.]*|alt=.*|lien=.*)\s*", p)), "")
+    return name or None, plain_text(caption)
+
+
 def parse_anecdotes(wikitext: str) -> list[dict]:
-    """[{id, text, target}] : une entrée par anecdote, avec l'article cible (lien en gras)."""
+    """[{id, text, target, links, file, caption}] : une entrée par anecdote, avec l'article cible (lien en
+    gras), les autres articles qu'elle cite, et son illustration (fichier Commons et légende)."""
     anecdotes, lines = [], wikitext.splitlines()
     for i, line in enumerate(lines):
         if not line.startswith("*") or line.startswith("*:"):
@@ -99,8 +116,16 @@ def parse_anecdotes(wikitext: str) -> list[dict]:
             target = disc.group(1).strip() if disc else None
         text = plain_text(line)
         if target and text:
+            target = target.replace("_", " ")
+            links = []
+            for m in ARTICLE_LINK_RE.finditer(body):
+                link = m.group(1).replace("_", " ").strip()
+                if link and link.lower() != target.lower() and link not in links:
+                    links.append(link)
+            file, caption = _illustration(line)
             anecdotes.append({"id": id_match.group(1) if id_match else f"{target}:{text[:40]}",
-                              "text": text, "target": target.replace("_", " ")})
+                              "text": text, "target": target, "links": links, "file": file,
+                              "caption": caption})
     return anecdotes
 
 

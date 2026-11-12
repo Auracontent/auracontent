@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import re
 import xml.etree.ElementTree as ET
+from collections import Counter
 
 import requests
 from auracontent.utils.scraping_helpers import calculate_relevance, download_file, is_used, mark_used
@@ -61,33 +62,42 @@ class GallicaProvider:
         self.last_url = ""
         self.headers = {"User-Agent": f"AuraContentPipeline/2.0 ({WIKIMEDIA_CONTACT}) requests/{requests.__version__}"}
 
-    def get_image(self, query: str, output_path: str) -> bool:
+    def get_image(self, query: str, output_path: str, accept=None) -> bool:
+        """Première image du domaine public pertinente. Journal : requête, résultats bruts, retenus, rejets."""
         if not self.enabled or not query.strip():
             return False
-        print(f"📜 Recherche Gallica : '{query}'...")
         cql = f'gallica all "{query}" and dc.type all "image"'
         try:
             r = requests.get(SRU_URL, params={"operation": "searchRetrieve", "version": "1.2", "query": cql,
                                               "maximumRecords": MAX_RECORDS}, headers=self.headers, timeout=25)
         except requests.RequestException as e:
-            print(f"❌ Gallica : {e}")
+            print(f"📜 Gallica « {query} » : erreur réseau {e}")
             return False
         if r.status_code != 200 or "xml" not in r.headers.get("Content-Type", "xml"):
-            print(f"❌ Gallica HTTP {r.status_code} (réponse non XML : accès probablement filtré)")
+            print(f"📜 Gallica « {query} » : HTTP {r.status_code} (réponse non XML : accès probablement filtré)")
             return False
+        records = parse_records(r.text)
+        rejects: Counter = Counter()
         candidates = []
-        for rec in parse_records(r.text):
-            if not rec["public"] or is_used(self.history, "gallica", rec["ark"]):
-                continue
-            candidates.append((calculate_relevance(query, rec["title"]), rec["ark"], rec["title"]))
+        for rec in records:
+            if not rec["public"]:
+                rejects["pas dans le domaine public"] += 1
+            elif is_used(self.history, "gallica", rec["ark"]):
+                rejects["déjà utilisée"] += 1
+            elif (score := calculate_relevance(query, rec["title"])) < MIN_RELEVANCE:
+                rejects[f"pertinence < {MIN_RELEVANCE}"] += 1
+            elif accept is not None and not accept(rec["title"]):
+                rejects["ni la commune ni l'édifice nommés (homonyme ?)"] += 1
+            else:
+                candidates.append((score, rec["ark"], rec["title"]))
+        print(f"📜 Gallica « {query} » : {len(records)} résultat(s), {len(candidates)} retenu(s)"
+              + (f" ; rejets : {', '.join(f'{n} {k}' for k, n in rejects.most_common())}" if rejects else ""))
         for score, ark, title in sorted(candidates, reverse=True)[:3]:
-            if score < MIN_RELEVANCE:
-                break
             url = IIIF_URL.format(ark=ark, width=IMAGE_WIDTH)
             if download_file(url, output_path, headers=self.headers, min_bytes=MIN_IMAGE_BYTES):
                 self.last_text, self.last_url = title, url
                 mark_used(self.history, "gallica", ark)
                 print(f"✅ Gallica OK (Score {score:.2f})")
                 return True
-        print(f"ℹ️ Gallica : aucune image pertinente pour '{query}' ({len(candidates)} candidats).")
+            print(f"   ↯ Gallica : téléchargement impossible ({url})")
         return False
