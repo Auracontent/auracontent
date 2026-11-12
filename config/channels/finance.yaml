@@ -1,0 +1,155 @@
+channel_name: "finance"
+description: "Capital Simple : les chiffres, sans jargon. Épargne, intérêts composés, inflation : un mécanisme, des chiffres calculés, en moins d'une minute."
+
+# Historiques propres à la chaîne (assets/shared/state/finance/, meta/finance/ sur Hugging Face) :
+# jamais mélangés à ceux de mystery.
+state:
+  isolated: true
+
+# Brain (LLM)
+brain:
+  language: "fr"
+  scene_count: 9            # plafond
+  target_duration: 50       # secondes (surchargé par VIDEO_DURATION dans le workflow) ; cible 45-60 s
+  seconds_per_scene: 7      # 50 s -> 7 scènes
+  scene_count_tolerance: 1
+  resume_max_attempts: 3
+  resume_max_days: 7
+  veracity_topic_rounds: 2
+
+  # 429 : fournisseur suivant sans attendre (Groq gpt-oss-20b : 8 000 tokens/min)
+  rate_limit: fallback
+  # Un script qui garde des avertissements de style est régénéré, jamais publié
+  style_warnings: reject
+
+  script_models: ["gemini", "gpt-oss-120b", "deepseek-chat"]   # fragments de nom
+  script_wait_rounds: 2
+  script_wait_seconds: 60
+  simple_models: ["gpt-oss-20b", "llama-3.1-8b", "gpt-4.1-mini", "gpt-4o-mini", "glm-4.5-flash", "qwen-flash"]
+
+  # Style parlé : tutoiement, ton posé, phrases courtes, aucun jargon
+  style:
+    max_sentence_words: 12
+    max_hook_words: 12
+    banned_words: ["rendement garanti", "gain garanti", "sans risque", "investis", "achète", "conseil",
+                   "placement sûr", "valeur sûre", "devenir riche", "millionnaire"]
+  # Produits, banques et marques : jamais cités
+  banned_names: ["livret A", "PEL", "LDDS", "assurance-vie", "PEA", "ETF", "bourse", "crypto", "bitcoin",
+                 "SCPI", "banque"]
+
+  # Concepts permanents. Le sujet = concept + paramètres ; la déduplication porte sur les deux.
+  # Les valeurs autorisées sont les seules que le script peut citer en entrée (les résultats viennent de calc.py).
+  recent_concepts_window: 2   # un concept ne revient pas dans les 2 dernières vidéos
+  concepts:
+    interets_composes:
+      label: "intérêts composés"
+      idea: "les gains rapportent à leur tour des gains : commencer tôt pèse plus que la mise"
+      params:
+        early_age: [18, 20, 22, 25]
+        late_age: [35, 40, 45]
+        early_amount: [100, 200, 500]
+        late_amount_factor: [2, 3]
+        rate: [5, 6, 7]
+        end_age: [60, 65]
+    inflation:
+      label: "inflation"
+      idea: "l'argent qui dort perd du pouvoir d'achat chaque année"
+      params:
+        amount: [1000, 5000, 10000]
+        inflation: [2, 3, 4]
+        years: [10, 20, 30]
+    cout_du_temps:
+      label: "coût du temps"
+      idea: "attendre quelques années avant de commencer coûte plus cher qu'on ne le croit"
+      params:
+        monthly: [50, 100, 200]
+        rate: [4, 5, 7]
+        delay_years: [5, 10]
+        horizon_years: [30, 40]
+    frais:
+      label: "frais"
+      idea: "un petit pourcentage de frais par an grignote une grosse part du résultat final"
+      params:
+        amount: [5000, 10000, 20000]
+        rate: [5, 6, 7]
+        fees: [0.5, 1, 2]
+        years: [20, 30]
+    regle_72:
+      label: "règle des 72"
+      idea: "72 divisé par le taux donne à peu près le nombre d'années pour doubler"
+      constants: [72]           # nombres propres au concept, autorisés dans le texte
+      params:
+        rate: [2, 3, 4, 6, 8, 9, 12]
+
+# Audio : mêmes services que mystery. Voix native (méthode B1 : aucune direction de jeu ajoutée,
+# vitesse naturelle).
+audio:
+  engines: [gemini, edge]
+  batch_tts: true
+  gemini:
+    narrator:
+      voice: "Charon"
+      style: ""
+  edge:
+    narrator: {voice: "fr-FR-RemyMultilingualNeural", rate: "+0%", pitch: "+0Hz"}
+
+# Vidéo (Composer). Polices, effets et bandeau propres à la chaîne ; fond papier clair.
+video_composer:
+  video_width: 1080
+  video_height: 1920
+  fps: 30
+  transitions: ["fade"]
+  transition_duration: 0.2
+  voice_gain: 1.0
+  music_gain: 0.0            # pas de musique
+  fonts_dir: "finance/fonts"
+  sfx_dir: "finance/sfx"
+  source_credit_enabled: false
+
+  watermark_filename: "capital_simple_watermark.png"
+  watermark_width: 120
+  watermark_opacity: 0.9
+  watermark_x: 42
+  watermark_y: 56
+
+  # Bandeau permanent « AFFIRMATION | PUNCHLINE » : affirmation à l'encre, punchline noire sur or
+  headline_persistent: true
+  headline_font: "Poppins-Bold.ttf"
+  headline_font_size: 84
+  headline_chars_per_line: 20
+  headline_max_lines: 3
+  headline_y: 230
+  headline_accent_color: "0xE0A526"
+  headline_accent_text_color: "0x1A1A1A"
+  headline_text_color: "0x1A1A1A"
+  headline_border_ratio: 0
+  headline_shadow_color: ""
+
+  # Sous-titres Poppins, encre sur papier, chiffres en or ; au-dessus de y = 1440 (zone de sécurité)
+  subtitle_style: "FontName=Poppins,FontSize=13,Bold=1,PrimaryColour=&H001A1A1A,OutlineColour=&H00EAF3F7,BorderStyle=1,Outline=1.2,Shadow=0,Alignment=2,MarginL=30,MarginR=60,MarginV=82"
+  subtitle_uppercase: false
+  subtitle_highlight_color: "#E0A526"
+
+visuals:
+  map_scene:
+    enabled: false
+
+mascot:
+  enabled: false
+
+# Publication : uniquement des NOMS de variables d'environnement, jamais les valeurs
+publish:
+  hf_repo: "soradata/AIShortvideos"
+  hf_folder: "finance"
+  zernio_key_env: "ZERNIO_API_KEY_FINANCE"
+  platforms:
+    - {platform: youtube, account_env: YOUTUBE_ACCOUNT_ID_FINANCE}
+    - {platform: tiktok,  account_env: TIKTOK_ACCOUNT_ID_FINANCE}
+  delay_between_platforms: 15
+  stats:
+    platform: null
+    account_envs: [TIKTOK_ACCOUNT_ID_FINANCE, YOUTUBE_ACCOUNT_ID_FINANCE]
+    limit: 20
+  fallback_hashtags: "#finance #epargne #argent #capitalsimple"
+  brand_hashtag: "#capitalsimple"
+  caption_footer: "Contenu pédagogique, pas un conseil en investissement."
