@@ -17,45 +17,54 @@ PENDING_FILE = "pending_topics.json"
 PENDING_PATH = STATE_DIR / PENDING_FILE
 
 
-def _load() -> dict:
+def _path(channel: str | None = None):
+    """Chaîne à état isolé (`state.isolated`) : son propre fichier ; sinon le fichier partagé historique."""
+    from auracontent.services.publishing.state_sync import channel_state_dir
+
+    own = channel_state_dir(channel)
+    return own / PENDING_FILE if own else PENDING_PATH
+
+
+def _load(channel: str | None = None) -> dict:
     try:
-        data = json.loads(PENDING_PATH.read_text(encoding="utf-8"))
+        data = json.loads(_path(channel).read_text(encoding="utf-8"))
         return data if isinstance(data, dict) else {}
     except (OSError, ValueError):
         return {}
 
 
-def _write(data: dict) -> None:
+def _write(data: dict, channel: str | None = None) -> None:
+    path = _path(channel)
     try:
-        PENDING_PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = PENDING_PATH.with_suffix(".tmp")
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".tmp")
         tmp.write_text(json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8")
-        tmp.replace(PENDING_PATH)
+        tmp.replace(path)
     except OSError as e:
         print(f"⚠️ Sujet en attente non enregistré : {e}")
 
 
 def save_pending(channel: str, state: dict) -> None:
     """Enregistre (ou met à jour) l'état validé de la chaîne ; compte les tentatives d'écriture du script."""
-    data = _load()
+    data = _load(channel)
     previous = data.get(channel) or {}
     same = previous.get("topic") == state.get("topic")
     data[channel] = {**state, "saved_at": previous.get("saved_at") if same else
                      datetime.now(UTC).isoformat(timespec="seconds"),
                      "script_attempts": int(previous.get("script_attempts", 0)) if same else 0}
-    _write(data)
+    _write(data, channel)
 
 
 def note_script_attempt(channel: str) -> None:
-    data = _load()
+    data = _load(channel)
     if channel in data:
         data[channel]["script_attempts"] = int(data[channel].get("script_attempts", 0)) + 1
-        _write(data)
+        _write(data, channel)
 
 
 def load_pending(channel: str, max_attempts: int = 3, max_age_days: float = 7) -> dict | None:
     """État à reprendre, ou None (aucun, trop vieux, ou trop de tentatives : il est alors abandonné)."""
-    entry = _load().get(channel)
+    entry = _load(channel).get(channel)
     if not entry or not entry.get("topic"):
         return None
     try:
@@ -71,9 +80,9 @@ def load_pending(channel: str, max_attempts: int = 3, max_age_days: float = 7) -
 
 
 def clear_pending(channel: str) -> None:
-    data = _load()
+    data = _load(channel)
     if data.pop(channel, None) is not None:
-        _write(data)
+        _write(data, channel)
 
 
 # ---------- Sujets abandonnés (contrôle de véracité ou matière insuffisante) ----------
@@ -86,16 +95,16 @@ def note_rejected(channel: str, source_title: str | None, anecdote_id: str | Non
     """Le sujet ne sera plus proposé : ni sa page source, ni son anecdote."""
     if not source_title and not anecdote_id:
         return
-    data = _load()
+    data = _load(channel)
     entries = list((data.get(REJECTED_KEY) or {}).get(channel) or [])
     entries.append({"source_title": source_title, "anecdote_id": anecdote_id, "reason": reason[:300],
                     "date": datetime.now(UTC).isoformat(timespec="seconds")})
     data.setdefault(REJECTED_KEY, {})[channel] = entries[-MAX_REJECTED:]
-    _write(data)
+    _write(data, channel)
 
 
 def load_rejected(channel: str) -> tuple[set[str], set[str]]:
     """(titres des pages en minuscules, identifiants d'anecdotes) des sujets abandonnés."""
-    entries = (_load().get(REJECTED_KEY) or {}).get(channel) or []
+    entries = (_load(channel).get(REJECTED_KEY) or {}).get(channel) or []
     return ({str(e["source_title"]).lower() for e in entries if e.get("source_title")},
             {str(e["anecdote_id"]) for e in entries if e.get("anecdote_id")})

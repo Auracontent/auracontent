@@ -9,6 +9,7 @@
 import argparse
 import sys
 
+from auracontent.channels.registry import CHANNEL_REGISTRY
 from auracontent.core.brain.global_brain import GlobalBrain
 from auracontent.core.brain.llm_client import LLMClient
 from auracontent.core.pipeline import produce_video
@@ -24,12 +25,13 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--sync-state", action="store_true", help="lire/sauver les historiques sur Hugging Face")
     args = parser.parse_args(argv)
 
+    # chaînes de l'exécution : leurs historiques seulement (fichiers partagés ou dossiers isolés)
+    channels = args.channels or list(CHANNEL_REGISTRY)
     if args.sync_state:
-        pull_state()
+        pull_state(channels)
 
     llm = LLMClient.create_default()
     brain = GlobalBrain(llm_client=llm)
-    channels = args.channels or list(brain.channels)
 
     results = {}
     for name in channels:
@@ -49,9 +51,9 @@ def main(argv: list[str]) -> int:
     # Après un échec, seul le sujet en attente est sauvé : l'exécution suivante le reprend.
     if args.sync_state:
         if any(results.values()):
-            push_state()
+            push_state(channels=channels)
         else:
-            push_state((PENDING_FILE,))
+            push_state((PENDING_FILE,), channels=channels)
     return 0 if all(results.values()) else 1
 
 

@@ -446,17 +446,23 @@ class LLMClient:
     def call_with_fallback(self, messages, temperature=1.0, json_mode=False,
                            max_completion_tokens=3000, hard_token_cap=7500,
                            allowed_models: list[str] | None = None, wait_rounds: int = 0, wait_seconds: float = 60,
-                           fallback_excluded: list[str] | None = None):
-        """Cascade des fournisseurs. Avec `allowed_models`, seuls ces modèles sont essayés ; s'ils échouent
+                           fallback_excluded: list[str] | None = None, rate_limit: str = "wait"):
+        """Cascade des fournisseurs.
+
+        `rate_limit` : « wait » (défaut) attend la fin de la limite par minute puis réessaie le même modèle ;
+        « fallback » passe au fournisseur suivant dès le premier 429 (option `brain.rate_limit` du YAML). Avec `allowed_models`, seuls ces modèles sont essayés ; s'ils échouent
         tous (quota par minute), on attend `wait_seconds` puis on recommence, `wait_rounds` fois au plus,
         plutôt que de descendre vers un modèle plus petit.
 
         `fallback_excluded` (tâches simples) : si les modèles autorisés échouent tous, on essaie les autres,
         sauf ceux qui correspondent à ces fragments (Gemini, réservé au script)."""
+        if rate_limit not in ("wait", "fallback"):
+            raise ValueError(f"rate_limit inconnu : {rate_limit!r} (attendu « wait » ou « fallback »)")
+        extra = {"rate_limit": rate_limit} if rate_limit != "wait" else {}   # défaut : appel inchangé
         for round_ in range(wait_rounds + 1):
             try:
                 return self._call_providers(messages, temperature, json_mode, max_completion_tokens,
-                                            hard_token_cap, allowed_models)
+                                            hard_token_cap, allowed_models, **extra)
             except RuntimeError:
                 alive = [p for p in self.providers if self.model_allowed(p["model"], allowed_models)]
                 if round_ == wait_rounds or not alive:
@@ -468,7 +474,7 @@ class LLMClient:
                             print(f"↪️ Petits modèles indisponibles : repli sur {', '.join(others[:4])}"
                                   f"{'…' if len(others) > 4 else ''} (sans {', '.join(fallback_excluded)}).")
                             return self._call_providers(messages, temperature, json_mode, max_completion_tokens,
-                                                        hard_token_cap, others)
+                                                        hard_token_cap, others, **extra)
                     raise
                 print(f"⏳ Modèles autorisés saturés ({', '.join(allowed_models or [])}) : attente de "
                       f"{wait_seconds:.0f} s avant un nouvel essai ({round_ + 1}/{wait_rounds}).")
@@ -476,7 +482,7 @@ class LLMClient:
         raise RuntimeError("inaccessible")
 
     def _call_providers(self, messages, temperature, json_mode, max_completion_tokens, hard_token_cap,
-                        allowed_models=None):
+                        allowed_models=None, rate_limit: str = "wait"):
         providers = self.providers
         if not providers:
             raise RuntimeError("Aucune clé API LLM (GEMINI / GROQ / OPENROUTER) configurée.")
@@ -565,6 +571,9 @@ class LLMClient:
                         if _is_daily_quota(e, err_str):
                             _DEAD_MODELS.add(provider["model"])
                             print(f"⛔ Quota journalier atteint ({provider['model']}), ignoré pour cette exécution.")
+                            break
+                        if rate_limit == "fallback":
+                            print(f"⏭️ 429 sur {provider['model']} : fournisseur suivant sans attendre.")
                             break
                         nums = _RATE_LIMIT_NUMS_RE.search(err_str)
                         if nums and int(nums.group(2)) > int(nums.group(1)):  # requête plus grosse que la limite

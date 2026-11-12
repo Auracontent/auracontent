@@ -134,6 +134,19 @@ class GlobalBrain:
         """Stats Zernio du compte de la chaîne (noms des variables dans la section `publish` du YAML)."""
         api_key = os.getenv(publish_cfg.get("zernio_key_env", "ZERNIO_API_KEY"))
         stats_cfg = publish_cfg.get("stats", {})
+        account_envs = stats_cfg.get("account_envs")
+        if account_envs:
+            # stats.account_envs : uniquement les comptes de la chaîne (un appel par compte) ; un compte
+            # sans variable est ignoré, jamais remplacé par « tous les comptes » de la clé
+            ids = [os.getenv(env) for env in account_envs]
+            if not any(ids):
+                print("ℹ️ Aucun identifiant de compte de la chaîne : boucle de feedback désactivée.")
+                return None
+            merged = []
+            for account_id in filter(None, ids):
+                merged += get_latest_videos_stats(api_key, platform=stats_cfg.get("platform"),
+                                                  account_id=account_id, limit=stats_cfg.get("limit", 20)) or []
+            return merged or None
         account_env = stats_cfg.get("account_env")
         return get_latest_videos_stats(
             api_key,

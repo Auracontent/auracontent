@@ -38,11 +38,20 @@ def apply_hashtag_rules(caption: str, brand_hashtag: str | None = None, banned_h
     return caption
 
 
+def apply_caption_footer(caption: str, footer: str | None = None) -> str:
+    """Mention fixe (`publish.caption_footer`, ex. avertissement) ajoutée une fois ; absente = inchangé."""
+    footer = (footer or "").strip()
+    if not footer or footer in caption:
+        return caption
+    return f"{caption.rstrip()}\n\n{footer}"
+
+
 def generate_caption(llm, title: str, scenes: list[dict], fallback_hashtags: str = "",
-                     brand_hashtag: str | None = None, banned_hashtags=(), routing: dict | None = None) -> str:
+                     brand_hashtag: str | None = None, banned_hashtags=(), routing: dict | None = None,
+                     footer: str | None = None) -> str:
     """`routing` : modèles autorisés (tâche simple, voir BaseBrain.simple_routing)."""
     caption = _generate_caption(llm, title, scenes, fallback_hashtags, routing or {})
-    return apply_hashtag_rules(caption, brand_hashtag, banned_hashtags)
+    return apply_hashtag_rules(apply_caption_footer(caption, footer), brand_hashtag, banned_hashtags)
 
 
 def _generate_caption(llm, title: str, scenes: list[dict], fallback_hashtags: str = "",
