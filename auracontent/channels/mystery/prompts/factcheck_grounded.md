@@ -10,6 +10,14 @@ SOURCE ({source_title}) :
 SCRIPT :
 {scenes_text}
 
-Ne signale PAS : les reformulations, la dramatisation, les transitions narratives, ni les généralités sans fait précis.
+FAITS UTILISABLES (extraits de la source) :
+{facts_block}
+
+Signale aussi, en citant la phrase :
+- toute phrase qui ne s'appuie sur aucun des FAITS UTILISABLES (phrase vide, remplissage, généralité qui n'apprend rien) ;
+- toute phrase écrite pour justifier une image (« le pont en témoigne aussi », « on le voit encore ici ») ;
+- si le script ne répond pas à la question posée par le titre « {topic} » (réponse attendue d'après la source : {answer}).
+
+Ne signale PAS : les reformulations, la dramatisation d'un fait de la liste, ni la phrase d'ouverture qui reprend l'accroche.
 
 Retourne : {"is_consistent": true|false, "issues": ["..."]}

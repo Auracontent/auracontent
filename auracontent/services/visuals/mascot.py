@@ -2,7 +2,8 @@
 
 - Carte : à la fin du zoom, l'expression « curieux » se pose sur le lieu, pointe sur le point, avec un rebond.
 - Vidéo : petite mascotte (≈ 150 px) à gauche, sous le bandeau-titre et au-dessus des sous-titres ;
-  « curieux » par défaut, « surpris » pendant la révélation, « clin » sur la dernière scène.
+  « curieux » par défaut, « surpris » pendant la phrase de la révélation, « clin » sur la dernière scène.
+  Sans ombre portée dans le coin ; l'ombre ne sert que sur la carte.
 
 Réglage : section `mascot` du YAML ; absente = désactivée (autres chaînes). Fichier manquant = pas de
 mascotte, avec un avertissement : la vidéo sort comme avant.
@@ -30,7 +31,6 @@ def mascot_settings(cfg: dict | None) -> dict:
     cfg.setdefault("gap", 30)
     cfg.setdefault("on_map", True)         # remplace le point jaune de la carte animée
     cfg.setdefault("map_height", 190)
-    cfg.setdefault("reveal_roles", ["reveal"])
     return cfg
 
 
@@ -49,11 +49,32 @@ def mascot_files(cfg: dict, channel_name: str) -> dict[str, str]:
     return files
 
 
+SHADOW_MAX_ALPHA = 90        # ombre portée : ellipse sombre presque transparente (alpha ≈ 28) sous la pointe
+SHADOW_BAND = 0.14           # cherchée dans le bas de l'image seulement (bords lissés du contour ailleurs)
+
+
+def strip_shadow(img: Image.Image) -> Image.Image:
+    """Retire l'ombre portée : pixels sombres et presque transparents du bas de la mascotte."""
+    img = img.copy()
+    box = img.getchannel("A").getbbox() or (0, 0, img.width, img.height)
+    top = int(box[3] - (box[3] - box[1]) * SHADOW_BAND)
+    px = img.load()
+    for y in range(top, box[3]):
+        for x in range(box[0], box[2]):
+            r, g, b, a = px[x, y]
+            if 0 < a <= SHADOW_MAX_ALPHA and max(r, g, b) < 60:
+                px[x, y] = (r, g, b, 0)
+    return img
+
+
 @functools.lru_cache(maxsize=16)
-def load_mascot(path: str, height: int | None = None) -> Image.Image:
-    """Image RGBA recadrée sur sa partie visible (ombre comprise), à la hauteur demandée."""
+def load_mascot(path: str, height: int | None = None, shadow: bool = True) -> Image.Image:
+    """Image RGBA recadrée sur sa partie visible, à la hauteur demandée. `shadow=False` : sans l'ombre portée
+    (mascotte du coin de l'écran ; l'ombre ne sert que posée sur la carte)."""
     with Image.open(path) as img:
         img = img.convert("RGBA")
+        if not shadow:
+            img = strip_shadow(img)
         box = img.getchannel("A").getbbox() or (0, 0, img.width, img.height)
         img = img.crop(box)
     if height:
@@ -74,17 +95,31 @@ def tip_of(img: Image.Image) -> tuple[float, float]:
     return img.width / 2, float(img.height - 1)
 
 
-def overlay_png(path: str, height: int, out_dir: str) -> str:
-    """PNG à la taille d'affichage, pour le filtre overlay de FFmpeg (pas de mise à l'échelle par image)."""
+def overlay_png(path: str, height: int, out_dir: str, shadow: bool = False) -> str:
+    """PNG à la taille d'affichage, pour le filtre overlay de FFmpeg (pas de mise à l'échelle par image).
+    Coin de l'écran : sans ombre portée par défaut."""
     os.makedirs(out_dir, exist_ok=True)
-    out = os.path.join(out_dir, f"mascot_{height}_{os.path.basename(path)}")
+    out = os.path.join(out_dir, f"mascot_{height}_{'ombre' if shadow else 'sans_ombre'}_{os.path.basename(path)}")
     if not os.path.exists(out):
-        load_mascot(path, height).save(out)
+        load_mascot(path, height, shadow).save(out)
     return out
 
 
+def reveal_window(scene: dict) -> tuple[float, float] | None:
+    """(début, fin) en secondes de la phrase de la révélation dans la scène, estimés au prorata des
+    caractères prononcés (la voix lit le texte d'un trait). None si la scène ne la contient pas."""
+    sentence, text = str(scene.get("reveal_sentence") or ""), str(scene.get("text") or "")
+    duration = float(scene.get("duration") or 0)
+    start = text.find(sentence) if sentence else -1
+    if start < 0 or duration <= 0 or not text:
+        return None
+    return round(duration * start / len(text), 2), round(duration * (start + len(sentence)) / len(text), 2)
+
+
 def expression_for(scene: dict, index: int, count: int, cfg: dict, skip: set[int] | None = None) -> str | None:
-    """Expression de la mascotte dans le coin pour la scène `index` sur `count`.
+    """Expression de fond de la mascotte dans le coin pour la scène `index` sur `count` : « clin » sur la
+    dernière, « curieux » ailleurs. « Surpris » n'est montré que pendant la phrase de la révélation
+    (voir reveal_window), jamais sur une scène entière choisie d'après son rôle.
 
     None : pas de mascotte dans le coin (scène de la carte, où elle se pose déjà sur le lieu).
     """
@@ -92,8 +127,6 @@ def expression_for(scene: dict, index: int, count: int, cfg: dict, skip: set[int
         return None
     if index == count - 1:
         return "clin"
-    if str(scene.get("role", "")).lower() in {r.lower() for r in cfg.get("reveal_roles", ["reveal"])}:
-        return "surpris"
     return "curieux"
 
 

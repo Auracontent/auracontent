@@ -21,7 +21,7 @@ from auracontent.services.publishing.caption import generate_caption
 from auracontent.services.video.composer import Composer
 from auracontent.services.visuals.asset_manager import AssetManager, subject_settings
 from auracontent.services.visuals.map_scene import MapTarget, map_settings, pick_map_target, render_map_scene
-from auracontent.services.visuals.mascot import expression_for, mascot_files, mascot_settings
+from auracontent.services.visuals.mascot import expression_for, mascot_files, mascot_settings, reveal_window
 from auracontent.utils.hook_tracker import record_hook_usage
 from auracontent.utils.subtitles import generate_grouped_srt
 from config.settings import ASSETS_DIR, TEMP_DIR
@@ -213,15 +213,21 @@ class VideoPipeline:
             assets[i] = assets[i - 1]
 
     def _assign_mascot(self, scenes: list[dict]) -> None:
-        """Expression de la mascotte par scène : « curieux », « surpris » à la révélation, « clin » à la fin.
-        La scène de la carte (champ `map`, posé si la carte a été rendue) n'a pas de mascotte dans le coin :
-        elle se pose déjà sur le lieu. Si la carte a échoué, la scène garde la mascotte du coin."""
+        """Expression de la mascotte par scène : « curieux », « clin » à la fin, et « surpris » pendant la
+        phrase de la révélation seulement (script["reveal_sentence"], rattachée à sa scène ; minutage estimé
+        sur la durée réelle de la voix). La scène de la carte (champ `map`, posé si la carte a été rendue)
+        n'a pas de mascotte dans le coin : elle se pose déjà sur le lieu."""
         cfg = mascot_settings(self.channel.section("mascot"))
         if not cfg.get("enabled"):
             return
         skip = {i for i, scene in enumerate(scenes) if scene.get("map")} if cfg.get("on_map") else set()
         for i, scene in enumerate(scenes):
             scene["mascot"] = expression_for(scene, i, len(scenes), cfg, skip)
+            window = reveal_window(scene) if scene["mascot"] else None
+            if window:
+                scene["mascot_surprise"] = window
+                print(f"   😮 Mascotte « surpris » scène {scene['id']}, de {window[0]:.1f} à {window[1]:.1f} s : "
+                      f"« {scene['reveal_sentence']} »")
 
     # ---------- 2. Voix + sous-titres ----------
     async def _voice(self, scenes: list[dict]) -> list[dict]:

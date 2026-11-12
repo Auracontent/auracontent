@@ -162,16 +162,29 @@ class Composer:
         bottom = self.headline_y + self.headline_max_lines * line_height + accent_pad
         return int(cfg["x"]), bottom + int(cfg["gap"])
 
-    def _add_mascot(self, video_stream, expression: str | None):
+    def _add_mascot(self, video_stream, expression: str | None, surprise: tuple[float, float] | None = None):
+        """Mascotte du coin (sans ombre). `surprise` : (début, fin) de la phrase de la révélation, pendant
+        laquelle « surpris » remplace l'expression de fond."""
         path = self.mascot_files.get(expression or "")
         if not path:
             return video_stream
         from auracontent.services.visuals.mascot import overlay_png
 
-        png = overlay_png(path, int(self.mascot_cfg["height"]), os.path.join(self.temp_dir, "mascot"))
+        out_dir = os.path.join(self.temp_dir, "mascot")
+        height = int(self.mascot_cfg["height"])
         x, y = self.mascot_position()
+        surprised = self.mascot_files.get("surpris") if surprise else None
+        png = overlay_png(path, height, out_dir)
         sprite = ffmpeg.input(png, loop=1, framerate=self.fps).video.filter("format", "rgba")
-        return ffmpeg.overlay(video_stream, sprite, x=x, y=y, shortest=1, eof_action="repeat")
+        if not surprised:
+            return ffmpeg.overlay(video_stream, sprite, x=x, y=y, shortest=1, eof_action="repeat")
+        start, end = surprise
+        during = f"between(t,{start:.2f},{end:.2f})"
+        video_stream = ffmpeg.overlay(video_stream, sprite, x=x, y=y, shortest=1, eof_action="repeat",
+                                      enable=f"not({during})")
+        sprite2 = ffmpeg.input(overlay_png(surprised, height, out_dir), loop=1,
+                               framerate=self.fps).video.filter("format", "rgba")
+        return ffmpeg.overlay(video_stream, sprite2, x=x, y=y, shortest=1, eof_action="repeat", enable=during)
 
     # Musique et effets sonores
     def set_background_music(self, mood: str = "intriguing") -> None:
@@ -533,7 +546,7 @@ class Composer:
                 video_stream = self._add_overlay_title(video_stream, scene["overlay_text"], total_duration)
 
             if scene.get("mascot"):
-                video_stream = self._add_mascot(video_stream, scene["mascot"])
+                video_stream = self._add_mascot(video_stream, scene["mascot"], scene.get("mascot_surprise"))
 
             srt_path = scene.get("srt_path")
             if srt_path and os.path.exists(srt_path):

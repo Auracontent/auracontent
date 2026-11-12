@@ -18,7 +18,9 @@ from auracontent.services.visuals.subject_images import (
 from auracontent.services.visuals.subject_images import (
     SubjectImagePool,
     collect_subject_images,
+    is_distinctive,
     mentions_place,
+    name_matches,
     place_terms_of,
     subject_name,
 )
@@ -38,7 +40,7 @@ PERIOD_GUARD = ("period-accurate architecture, clothing and objects, no modern o
 
 AssetResult = tuple[bool, str]
 # Décompte de fin de génération : origine -> libellé du journal
-TALLY_LABELS = {"article": "Wikipédia", "commons": "Commons", "document": "Commons", "europeana": "Europeana",
+TALLY_LABELS = {"object": "Wikipédia", "article": "Wikipédia", "commons": "Commons", "document": "Commons", "europeana": "Europeana",
                 "gallica": "Gallica", "ai": "image générée", "video": "Pexels / Pixabay"}
 
 
@@ -51,6 +53,7 @@ def subject_settings(visuals_cfg: dict | None) -> dict:
     cfg.setdefault("europeana", True)       # sans effet sans clé EUROPEANA_API_KEY
     cfg.setdefault("gallica", False)        # réutilisation commerciale payante : voir gallica_provider.py
     cfg.setdefault("stock_video", True)     # (e) dernier recours
+    cfg.setdefault("document_shots", 0)     # plans réservés aux documents d'époque s'il en existe (variété)
     return cfg
 
 
@@ -104,6 +107,7 @@ class AssetManager:
         self.last_key: str | None = None         # visuel précédent : jamais deux fois de suite
         self.tally: Counter = Counter()          # plans par origine (journal de fin de génération)
         self.last_origin: str = ""
+        self.document_scenes: set = set()        # scènes qui ont déjà reçu un document d'époque
 
     @property
     def subject_mode(self) -> bool:
@@ -126,11 +130,15 @@ class AssetManager:
             "region": str(pick.get("region") or "").split("(")[0].strip(),
             "era": str(era or "").strip(),
             "place_terms": place_terms_of(pick),
+            # objet précis de l'anecdote et son édifice (une statue dans une église) : leurs images d'abord
+            "focus": [str(n) for n in pick.get("focus") or [] if str(n).strip()],
         }
         if images is None:
-            print(f"🖼️ Images du sujet : « {pick.get('source_title') or '?'} »")
+            focus = self.subject["focus"]
+            print(f"🖼️ Images du sujet : « {' / '.join(focus) or pick.get('source_title') or '?'} »")
             images = collect_subject_images(pick.get("source_title"), pick.get("commons_category"), self.subject_cfg,
-                                            place_terms=self.subject["place_terms"])
+                                            place_terms=self.subject["place_terms"], focus=focus or None,
+                                            focus_files=pick.get("focus_files") or None)
         self.pool = SubjectImagePool(images, self.max_uses)
         return len(self.pool)
 
@@ -158,8 +166,10 @@ class AssetManager:
         parts += [f"{label} {n}" for label, n in totals.items() if label not in order]
         return ", ".join(parts) or "aucun"
 
-    def _from_pool(self, output_path: str, first_use_only: bool) -> bool:
+    def _from_pool(self, output_path: str, first_use_only: bool, origins: set[str] | None = None) -> bool:
         for image in self.pool.candidates(avoid=self.last_key, first_use_only=first_use_only):
+            if origins is not None and image.origin not in origins:
+                continue
             if not download_file(image.url, output_path, headers=WIKIMEDIA_HEADERS, min_bytes=20_000):
                 self.pool.discard(image.key)
                 continue
@@ -180,26 +190,56 @@ class AssetManager:
     def archive_query(self, scene: dict) -> str:
         """Requête Europeana / Gallica : le lieu de la scène (scène « specific ») ou le sujet, suivi de la
         commune ou du département (homonymes). Le type de scène ne sert plus qu'à formuler la requête."""
+        queries = self.archive_queries(scene)
+        return queries[0] if queries else ""
+
+    def archive_queries(self, scene: dict) -> list[str]:
+        """Requêtes Europeana / Gallica, de la plus étroite à la plus large : « édifice commune », puis le nom
+        de l'édifice seul (la commune exigée dans la notice écartait presque tout)."""
         place = self.subject.get("commune") or self.subject.get("department") or ""
         if scene.get("scene_type") == "specific" and scene.get("location_name"):
             base = str(scene["location_name"]).strip()
         else:
-            base = self.subject.get("name") or str(scene.get("location_name") or "").strip()
+            base = (self.subject.get("focus") or [self.subject.get("name")])[-1] or \
+                str(scene.get("location_name") or "").strip()
         if not base or not place:     # sans commune ni département, impossible d'écarter les homonymes
-            return ""
-        return base if place.lower() in base.lower() else f"{base} {place}"
+            return []
+        narrow = base if place.lower() in base.lower() else f"{base} {place}"
+        return list(dict.fromkeys([narrow, base]))
+
+    def archive_notice_ok(self, text: str, base: str) -> bool:
+        """La notice nomme la commune ou le département, ou l'édifice par un nom propre distinctif."""
+        terms = self.subject.get("place_terms", [])
+        return mentions_place(text, terms) or (is_distinctive(base, terms) and name_matches(text, base, terms))
 
     def _archive_ok(self, origin: str, path: str) -> bool:
-        """Europeana / Gallica : la notice retenue doit nommer la commune ou le département."""
-        provider = self.europeana if origin == "europeana" else self.gallica
-        text = getattr(provider, "last_text", "")
-        if text and not mentions_place(text, self.subject.get("place_terms", [])):
-            print(f"   ↯ {origin} : notice sans la commune ni le département (homonyme probable), écartée.")
-            return False
         if not self._accept(path, origin):
             return False
+        provider = self.europeana if origin == "europeana" else self.gallica
         print(f"   🏺 {origin} : {getattr(provider, 'last_url', '?')}")
         return True
+
+    def _archives(self, scene: dict, output_path: str) -> AssetResult | None:
+        for query in self.archive_queries(scene):
+            base = self.archive_queries(scene)[-1]
+            accept = lambda text, base=base: self.archive_notice_ok(text, base)   # noqa: E731
+            if self.subject_cfg.get("europeana") and self.europeana.get_image(query, output_path, accept=accept) \
+                    and self._archive_ok("europeana", output_path):
+                return True, "europeana"
+            if self.gallica.get_image(query, output_path, accept=accept) and self._archive_ok("gallica", output_path):
+                return True, "gallica"
+        return None
+
+    def _document_slot(self, scene: dict) -> bool:
+        """Variété : subject_images.document_shots plans réservés aux documents d'époque, un par scène au
+        plus, jamais sur les deux premières scènes (ouverture et carte : le lieu réel)."""
+        wanted = int(self.subject_cfg.get("document_shots") or 0)
+        used = sum(self.tally[o] for o in ("document", "europeana", "gallica"))
+        try:
+            sid = int(str(scene.get("id", 0)))
+        except ValueError:
+            sid = 0
+        return used < wanted and sid >= 3 and sid not in self.document_scenes
 
     def period_prompt(self, scene: dict) -> str:
         """Prompt (d) : sujet de la scène + époque + lieu + « no modern objects »."""
@@ -219,15 +259,22 @@ class AssetManager:
         (a)-(c), (d) image générée datée et située, sans objet moderne, (e) vidéo de banque d'images.
         Retourne (succès, source) : wiki, europeana, gallica, ai, video ou none.
         """
+        if self._document_slot(scene):
+            print("   📜 Plan réservé à un document d'époque (variété).")
+            sid = int(str(scene.get("id", 0)))
+            if self._from_pool(output_path, first_use_only=True, origins={"document"}):
+                self.document_scenes.add(sid)
+                return True, "wiki"
+            found = self._archives(scene, output_path)
+            if found:
+                self.document_scenes.add(sid)
+                return found
         if self._from_pool(output_path, first_use_only=True):
             return True, "wiki"
+        found = self._archives(scene, output_path)
+        if found:
+            return found
         query = self.archive_query(scene)
-        if query:
-            if self.subject_cfg.get("europeana") and self.europeana.get_image(query, output_path) \
-                    and self._archive_ok("europeana", output_path):
-                return True, "europeana"
-            if self.gallica.get_image(query, output_path) and self._archive_ok("gallica", output_path):
-                return True, "gallica"
         if self._from_pool(output_path, first_use_only=False):
             return True, "wiki"
 

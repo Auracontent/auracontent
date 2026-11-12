@@ -10,11 +10,19 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from auracontent.core.brain.base_brain import BaseBrain
+from auracontent.core.brain.base_brain import BaseBrain, VeracityIssue
 from auracontent.services.scraping.anecdotes import collect_french_anecdotes
-from auracontent.services.scraping.wikipedia import fetch_page, find_candidates, place_details
+from auracontent.services.scraping.wikipedia import fetch_intro, fetch_page, find_candidates, place_details
 from auracontent.services.visuals.asset_manager import subject_settings
-from auracontent.services.visuals.subject_images import collect_subject_images, place_terms_of
+from auracontent.services.visuals.subject_images import (
+    WEAK_NAME_WORDS,
+    collect_subject_images,
+    focus_image_count,
+    mentions_focus,
+    name_matches,
+    place_terms_of,
+)
+from auracontent.utils.pending_topic import load_rejected
 from auracontent.utils.topic_tracker import (
     load_global_history,
     load_last_categories,
@@ -26,11 +34,12 @@ from auracontent.utils.topic_tracker import (
 MOODS = {"ominous", "intriguing", "tense", "awe", "scientific", "investigation"}
 ROLES = {"hook", "tension", "context", "value", "escalation", "reveal", "cta"}
 SCENE_TYPES = {"specific", "generic"}
+# (format, condition sur la source) : on ne propose pas « commence par l'année » sans date dans la source
 TITLE_FORMATS = [
-    "fait daté (commence par l'année ou la date)",
-    "lieu en tête, suivi de deux-points puis du fait",
-    "paradoxe en une phrase affirmative",
-    "chiffre précis en tête",
+    ("fait daté (commence par l'année ou la date)", "date"),
+    ("lieu en tête, suivi de deux-points puis du fait", None),
+    ("paradoxe en une phrase affirmative", None),
+    ("chiffre précis en tête", "number"),
 ]
 MAX_TITLE_CHARS = 80              # au-delà, YouTube coupe le titre bien avant la fin
 BANNED_TITLE_WORDS = ("le plus ", "la plus ", "les plus ", "incroyable", "hallucinant", "bizarre")
@@ -46,6 +55,17 @@ NUMBER_WORDS = {"deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf"
                 "soixante", "cent", "cents", "mille", "million", "millions", "milliard", "milliards"}
 STOPWORDS = {"le", "la", "les", "l", "de", "du", "des", "d", "et", "en", "au", "aux", "a", "à", "un", "une",
              "sur", "sous", "dans", "par", "pour", "ce", "cet", "cette", "son", "sa", "ses", "sans"}
+NUMBER_VALUES = {"deux": 2, "trois": 3, "quatre": 4, "cinq": 5, "six": 6, "sept": 7, "huit": 8, "neuf": 9,
+                 "dix": 10, "onze": 11, "douze": 12, "treize": 13, "quatorze": 14, "quinze": 15, "seize": 16,
+                 "vingt": 20, "trente": 30, "quarante": 40, "cinquante": 50, "soixante": 60, "cent": 100,
+                 "cents": 100, "mille": 1000, "million": 1000000, "millions": 1000000,
+                 "milliard": 1000000000, "milliards": 1000000000}
+DIGITS_RE = re.compile(r"\d{1,3}(?:[ \u00a0\u202f]\d{3})+(?!\d)|\d+")
+ROMAN_RE = re.compile(r"\b([IVXL]{1,6})(?:e|er|ème|eme)\b")
+YEAR_RE = re.compile(r"(?<!\d)(?:[3-9]\d{2}|1\d{3}|20[0-2]\d)(?!\d)")
+MONTHS = r"janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre"
+DATE_RE = re.compile(rf"\b\d{{1,2}}(?:er)?\s+(?:{MONTHS})\b|\b(?:{MONTHS})\s+\d{{3,4}}\b", re.IGNORECASE)
+DEFAULT_MIN_FACTS = 4
 
 
 def fold(text: str) -> str:
@@ -91,6 +111,84 @@ def banned_word_pattern(words) -> re.Pattern | None:
     if not stems:
         return None
     return re.compile(r"\b(" + "|".join(stems) + r")(e|s|es|x)?\b", re.IGNORECASE)
+
+
+def _roman(text: str) -> int | None:
+    values = {"I": 1, "V": 5, "X": 10, "L": 50}
+    total = 0
+    for i, ch in enumerate(text):
+        v = values[ch]
+        total += -v if i + 1 < len(text) and values[text[i + 1]] > v else v
+    return total or None
+
+
+def numbers_in(text: str) -> set[str]:
+    """Chiffres et dates écrits en chiffres (« 1 200 » -> « 1200 ») ou en siècle romain (« XIXe » -> « 19 »)."""
+    found = {str(int(re.sub(r"\D", "", m.group()))) for m in DIGITS_RE.finditer(str(text))}
+    found |= {str(v) for m in ROMAN_RE.finditer(str(text)) if (v := _roman(m.group(1)))}
+    return found
+
+
+def source_has_date(text: str) -> bool:
+    return bool(YEAR_RE.search(str(text)) or DATE_RE.search(str(text)))
+
+
+def proper_nouns(text: str) -> set[str]:
+    """Noms propres de la source, sans accents : mots à majuscule qui n'ouvrent pas une phrase."""
+    found = set()
+    for m in re.finditer(r"[^\W\d_][\w'\u2019-]*", str(text)):
+        word = m.group()
+        if not word[:1].isupper():
+            continue
+        before = str(text)[:m.start()].rstrip()
+        if not before or before[-1] in ".!?:«\"\n":
+            continue                                   # première lettre de phrase : pas forcément un nom
+        found.update(t for t in fold(word).split() if len(t) >= 3 and t not in STOPWORDS
+                     and t not in WEAK_NAME_WORDS and not ROMAN_RE.fullmatch(t.upper()))
+    return found
+
+
+def claim_issues(text: str, source: str, what: str = "le texte") -> list[str]:
+    """Titre, accroche, bandeau : une date ou un chiffre n'est permis que s'il figure mot pour mot dans la
+    source, et le texte contient un chiffre, une date ou un nom propre présent dans la source."""
+    issues = []
+    src_numbers, src_words = numbers_in(source), set(fold(source).split())
+    numbers = numbers_in(text)
+    missing = sorted(n for n in numbers if n not in src_numbers)
+    words = fold(text).split()
+    missing += [w for w in words if w in NUMBER_VALUES and w not in src_words
+                and str(NUMBER_VALUES[w]) not in src_numbers]
+    if missing:
+        issues.append(f"{what} « {text} » contient {', '.join(missing)}, absent(s) de la source : une date ou un "
+                      "chiffre n'est permis que s'il figure mot pour mot dans la source.")
+    has_number = bool(numbers) or any(w in NUMBER_VALUES for w in words)
+    if not has_number and not (set(words) & proper_nouns(source)):
+        issues.append(f"{what} « {text} » ne contient ni chiffre, ni date, ni nom propre présent dans la source.")
+    return issues
+
+
+def title_format(source_text: str, rng=random) -> str:
+    """Format de titre tiré au hasard parmi ceux que la source permet (date, chiffre)."""
+    allowed = [label for label, need in TITLE_FORMATS
+               if need is None or (need == "date" and source_has_date(source_text))
+               or (need == "number" and numbers_in(source_text))]
+    return rng.choice(allowed)
+
+
+def source_text(source: dict | None, max_chars: int = 6000) -> str:
+    """Source transmise au script et au contrôle de véracité : anecdote « Le saviez-vous ? » (texte et
+    légende de son illustration), article qu'elle cite en gras, puis les autres articles qu'elle cite."""
+    if not source:
+        return ""
+    parts = []
+    if source.get("anecdote"):
+        parts.append(f"ANECDOTE « Le saviez-vous ? » de Wikipédia : « {source['anecdote']} »")
+        if source.get("anecdote_caption"):
+            parts.append(f"LÉGENDE DE SON ILLUSTRATION : « {source['anecdote_caption']} »")
+    parts.append(f"ARTICLE « {source.get('title', '')} » :\n{str(source.get('extract', ''))[:max_chars]}")
+    for rel in source.get("related") or []:
+        parts.append(f"ARTICLE CITÉ PAR L'ANECDOTE « {rel['title']} » :\n{rel['extract']}")
+    return "\n\n".join(parts)
 
 
 @dataclass
@@ -151,7 +249,8 @@ class MysteryBrain(BaseBrain):
         max_attempts = int(max_attempts or b.get("topic_attempts", DEFAULT_TOPIC_ATTEMPTS))
         min_images = int(b.get("min_source_images", DEFAULT_MIN_SOURCE_IMAGES))
         used = load_global_history()
-        used_sources = load_used_sources()
+        rejected_titles, self._rejected_ids = load_rejected(self.channel_name)
+        used_sources = load_used_sources() | rejected_titles     # sujets publiés ou abandonnés
         stats_text = self._stats_text(previous_stats_list)
         tested: dict[str, dict] = {}          # titre de la page -> essai (pour le repli)
 
@@ -165,12 +264,19 @@ class MysteryBrain(BaseBrain):
                 continue
             title_vars.update(forced_region=region["name"], forced_category=category["name"])
 
+            title_vars["forced_format"] = title_format(source_text(source))
             trial = {"source": source, "region": region, "category": category, "title_vars": title_vars}
             trial["details"] = place_details(source.get("wikibase_item"))
-            trial["images"] = self.count_source_images(source, trial["details"])
+            trial["focus"] = self.subject_focus(source)
+            trial["images"], trial["focus_images"] = self.count_source_images(source, trial["details"],
+                                                                              trial["focus"])
             tested[source["title"].lower()] = trial
             print(f"   🖼️ Essai {attempt}/{max_attempts} « {source['title']} » : {trial['images']} image(s) "
-                  f"exploitable(s) (minimum {min_images})")
+                  f"exploitable(s) (minimum {min_images}), dont {trial['focus_images']} de "
+                  f"« {' / '.join(trial['focus'])} »")
+            if not trial["focus_images"]:
+                print("   ↻ Aucune image de l'objet ou de son édifice : sujet écarté.")
+                continue
             if trial["images"] < min_images:
                 print("   ↻ Sujet trop peu illustré, sujet suivant.")
                 continue
@@ -182,7 +288,7 @@ class MysteryBrain(BaseBrain):
         if tested:
             print(f"⚠️ Aucun sujet ne passe tous les contrôles en {max_attempts} essais : "
                   "repli sur le sujet testé le mieux illustré.")
-            for trial in sorted(tested.values(), key=lambda t: -t["images"])[:3]:
+            for trial in sorted((t for t in tested.values() if t["focus_images"]), key=lambda t: -t["images"])[:3]:
                 print(f"   ↪ « {trial['source']['title']} » ({trial['images']} image(s))")
                 title = self._accept_title(trial, used)
                 if title:
@@ -193,28 +299,72 @@ class MysteryBrain(BaseBrain):
     # REPRISE (sujet validé, script en échec)
     # ==========================================
     def export_state(self) -> dict:
-        return {"source": self._source, "last_pick": dict(self.last_pick)}
+        return {"source": self._source, "last_pick": dict(self.last_pick)}   # faits et réponse compris
 
     def restore_state(self, state: dict) -> None:
         self._source = state.get("source")
         self.last_pick = dict(state.get("last_pick") or {})
 
-    def count_source_images(self, source: dict, details: dict) -> int:
-        """Images exploitables du lieu : article Wikipédia source + sa catégorie Commons (licence libre,
-        1000 px de large au moins, ni logo, ni carte, ni blason, ni pictogramme). 0 si Wikimedia échoue."""
+    def count_source_images(self, source: dict, details: dict, focus: list[str] | None = None) -> tuple[int, int]:
+        """(images exploitables, dont images de l'objet ou de l'édifice) : objet de l'anecdote, article
+        Wikipédia source et sa catégorie Commons (licence libre, 1000 px de large au moins, ni logo, ni carte,
+        ni plan, ni schéma, ni blason). (0, 0) si Wikimedia échoue.
+
+        Sans objet distinct de l'article (sujet trouvé par mots-clés, anecdote sur le monument lui-même),
+        toutes les images de l'article et de sa catégorie montrent le sujet."""
         cfg = subject_settings(self.config.get("visuals"))
+        distinct = self.focus_is_distinct(source, focus)
         try:
             images = collect_subject_images(source["title"], details.get("commons_category"), cfg,
-                                            place_terms=place_terms_of(details), documents=False)
+                                            place_terms=place_terms_of(details), documents=False,
+                                            focus=focus if distinct else None,
+                                            focus_files=[source["anecdote_file"]] if distinct
+                                            and source.get("anecdote_file") else None)
         except Exception as e:   # jamais bloquant : le sujet est simplement considéré comme non illustré
             print(f"⚠️ Comptage des images impossible : {e}")
-            return 0
-        return len(images)
+            return 0, 0
+        return len(images), (focus_image_count(images) if distinct else len(images))
+
+    @staticmethod
+    def focus_is_distinct(source: dict, focus: list[str] | None) -> bool:
+        """L'objet de l'anecdote est-il autre chose que l'article (une statue dans l'église d'une commune) ?"""
+        return bool(focus) and not any(name_matches(source.get("title", ""), n) for n in focus)
+
+    def subject_focus(self, source: dict) -> list[str]:
+        """Noms de l'objet précis et de son édifice. Anecdote : demandés au LLM, puis vérifiés (chaque nom doit
+        se lire dans l'anecdote, sa légende ou l'article). Sinon, ou en cas d'échec : le titre de l'article."""
+        default = [re.sub(r"\s*\([^)]*\)\s*$", "", source.get("title", "")).strip()]
+        if not source.get("anecdote"):
+            return default
+        sections = self.read_sections("anecdote_focus.md")
+        user = self.fill(sections["user"], anecdote=source["anecdote"], target=source.get("title", ""),
+                         caption=source.get("anecdote_caption") or "aucune")
+        try:
+            data = self.llm.call_json_with_retry(
+                [{"role": "system", "content": sections["system"]}, {"role": "user", "content": user}],
+                temperature=0, max_completion_tokens=200, **self.simple_routing())
+        except (RuntimeError, ValueError) as e:
+            print(f"⚠️ Objet de l'anecdote non déterminé ({e}) : l'article sert de sujet.")
+            return default
+        reference = " ".join([source["anecdote"], source.get("anecdote_caption") or "", source.get("title", ""),
+                              str(source.get("extract", ""))])
+        names = [str(data.get(k) or "").strip() for k in ("objet", "edifice")]
+        names = [n for n in names if n and name_matches(reference, n)]
+        return names or default
 
     def _accept_title(self, trial: dict, used) -> str | None:
         """Titre écrit d'après la source, avec retournement et sans doublon ; None sinon."""
-        title = self._write_title(trial["title_vars"], trial["source"])
+        title = self._write_title(trial["title_vars"], trial["source"], trial.get("focus"))
         if not title:
+            return None
+        issues = claim_issues(title, source_text(trial["source"], max_chars=100000), "titre")
+        if issues:
+            print(f"   ↻ Titre rejeté : {issues[0]}")
+            return None
+        focus = trial.get("focus") or []
+        place = place_terms_of(trial.get("details"))
+        if focus and not mentions_focus(title, focus, place):
+            print(f"   ↻ Titre rejeté : « {title} » ne nomme pas « {' / '.join(focus)} ».")
             return None
         ok, reason = self.has_reversal(title, trial["source"])
         if not ok:
@@ -224,10 +374,43 @@ class MysteryBrain(BaseBrain):
         if is_dup:
             print(f"   ↻ Doublon avec « {matched} », nouvel essai.")
             return None
+        if not self.extract_facts(trial, title):
+            return None
         return title
+
+    def extract_facts(self, trial: dict, title: str) -> bool:
+        """Faits utilisables sur le sujet précis, tirés de la source (gros modèle : véracité), et réponse à
+        la question du titre. Moins de brain.min_facts faits, ou pas de réponse : sujet écarté."""
+        b = self.config.get("brain", {})
+        min_facts = int(b.get("min_facts", DEFAULT_MIN_FACTS))
+        sections = self.read_sections("facts.md")
+        user = self.fill(sections["user"], title=title, focus=" / ".join(trial.get("focus") or []) or title,
+                         source_block=source_text(trial["source"]))
+        try:
+            data = self.llm.call_json_with_retry(
+                [{"role": "system", "content": sections["system"]}, {"role": "user", "content": user}],
+                temperature=0, max_completion_tokens=1200, **self.script_routing())
+        except (RuntimeError, ValueError) as e:
+            print(f"   ↻ Extraction des faits impossible ({e}) : sujet écarté.")
+            return False
+        facts = [str(f).strip() for f in data.get("faits") or [] if str(f).strip()]
+        answer = str(data.get("reponse") or "").strip()
+        if answer.lower() in ("null", "none", "aucune"):
+            answer = ""
+        print(f"   📋 {len(facts)} fait(s) utilisable(s) sur le sujet ; réponse au titre : {answer or 'AUCUNE'}")
+        if len(facts) < min_facts:
+            print(f"   ↻ Moins de {min_facts} faits dans la source : sujet écarté.")
+            return False
+        if b.get("require_title_answer", True) and not answer:
+            print(f"   ↻ La source ne répond pas à la question du titre ({data.get('question') or '?'}) : sujet écarté.")
+            return False
+        trial["facts"], trial["answer"] = facts, answer
+        return True
 
     def _retain(self, trial: dict, title: str) -> str:
         source, region, category = trial["source"], trial["region"], trial["category"]
+        source = {**source, "facts": trial.get("facts") or [], "answer": trial.get("answer") or "",
+                  "focus": trial.get("focus") or []}
         self._source = source
         self.last_pick = {"region": region["name"], "category": category["name"],
                           "source_title": source["title"], "source_url": source["url"],
@@ -235,6 +418,11 @@ class MysteryBrain(BaseBrain):
                           "topic_source": "le_saviez_vous" if source.get("anecdote") else "keywords"}
         if source.get("anecdote"):
             self.last_pick.update(anecdote=source["anecdote"], anecdote_id=source.get("anecdote_id"))
+        # objet précis et son édifice (images en tête), si ce n'est pas l'article entier
+        if self.focus_is_distinct(source, source["focus"]):
+            self.last_pick.update(focus=source["focus"], focus_images=trial.get("focus_images"),
+                                  focus_files=[source["anecdote_file"]] if source.get("anecdote_file") else [])
+        self.last_pick["facts_count"] = len(source["facts"])
         if source.get("coordinates"):   # pour la carte animée (lot 1)
             self.last_pick.update(lat=source["coordinates"]["lat"], lon=source["coordinates"]["lon"])
         # commune (étiquette de la carte, homonymes), département, catégorie Commons (photos du lieu)
@@ -292,14 +480,21 @@ class MysteryBrain(BaseBrain):
                 self._anecdotes = []
         while self._anecdotes:
             anecdote = self._anecdotes.pop(0)
-            if anecdote["target"].lower() in excluded:
+            if anecdote["target"].lower() in excluded or str(anecdote.get("id")) in getattr(self, "_rejected_ids", ()):
                 continue
             page = fetch_page(anecdote["target"])
             if not page:
                 print(f"   ↻ Anecdote écartée (article trop court ou trop général) : {anecdote['target']}")
                 continue
             print(f"   💡 Anecdote : {anecdote['text'][:140]}")
+            related = []
+            for link in (anecdote.get("links") or [])[:int(cfg.get("cited_articles", 3))]:
+                intro = fetch_intro(link, int(cfg.get("cited_article_chars", 1500)))
+                if intro and intro["title"].lower() != page["title"].lower():
+                    related.append(intro)
             return {**page, "anecdote": anecdote["text"], "anecdote_id": anecdote["id"],
+                    "anecdote_file": anecdote.get("file"), "anecdote_caption": anecdote.get("caption") or "",
+                    "related": related,
                     "wikibase_item": page.get("wikibase_item") or anecdote.get("wikibase_item"),
                     # coordonnées Wikidata si la page n'en a pas (région, carte animée)
                     "coordinates": page.get("coordinates") or anecdote.get("coordinates")}
@@ -355,13 +550,14 @@ class MysteryBrain(BaseBrain):
             return None
         return candidates[idx] if 0 <= idx < len(candidates) else None
 
-    def _write_title(self, title_vars, source):
+    def _write_title(self, title_vars, source, focus=None):
         sections = self.read_sections("titles.md")
-        source_block = f'SOURCE ({source["title"]}) :\n"""{source["extract"][:3000]}"""'
+        source_block = f'SOURCE :\n"""{source_text(source, max_chars=3000)}"""'
         if source.get("anecdote"):   # fait déjà repéré et sourcé par les contributeurs de Wikipédia
             source_block = (f"ANGLE À RETENIR (rubrique « Le saviez-vous ? » de Wikipédia) : « {source['anecdote']} »\n"
                             "Le titre raconte CE fait, avec les détails exacts de la source.\n\n" + source_block)
-        user = self.fill(sections["user"], source_block=source_block, **title_vars)
+        focus_text = " / ".join(focus or []) or source.get("title", "")
+        user = self.fill(sections["user"], source_block=source_block, focus=focus_text, **title_vars)
         data = self.llm.call_json_with_retry(
             [{"role": "system", "content": sections["system"]}, {"role": "user", "content": user}],
             temperature=1.0, max_completion_tokens=200, **self.simple_routing(),
@@ -392,22 +588,54 @@ class MysteryBrain(BaseBrain):
             return None
 
     def valid_hooks(self, hooks, topic) -> list[dict]:
-        """Rejette les accroches notées 0/10, identiques au titre ou trop longues."""
+        """Rejette les accroches notées 0/10, identiques au titre, trop longues, ou dont une date, un chiffre
+        ou l'absence de tout élément précis ne vient pas de la source."""
         title = fold(topic)
+        source = source_text(self._source, max_chars=100000) if self._source else ""
         kept = []
         for h in hooks:
             if not isinstance(h, dict) or not str(h.get("text", "")).strip():
                 continue
             text = fold(h["text"])
+            issues = claim_issues(h["text"], source, "accroche") if source else []
             if self._hook_score(h) == 0:
                 print(f"   ↻ Accroche notée 0/10 rejetée : « {h['text']} »")
             elif text == title or (len(title) > 10 and title in text):
                 print(f"   ↻ Accroche identique au titre rejetée : « {h['text']} »")
             elif count_words(h["text"]) > MAX_HOOK_WORDS:
                 print(f"   ↻ Accroche de plus de {MAX_HOOK_WORDS} mots rejetée : « {h['text']} »")
+            elif issues:
+                print(f"   ↻ Accroche rejetée : {issues[0]}")
             else:
                 kept.append(h)
         return kept
+
+    def rate_hooks(self, hooks: list[dict], topic: str) -> list[dict]:
+        """Notation par un gros modèle (brain.script_models) : phrase complète avec un verbe conjugué, et
+        note de 1 à 10. Les accroches sans verbe conjugué sont rejetées ; la note remplace celle du générateur.
+        Gros modèles indisponibles : RuntimeError (jamais de notation par un petit modèle)."""
+        if not hooks:
+            return []
+        sections = self.read_sections("hook_rating.md")
+        listing = "\n".join(f"{i}. {h['text']}" for i, h in enumerate(hooks))
+        user = self.fill(sections["user"], topic=topic, hooks_list=listing)
+        data = self.llm.call_json_with_retry(
+            [{"role": "system", "content": sections["system"]}, {"role": "user", "content": user}],
+            temperature=0, max_completion_tokens=800, **self.script_routing())
+        notes = {}
+        for note in data.get("notes") or []:
+            try:
+                notes[int(note.get("index"))] = note
+            except (TypeError, ValueError, AttributeError):
+                continue
+        rated = []
+        for i, h in enumerate(hooks):
+            note = notes.get(i)
+            if not note or note.get("phrase_complete") is not True or not note.get("verbe"):
+                print(f"   ↻ Accroche sans verbe conjugué rejetée : « {h['text']} »")
+                continue
+            rated.append({**h, "score": self._hook_score(note) or 0, "verbe": note.get("verbe")})
+        return [h for h in rated if h["score"] != 0]
 
     def generate_hook_variants(self, topic, n=5, previous_stats_list=None):
         """Accroches valables uniquement : une liste vide est régénérée (HOOK_ROUNDS fois), jamais
@@ -421,12 +649,13 @@ class MysteryBrain(BaseBrain):
                  {"role": "user", "content": user}],
                 temperature=1.0, max_completion_tokens=1500, **self.simple_routing(),
             )
-            hooks = self.valid_hooks(data.get("hooks", []), topic)
+            hooks = self.rate_hooks(self.valid_hooks(data.get("hooks", []), topic), topic)
             if hooks:
-                return hooks[:n]
+                return sorted(hooks, key=lambda h: -(self._hook_score(h) or 0))[:n]
             print(f"   ↻ Aucune accroche valable ({round_}/{HOOK_ROUNDS}), nouvelle génération.")
-            user += ("\n\nCORRECTION : tes accroches précédentes étaient notées 0, identiques au titre ou trop "
-                     "longues. Écris des accroches neuves, différentes du titre.")
+            user += ("\n\nCORRECTION : tes accroches précédentes étaient identiques au titre, trop longues, sans "
+                     "verbe conjugué, ou citaient une date ou un chiffre absent de la source. Écris des phrases "
+                     "complètes, neuves, différentes du titre.")
         raise RuntimeError("aucune accroche valable après plusieurs générations.")
 
     # ==========================================
@@ -436,7 +665,30 @@ class MysteryBrain(BaseBrain):
         if not self._source:
             return ("Aucune source fournie : n'avance ni date, ni chiffre, ni nom "
                     "que tu ne peux pas garantir.")
-        return f'SOURCE VÉRIFIÉE ({self._source["title"]}) :\n"""{self._source["extract"][:6000]}"""'
+        block = f'SOURCE VÉRIFIÉE :\n"""{source_text(self._source)}"""'
+        if self._source.get("focus"):
+            block += f"\n\nSUJET PRÉCIS : {' / '.join(self._source['focus'])}"
+        if self._source.get("facts"):
+            block += "\n\nFAITS UTILISABLES (chaque phrase du script s'appuie sur l'un d'eux) :\n" + \
+                "\n".join(f"- {f}" for f in self._source["facts"])
+        if self._source.get("answer"):
+            block += f"\n\nRÉPONSE À LA QUESTION DU SUJET (à donner dans le script) : {self._source['answer']}"
+        return block
+
+    def target_scene_count(self) -> int:
+        """Matière courte (brain.short_video.max_facts faits au plus) : vidéo de 20 à 25 s plutôt qu'un
+        script étiré jusqu'à la durée visée."""
+        count = super().target_scene_count()
+        short = dict(self.config.get("brain", {}).get("short_video") or {})
+        facts = len((self._source or {}).get("facts") or [])
+        if short and facts and facts <= int(short.get("max_facts", 6)):
+            per_scene = float(self.config.get("brain", {}).get("seconds_per_scene", 8))
+            short_count = max(int(short.get("min_scenes", 3)), round(float(short.get("seconds", 24)) / per_scene))
+            if short_count < count:
+                print(f"⏱️ Matière courte ({facts} faits) : {short_count} scènes, environ "
+                      f"{short.get('seconds', 24)} s, plutôt que {count}.")
+                return short_count
+        return count
 
     def build_script_prompt(self, topic, scene_count, chosen_hook, correction_feedback=""):
         hook = chosen_hook.get("text", "") if isinstance(chosen_hook, dict) else (chosen_hook or "")
@@ -511,6 +763,10 @@ class MysteryBrain(BaseBrain):
         for name in [s.get("location_name") for s in data.get("scenes", [])] + [
                 self.last_pick.get(k) for k in ("source_title", "commune", "department", "region")]:
             places.update(fold(re.sub(r"\([^)]*\)", " ", str(name or ""))).split())
+        if self._source:
+            issues = claim_issues(headline.replace("|", " "), source_text(self._source, max_chars=100000), "bandeau")
+            if issues:
+                raise ValueError("on_screen_title " + issues[0])
         if words and all(w in places for w in words):
             raise ValueError(f"on_screen_title « {headline} » : seulement des noms de lieux. Le bandeau doit dire "
                              "ce qui s'est passé (un verbe ou un chiffre), pas seulement où.")
@@ -538,6 +794,7 @@ class MysteryBrain(BaseBrain):
         if not str(data.get("closing_cta", "")).strip():
             raise ValueError("champ 'closing_cta' manquant.")
         self.validate_headline(data)
+        self.locate_reveal(data)
 
         for scene in data["scenes"]:
             sid = scene["id"]
@@ -554,6 +811,22 @@ class MysteryBrain(BaseBrain):
                 scene["mood"] = "intriguing"
             if scene.get("role") not in ROLES:
                 scene["role"] = "context"
+
+    @staticmethod
+    def locate_reveal(data) -> None:
+        """Rattache 'reveal_sentence' (la phrase de la révélation) à sa scène : la mascotte « surpris » est
+        montrée pendant cette phrase. Phrase absente ou introuvable : correction demandée au LLM."""
+        reveal = str(data.get("reveal_sentence") or "").strip()
+        target = fold(reveal)
+        if not target:
+            raise ValueError("champ 'reveal_sentence' manquant : recopie mot pour mot la phrase de la révélation.")
+        for scene in data["scenes"]:
+            for sentence in sentences(scene.get("text", "")):
+                if fold(sentence) == target or (len(target) > 15 and target in fold(sentence)):
+                    scene["reveal_sentence"] = sentence
+                    return
+        raise ValueError(f"'reveal_sentence' « {reveal} » ne se trouve dans aucune scène : recopie mot pour mot "
+                         "une phrase du script.")
 
     def check_script_logic(self, topic, data):
         """Lieux, style, scènes 'specific' puis fact-check : le fact-check tourne toujours (véracité)."""
@@ -584,8 +857,11 @@ class MysteryBrain(BaseBrain):
         grounded = bool(self._source and self._source.get("extract"))
         if grounded:
             sec = self.read_sections("factcheck_grounded.md")
+            facts = self._source.get("facts") or []
             user = self.fill(sec["user"], source_title=self._source["title"],
-                             source_extract=self._source["extract"][:6000], scenes_text=text)
+                             source_extract=source_text(self._source), scenes_text=text, topic=topic,
+                             facts_block="\n".join(f"- {f}" for f in facts) or "(aucune liste : la source entière)",
+                             answer=self._source.get("answer") or "non précisée")
         else:
             sec = self.read_sections("factcheck_ungrounded.md")
             user = self.fill(sec["user"], topic=topic, scenes_text=text)
@@ -596,6 +872,9 @@ class MysteryBrain(BaseBrain):
                 temperature=0, max_completion_tokens=500, **self.script_routing(),   # véracité : gros modèles
             )
         except Exception as e:
+            if str(self.config.get("brain", {}).get("factcheck", "")).lower() == "strict":
+                # véracité stricte : un script non vérifié n'est jamais accepté (le sujet reste en attente)
+                raise RuntimeError(f"contrôle de véracité indisponible : {e}") from e
             print(f"⚠️ Fact-check indisponible : {e}")
             data["factcheck"] = "skipped"
             return []
@@ -603,4 +882,5 @@ class MysteryBrain(BaseBrain):
         # sans source, un LLM ne repère que les contradictions internes : à traiter comme "non vérifié"
         data["factcheck"] = "grounded" if grounded else "ungrounded"
         # seule la liste 'issues' fait foi (is_consistent peut la contredire)
-        return [str(i).strip() for i in res.get("issues", []) if str(i).strip()]
+        # avertissements de véracité : jamais ignorés (à la limite d'essais, le sujet est abandonné)
+        return [VeracityIssue(str(i).strip()) for i in res.get("issues", []) if str(i).strip()]

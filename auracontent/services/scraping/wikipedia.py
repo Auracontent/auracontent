@@ -11,6 +11,7 @@ MIN_EXTRACT_CHARS = 1500     # en dessous, pas assez de matière pour 11 scènes
 MAX_EXTRACT_CHARS = 60000    # au-dessus : article généraliste (ville, région, pays), pas un sujet précis
 DELAY_BETWEEN_CALLS = 0.3
 DEPARTMENT_TYPES = {"Q6465", "Q202216"}   # département français, département et région d'outre-mer
+COMMUNE_TYPES = {"Q484170", "Q2989454", "Q22927616"}   # commune de France, commune nouvelle, commune déléguée
 MAX_ADMIN_LEVELS = 4                      # commune -> canton -> arrondissement -> département
 
 
@@ -93,6 +94,12 @@ def _claim_value(claims: dict, prop: str):
     return None
 
 
+def _kinds(claims: dict) -> set:
+    """Natures de l'élément (P31)."""
+    return {(c.get("mainsnak", {}).get("datavalue", {}).get("value") or {}).get("id")
+            for c in claims.get("P31", [])}
+
+
 def place_details(wikibase_item: str | None) -> dict:
     """Commune (P131), département (P131 de la commune) et catégorie Commons (P373), d'après Wikidata.
 
@@ -100,21 +107,29 @@ def place_details(wikibase_item: str | None) -> dict:
     """
     if not wikibase_item:
         return {}
-    data = _wikidata({"action": "wbgetentities", "ids": wikibase_item, "props": "claims"})
-    claims = ((data or {}).get("entities", {}).get(wikibase_item) or {}).get("claims") or {}
+    data = _wikidata({"action": "wbgetentities", "ids": wikibase_item, "props": "labels|claims", "languages": "fr"})
+    entity = (data or {}).get("entities", {}).get(wikibase_item) or {}
+    claims = entity.get("claims") or {}
     details = {}
     category = _claim_value(claims, "P373")
     if isinstance(category, str) and category.strip():
         details["commons_category"] = category.strip()
-    admin = _claim_value(claims, "P131")
-    commune_id = admin.get("id") if isinstance(admin, dict) else None
-    if not commune_id:
-        return details
-    data = _wikidata({"action": "wbgetentities", "ids": commune_id, "props": "labels|claims", "languages": "fr"})
-    commune = (data or {}).get("entities", {}).get(commune_id) or {}
+    if _kinds(claims) & COMMUNE_TYPES:
+        # l'article EST la commune (anecdote sur un objet de la commune) : son P131 est le canton, pas elle
+        label = entity.get("labels", {}).get("fr", {}).get("value")
+        if label:
+            details["commune"] = label
+        commune = entity
+    else:
+        admin = _claim_value(claims, "P131")
+        commune_id = admin.get("id") if isinstance(admin, dict) else None
+        if not commune_id:
+            return details
+        data = _wikidata({"action": "wbgetentities", "ids": commune_id, "props": "labels|claims", "languages": "fr"})
+        commune = (data or {}).get("entities", {}).get(commune_id) or {}
     label = commune.get("labels", {}).get("fr", {}).get("value")
     if label:
-        details["commune"] = label
+        details.setdefault("commune", label)
     # département : on remonte les entités qui contiennent la commune (canton, arrondissement...)
     parent = _claim_value(commune.get("claims") or {}, "P131")
     for _ in range(MAX_ADMIN_LEVELS):
@@ -123,15 +138,28 @@ def place_details(wikibase_item: str | None) -> dict:
             break
         data = _wikidata({"action": "wbgetentities", "ids": parent_id, "props": "labels|claims", "languages": "fr"})
         entity = (data or {}).get("entities", {}).get(parent_id) or {}
-        kinds = {c.get("mainsnak", {}).get("datavalue", {}).get("value", {}).get("id")
-                 for c in (entity.get("claims") or {}).get("P31", [])}
-        if kinds & DEPARTMENT_TYPES:
+        if _kinds(entity.get("claims") or {}) & DEPARTMENT_TYPES:
             label = entity.get("labels", {}).get("fr", {}).get("value")
             if label:
                 details["department"] = label
             break
         parent = _claim_value(entity.get("claims") or {}, "P131")
     return details
+
+
+def fetch_intro(title: str, max_chars: int = 2000) -> dict | None:
+    """Résumé introductif d'un article (sans seuil de longueur) : {"title", "url", "extract"} ou None.
+
+    Sert aux articles cités par une anecdote « Le saviez-vous ? », qui complètent la source du script."""
+    data = _get({"action": "query", "prop": "extracts|info|pageprops", "titles": title, "explaintext": 1,
+                 "exintro": 1, "inprop": "url", "redirects": 1})
+    pages = (data or {}).get("query", {}).get("pages", [])
+    if not pages or pages[0].get("missing") or "disambiguation" in pages[0].get("pageprops", {}):
+        return None
+    extract = (pages[0].get("extract") or "").strip()
+    if not extract:
+        return None
+    return {"title": pages[0]["title"], "url": pages[0].get("fullurl", ""), "extract": extract[:max_chars]}
 
 
 def fetch_page(title: str) -> dict | None:

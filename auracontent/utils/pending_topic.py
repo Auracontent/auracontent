@@ -74,3 +74,28 @@ def clear_pending(channel: str) -> None:
     data = _load()
     if data.pop(channel, None) is not None:
         _write(data)
+
+
+# ---------- Sujets abandonnés (contrôle de véracité ou matière insuffisante) ----------
+REJECTED_KEY = "_rejected"     # aucune chaîne ne commence par « _ » : pas de collision avec les entrées
+MAX_REJECTED = 300
+
+
+def note_rejected(channel: str, source_title: str | None, anecdote_id: str | None = None,
+                  reason: str = "") -> None:
+    """Le sujet ne sera plus proposé : ni sa page source, ni son anecdote."""
+    if not source_title and not anecdote_id:
+        return
+    data = _load()
+    entries = list((data.get(REJECTED_KEY) or {}).get(channel) or [])
+    entries.append({"source_title": source_title, "anecdote_id": anecdote_id, "reason": reason[:300],
+                    "date": datetime.now(UTC).isoformat(timespec="seconds")})
+    data.setdefault(REJECTED_KEY, {})[channel] = entries[-MAX_REJECTED:]
+    _write(data)
+
+
+def load_rejected(channel: str) -> tuple[set[str], set[str]]:
+    """(titres des pages en minuscules, identifiants d'anecdotes) des sujets abandonnés."""
+    entries = (_load().get(REJECTED_KEY) or {}).get(channel) or []
+    return ({str(e["source_title"]).lower() for e in entries if e.get("source_title")},
+            {str(e["anecdote_id"]) for e in entries if e.get("anecdote_id")})
