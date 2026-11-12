@@ -24,9 +24,17 @@ def _norm(text) -> str:
     return " ".join(str(text or "").lower().split())
 
 
+def _hook_path(channel: str | None = None):
+    """Chaîne à état isolé (`state.isolated`) : son propre fichier ; sinon le fichier partagé historique."""
+    from auracontent.services.publishing.state_sync import channel_state_dir
+
+    own = channel_state_dir(channel)
+    return own / HOOK_HISTORY_PATH.name if own else HOOK_HISTORY_PATH
+
+
 def load_hook_history(channel: str | None = None) -> list[dict]:
     try:
-        data = json.loads(HOOK_HISTORY_PATH.read_text(encoding="utf-8"))
+        data = json.loads(_hook_path(channel).read_text(encoding="utf-8"))
     except (FileNotFoundError, json.JSONDecodeError, OSError):
         return []
     entries = [e for e in data if isinstance(e, dict)] if isinstance(data, list) else []
@@ -37,10 +45,11 @@ def load_hook_history(channel: str | None = None) -> list[dict]:
 def record_hook_usage(title: str, pattern: str | None, channel: str, caption: str = "") -> None:
     if not pattern:
         return
-    entries = load_hook_history()
+    path = _hook_path(channel)
+    entries = load_hook_history() if path == HOOK_HISTORY_PATH else load_hook_history(channel)
     entries.append({"title": title, "pattern": pattern, "channel": channel, "caption": caption})
-    HOOK_HISTORY_PATH.parent.mkdir(parents=True, exist_ok=True)
-    HOOK_HISTORY_PATH.write_text(json.dumps(entries[-MAX_HISTORY:], ensure_ascii=False, indent=2), encoding="utf-8")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(entries[-MAX_HISTORY:], ensure_ascii=False, indent=2), encoding="utf-8")
     print(f"📊 Hook enregistré ({pattern}) pour : {title}")
 
 

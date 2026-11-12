@@ -273,15 +273,25 @@ class VideoPipeline:
         caption = generate_caption(self.llm, title, scenes, self.publish_cfg.get("fallback_hashtags", ""),
                                    brand_hashtag=self.publish_cfg.get("brand_hashtag"),
                                    banned_hashtags=self.publish_cfg.get("banned_hashtags", ()),
-                                   routing=self._simple_routing())
+                                   routing=self._simple_routing(),
+                                   **({"footer": self.publish_cfg["caption_footer"]}
+                                      if self.publish_cfg.get("caption_footer") else {}))
 
         print("🎙️ Voix...")
         scenes = asyncio.run(self._voice(scenes))
         self._subtitles(scenes)
 
         # après la voix : la durée réelle de chaque scène fixe le nombre de plans (4 s au plus, 3 s en scène 1)
-        print("🔄 Recherche des assets...")
-        assets = self._fetch_assets(scenes, skip={map_target.index} if map_target else None, script=script)
+        built = self.channel.brain.build_visuals(script, scenes, self.work_dir,
+                                                 self.channel.section("video_composer"))
+        if built is not None:
+            print("🎨 Scènes dessinées par la chaîne.")
+            if len(built) != len(scenes):
+                raise RuntimeError(f"{len(built)} visuel(s) fabriqué(s) pour {len(scenes)} scène(s).")
+            assets = built
+        else:
+            print("🔄 Recherche des assets...")
+            assets = self._fetch_assets(scenes, skip={map_target.index} if map_target else None, script=script)
         if map_target:
             print("🗺️ Carte animée...")
             self._render_map(map_target, scenes, assets)

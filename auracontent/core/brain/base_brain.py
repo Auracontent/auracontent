@@ -21,13 +21,20 @@ class TopicRejected(RuntimeError):
 _SECTION_HEADER = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
 
+def rate_limit_routing_from(brain_cfg: dict | None) -> dict:
+    """`brain.rate_limit` du YAML (« wait » ou « fallback ») ; absent = rien (comportement par défaut du client)."""
+    value = (brain_cfg or {}).get("rate_limit")
+    return {"rate_limit": str(value)} if value else {}
+
+
 def simple_routing_from(brain_cfg: dict | None) -> dict:
     """Routage des tâches simples d'après la section `brain` du YAML (voir BaseBrain.simple_routing)."""
     b = brain_cfg or {}
     if not b.get("simple_models"):
-        return {}
+        return rate_limit_routing_from(b)
     excluded = b.get("simple_fallback_excluded", b.get("script_models") or ["gemini"])
-    return {"allowed_models": list(b["simple_models"]), "fallback_excluded": list(excluded)}
+    return {"allowed_models": list(b["simple_models"]), "fallback_excluded": list(excluded),
+            **rate_limit_routing_from(b)}
 
 
 @dataclass
@@ -117,7 +124,8 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
             {"role": "user", "content": prompt},
         ]
 
-        data = self.llm.call_json_with_retry(messages, temperature=1.1, max_completion_tokens=2000)
+        data = self.llm.call_json_with_retry(messages, temperature=1.1, max_completion_tokens=2000,
+                                             **rate_limit_routing_from(self.config.get("brain")))
         hooks = [h for h in data.get("hooks", []) if isinstance(h, dict) and h.get("text")]
         return hooks[:n] or [{"text": topic, "pattern": "default", "raison": ""}]
 
@@ -140,9 +148,9 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
         b = self.config.get("brain", {})
         allowed = b.get("script_models")
         if not allowed:
-            return {}
+            return rate_limit_routing_from(b)
         return {"allowed_models": list(allowed), "wait_rounds": int(b.get("script_wait_rounds", 3)),
-                "wait_seconds": float(b.get("script_wait_seconds", 60))}
+                "wait_seconds": float(b.get("script_wait_seconds", 60)), **rate_limit_routing_from(b)}
 
     def simple_routing(self) -> dict:
         """Tâches simples (choix de page, titre, contrôles, accroches) : brain.simple_models (petits modèles).
@@ -233,6 +241,10 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
                 if blocking:
                     raise TopicRejected("contrôle de véracité en échec après "
                                         f"{max_retries + 1} essais : " + " ; ".join(blocking))
+                if self.config.get("brain", {}).get("style_warnings") == "reject":
+                    # brain.style_warnings: reject -> jamais de script publié avec des avertissements
+                    raise ValueError(f"avertissements non résolus après {max_retries + 1} essais : "
+                                     + " ; ".join(issues))
                 print("⚠️ Script généré avec des avertissements de style ignorés (limite d'essais atteinte) :")
                 for i in issues:
                     print(f"   - {i}")
@@ -269,3 +281,9 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
     def check_script_logic(self, topic, data):
         """Liste des erreurs factuelles/logiques. Vide = script validé."""
         return []
+
+    def build_visuals(self, script: dict, scenes: list[dict], work_dir: Path, video_cfg: dict) -> list | None:
+        """Visuels fabriqués par la chaîne elle-même (scènes dessinées par code), appelés après la voix :
+        chaque scène connaît alors sa durée réelle (`duration`). Retourne un chemin de clip par scène, ou None
+        pour garder la recherche d'images habituelle (AssetManager). Une scène peut recevoir `sfx_cues`."""
+        return None

@@ -70,6 +70,8 @@ class Composer:
         self.music_dir = os.path.join(channel_dir, "music")
         self.images_dir = os.path.join(channel_dir, "images")
         self.sfx_dir = os.path.join(shared_dir, "sfx")
+        if (channel_config or {}).get("sfx_dir"):          # ex. "finance/sfx" (relatif à assets/)
+            self.sfx_dir = os.path.join(str(ASSETS_DIR), channel_config["sfx_dir"])
 
         for directory in (
             self.temp_dir,
@@ -121,6 +123,7 @@ class Composer:
         self.source_credit_size = config.get("source_credit_size", 18)
         self.source_credit_alpha = config.get("source_credit_alpha", 0.52)
         self.source_credit_labels = config.get("source_credit_labels", {})
+        self.source_credit_enabled = config.get("source_credit_enabled", True)   # false : scènes dessinées
 
         # Cadrage des images fixes : plein écran (paysage recadré + panoramique lent) au lieu du fond flou
         self.image_full_screen = config.get("image_full_screen", False)
@@ -135,6 +138,8 @@ class Composer:
 
         # Bandeau-titre permanent (signature visuelle + miniature lisible quelle que soit l'image retenue)
         self.fonts_dir = os.path.join(shared_dir, "fonts")
+        if config.get("fonts_dir"):                        # ex. "finance/fonts" (relatif à assets/)
+            self.fonts_dir = os.path.join(str(ASSETS_DIR), config["fonts_dir"])
         headline_font = os.path.join(self.fonts_dir, config.get("headline_font", "Montserrat-Bold.ttf"))
         self.headline_font_path = headline_font if os.path.exists(headline_font) else self.watermark_font_path
         self.headline_persistent = config.get("headline_persistent", False)
@@ -145,6 +150,12 @@ class Composer:
         self.headline_y = config.get("headline_y", 230)
         self.headline_margin_x = config.get("headline_margin_x", 70)
         self.headline_accent_color = config.get("headline_accent_color", "0xFFD400")
+        # Affirmation (lignes hors chute) : blanc contour noir par défaut ; sur fond clair, encre sans contour
+        self.headline_text_color = config.get("headline_text_color", "white")
+        self.headline_border_color = config.get("headline_border_color", "black")
+        self.headline_border_ratio = float(config.get("headline_border_ratio", 0.07))
+        self.headline_shadow_color = config.get("headline_shadow_color", "black@0.6")
+        self.headline_accent_text_color = config.get("headline_accent_text_color", "black")
 
         # Mascotte (section `mascot` du YAML) : petite épingle à gauche, sous le bandeau-titre
         from auracontent.services.visuals.mascot import mascot_files, mascot_settings
@@ -222,8 +233,30 @@ class Composer:
         path = os.path.join(self.sfx_dir, filename)
         return path if os.path.exists(path) else None
 
+    def _cue_stream(self, cue: dict, total_duration: float):
+        """Effet synchronisé sur l'action (scene["sfx_cues"]) : {"time", "path" ou "file", "gain"}."""
+        path = cue.get("path") or os.path.join(self.sfx_dir, str(cue.get("file", "")))
+        start = float(cue.get("time", 0))
+        if not os.path.exists(path) or not 0 <= start < total_duration:
+            return None
+        length = min(get_duration(path), total_duration - start)
+        if length <= 0:
+            return None
+        return (_to_stereo_48k(ffmpeg.input(path).audio)
+                .filter("volume", float(cue.get("gain", self.sfx_gain)))
+                .filter("atrim", duration=length)
+                .filter("adelay", delays=int(start * 1000), all=1)
+                .filter("apad"))
+
     def _build_scene_audio(self, audio_path: str, scene: dict, total_duration: float):
         voice_stream = ffmpeg.input(audio_path).audio
+        if scene.get("sfx_cues"):
+            # effets calés sur l'action de la scène (gabarits animés) ; aucun effet de rôle/humeur en plus
+            cues = [c for c in (self._cue_stream(cue, total_duration) for cue in scene["sfx_cues"]) if c]
+            if not cues:
+                return voice_stream
+            return ffmpeg.filter([_to_stereo_48k(voice_stream), *cues], "amix", inputs=len(cues) + 1,
+                                 duration="first", dropout_transition=0, normalize=0)
 
         sfx_path = self._resolve_sfx_path(scene)
         if not sfx_path:
@@ -484,13 +517,16 @@ class Composer:
             )
             if i >= len(lines) - accent:
                 video_stream = video_stream.filter(
-                    "drawtext", fontcolor="black", box=1,
+                    "drawtext", fontcolor=self.headline_accent_text_color, box=1,
                     boxcolor=self.headline_accent_color, boxborderw=int(size * 0.16), **common,
                 )
             else:
+                border = max(int(size * self.headline_border_ratio), 4) if self.headline_border_ratio > 0 else 0
+                shadow = dict(shadowcolor=self.headline_shadow_color, shadowx=0, shadowy=int(size * 0.06)) \
+                    if self.headline_shadow_color else {}
                 video_stream = video_stream.filter(
-                    "drawtext", fontcolor="white", borderw=max(int(size * 0.07), 4), bordercolor="black",
-                    shadowcolor="black@0.6", shadowx=0, shadowy=int(size * 0.06), **common,
+                    "drawtext", fontcolor=self.headline_text_color, borderw=border,
+                    bordercolor=self.headline_border_color, **shadow, **common,
                 )
         return video_stream
 
@@ -530,6 +566,8 @@ class Composer:
                     scene_id, total_duration, image_pair["shots"], float(image_pair.get("max_shot", 4.0))
                 )
                 for start, end, path in windows:   # crédit propre à chaque plan
+                    if not self.source_credit_enabled:
+                        break
                     label = self._resolve_source_credit(path)
                     video_stream = self._add_source_credit(video_stream, label, f"between(t,{start:.3f},{end:.3f})")
             else:
@@ -537,7 +575,7 @@ class Composer:
                     scene_id, total_duration, image_pair, bg_video_path, bg_offset
                 )
                 source_text = ""
-                if not bg_video_path and source_path:
+                if not bg_video_path and source_path and self.source_credit_enabled:
                     source_text = self._resolve_source_credit(source_path)
                 if source_text:
                     video_stream = self._add_source_credit(video_stream, source_text)

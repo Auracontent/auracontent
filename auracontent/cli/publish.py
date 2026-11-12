@@ -16,7 +16,7 @@ import requests
 from dotenv import load_dotenv
 
 from auracontent.channels.base_channel import load_channel_config
-from auracontent.services.publishing.caption import apply_hashtag_rules
+from auracontent.services.publishing.caption import apply_caption_footer, apply_hashtag_rules
 from auracontent.services.publishing.hf_storage import get_latest_video
 from auracontent.services.publishing.zernio import check_audio_loudness, publish_to_platform
 
@@ -54,7 +54,8 @@ def publish_channel(channel: str) -> bool:
     platforms = [(p["platform"], _require_env(p["account_env"])) for p in cfg["platforms"]]
     caption = _fetch_caption(video.caption_url, f"{video.title} {cfg.get('fallback_hashtags', '')}".strip())
     # légende générée avant le changement de nom : on retire l'ancien hashtag au moment de publier
-    caption = apply_hashtag_rules(caption, cfg.get("brand_hashtag"), cfg.get("banned_hashtags", ()))
+    caption = apply_hashtag_rules(apply_caption_footer(caption, cfg.get("caption_footer")),
+                                  cfg.get("brand_hashtag"), cfg.get("banned_hashtags", ()))
     print(f"📝 Légende :\n{caption}")
 
     delay = cfg.get("delay_between_platforms", 15)
