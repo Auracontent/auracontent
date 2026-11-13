@@ -15,7 +15,8 @@ brain:
   scene_count: 9            # plafond
   target_duration: 50       # secondes (surchargé par VIDEO_DURATION dans le workflow) ; cible 45-60 s
   seconds_per_scene: 7      # 50 s -> 7 scènes
-  scene_count_tolerance: 1
+  scene_count_tolerance: 0   # storyboard fixé par concept : nombre de scènes exact
+  script_max_retries: 4      # contrôles stricts (chiffres, sens, exagération) : jusqu'à 5 essais
   resume_max_attempts: 3
   resume_max_days: 7
   veracity_topic_rounds: 2
@@ -37,6 +38,12 @@ brain:
   style:
     max_sentence_words: 12
     max_hook_words: 12
+    # Formulations absolues ou alarmistes (regex sur le texte en minuscules sans accents)
+    hype_patterns: ["\\btout(?:e|es)? (?:ta|ton|tes) (?:richesse|argent|epargne|economies)", "\\bdetrui\\w*",
+                    "\\bfortunes?\\b", "\\bruin\\w*", "\\btout perdre\\b", "\\bperdre tout\\b",
+                    "\\benorm\\w*", "\\bmagiques?\\b", "\\bspectaculaire\\w*", "\\babsolument\\b",
+                    "\\bcatastroph\\w*", "\\bdesastr\\w*", "\\bexplos\\w*", "\\bsecrets?\\b",
+                    "\\bincroyable\\w*", "\\bdramatique\\w*", "\\bgrignote tout\\b"]
     banned_words: ["rendement garanti", "gain garanti", "sans risque", "investis", "achète", "conseil",
                    "placement sûr", "valeur sûre", "devenir riche", "millionnaire"]
   # Produits, banques et marques : jamais cités
@@ -49,6 +56,11 @@ brain:
   # Le LLM choisit parmi un candidat inédit par concept (résultats déjà calculés par calc.py) ; « random » :
   # tirage au hasard. En cas d'échec du LLM, tirage au hasard.
   concept_selection: "llm"
+  # Aucun taux de rendement au-dessus de 8 %/an (combinaisons écartées même si le YAML en propose)
+  max_rate: 8
+  # Sens des chiffres : contrôle par le code (unités, « par mois »), puis un appel LLM reçoit la table de
+  # calc.py et répond oui/non avec motif ; un « non » fait régénérer le script
+  meaning_check: "llm"
   concepts:
     interets_composes:
       label: "intérêts composés"
@@ -75,6 +87,8 @@ brain:
         rate: [4, 5, 7]
         delay_years: [5, 10]
         horizon_years: [30, 40]
+      # Accroche type (clés de calc.py entre accolades)
+      hook_example: "Verser {paid_gap} de plus rapporte {cost} de plus."
     frais:
       label: "frais"
       idea: "un petit pourcentage de frais par an grignote une grosse part du résultat final"
@@ -88,7 +102,7 @@ brain:
       idea: "72 divisé par le taux donne à peu près le nombre d'années pour doubler"
       constants: [72]           # nombres propres au concept, autorisés dans le texte
       params:
-        rate: [2, 3, 4, 6, 8, 9, 12]
+        rate: [2, 3, 4, 6, 8]
 
 # Audio : mêmes services que mystery. Voix native (méthode B1 : aucune direction de jeu ajoutée,
 # vitesse naturelle).

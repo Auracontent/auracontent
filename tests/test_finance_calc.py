@@ -156,14 +156,15 @@ def test_script_with_invented_number_is_rejected():
 def test_script_without_main_result_is_rejected():
     brain = _picked("frais", FRAIS)
     issues = brain.check_script_logic("t", _frais_script("Au final, les frais mangent une grande part."))
-    assert any("résultat principal" in i and "5 300 €" in i for i in issues)
+    assert any("scène du résultat" in i and "5 300 €" in i for i in issues)
 
 
 def test_prompts_carry_computed_results():
     brain = _picked("frais", FRAIS)
     messages = brain.build_script_prompt("t", 7, {"text": "x"})
     assert "coût total des frais : 5 300 €" in messages[1]["content"]
-    assert "RÉSULTAT PRINCIPAL" in messages[1]["content"]
+    assert "À DIRE DANS LA SCÈNE DU RÉSULTAT : coût total des frais = 5 300 €" in messages[1]["content"]
+    assert "'visual' au choix" in messages[1]["content"]
     assert "résultat sans frais : 16 000 €" in brain.numbers_block()
 
 

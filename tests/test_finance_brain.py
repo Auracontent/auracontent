@@ -91,7 +91,7 @@ def test_pick_topic_dedups_concept_and_params(finance_state, capsys):
     brain.config["brain"]["concepts"] = {"regle_72": brain.config["brain"]["concepts"]["regle_72"]}
     brain.config["brain"]["recent_concepts_window"] = 0
     seen = set()
-    for _ in range(7):                                     # 7 taux possibles, tous différents
+    for _ in range(5):                                     # 5 taux possibles (≤ 8 %), tous différents
         topic = brain.pick_topic()
         assert brain.last_pick["topic_key"] not in seen
         seen.add(brain.last_pick["topic_key"])
@@ -147,10 +147,13 @@ class _FakeLLM:
     """Accroches puis script ; le premier script est trop long (doit être régénéré)."""
 
     def __init__(self, scripts):
-        self.scripts, self.calls = list(scripts), []
+        self.scripts, self.calls, self.systems = list(scripts), [], []
 
     def call_json_with_retry(self, messages, **kw):
         self.calls.append(kw)
+        self.systems.append(messages[0]["content"])
+        if "vérifies les chiffres" in messages[0]["content"]:
+            return {"ok": True, "problems": []}
         if "accroches" in messages[0]["content"]:
             return {"hooks": [{"text": "Mettre moins d'argent… et finir avec plus.", "pattern": "contradiction",
                                "score": 9},
@@ -163,13 +166,10 @@ class _FakeLLM:
 
 
 def _script(first_scene: str):
-    scenes = [{"id": 1, "text": first_scene, "role": "hook", "visual": "deux piles de pièces",
-               "template": "deux_arbres", "mood": "surprise", "pause_after_ms": 400}]
-    scenes += [{"id": i, "text": "Les gains rapportent à leur tour des gains.", "role": "mechanism",
-                "visual": "un arbre qui pousse", "template": "deux_arbres", "mood": "calm", "pause_after_ms": 400}
-               for i in range(2, 7)]
-    scenes.append({"id": 7, "text": "À 65 ans, Léa a 2 100 € et Hugo 1 630 €.", "role": "reveal",
-                   "visual": "deux arbres", "template": "deux_arbres", "mood": "surprise", "pause_after_ms": 400})
+    scenes = [{"id": 1, "text": first_scene, "visual": "piles", "mood": "surprise", "pause_after_ms": 400}]
+    scenes += [{"id": i, "text": "Les gains rapportent à leur tour des gains.", "visual": "arbres",
+                "mood": "calm", "pause_after_ms": 400} for i in range(2, 8)]
+    scenes[4]["text"] = "À 65 ans, Léa a 2 100 € et Hugo 1 630 €."      # scène 5 : « reveal » du storyboard
     return {"title": "Moins d'argent, plus à l'arrivée", "on_screen_title": "100 € À 20 ANS | BATTENT 300 € À 40",
             "hypothesis": "reformulée", "closing_cta": "Et toi, tu aurais parié sur qui ?", "scenes": scenes}
 
@@ -195,6 +195,10 @@ def test_run_channel_script_only_regenerates_and_saves(finance_state, monkeypatc
     assert script["hypothesis"] == "7 %/an · versement unique · avant inflation"
     assert "unresolved_issues" not in script
     assert script["calc"]["headline"] == "lea_final" and script["calc"]["values"]["lea_final"]["value"] == 2100
+    assert [s["template"] for s in script["scenes"]] == ["deux_arbres", "curseur_temps", "barres", "deux_courbes",
+                                                         "deux_arbres", "barres", "carte_fin"]
+    assert script["scenes"][0]["visual"] == "piles" and script["scenes"][6]["visual"] == "logo"
+    assert any("vérifies les chiffres" in c for c in llm.systems)              # vérification du sens faite
     assert all(call.get("rate_limit") == "fallback" for call in llm.calls)       # bascule au premier 429
     history = json.loads((finance_state / "finance" / "global_history.json").read_text(encoding="utf-8"))
     assert history[0]["concept"] == "interets_composes" and history[0]["channel"] == "finance"

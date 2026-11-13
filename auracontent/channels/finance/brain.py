@@ -15,10 +15,11 @@ import unicodedata
 from pathlib import Path
 
 from auracontent.channels.finance import calc as fcalc
+from auracontent.channels.finance import storyboard as fstory
 from auracontent.core.brain.base_brain import BaseBrain
 from auracontent.utils.topic_tracker import load_global_history, load_last_categories, load_used_values
 
-TEMPLATES = ("deux_arbres", "deux_courbes", "barres", "curseur_temps", "carte_fin")
+TEMPLATES = tuple(fstory.VARIANTS)
 PARAM_LABELS = {
     "early_age": "âge de départ de Léa", "late_age": "âge de départ de Hugo", "early_amount": "mise de Léa (€)",
     "late_amount": "mise de Hugo (€)", "rate": "rendement moyen (% par an)", "end_age": "âge d'arrivée",
@@ -27,6 +28,21 @@ PARAM_LABELS = {
     "horizon_years": "durée totale (années)", "fees": "frais (% par an)",
     "late_amount_factor": "Hugo met ce nombre de fois plus que Léa",
 }
+# Nature de chaque donnée d'entrée : « âge » et « ans » s'écrivent tous deux « ... ans » ; « €/mois » exige
+# « par mois » dans la phrase.
+PARAM_UNITS = {
+    "early_age": "âge", "late_age": "âge", "end_age": "âge", "early_amount": "€", "late_amount": "€",
+    "rate": "%", "amount": "€", "inflation": "%", "years": "ans", "monthly": "€/mois", "delay_years": "ans",
+    "horizon_years": "ans", "fees": "%", "late_amount_factor": "fois",
+}
+# unité écrite après un nombre (texte sans accents) -> natures compatibles de la table
+_TEXT_UNITS = {
+    "€": (re.compile(r"^(?:€|euros?\b)"), {"€", "€/mois"}),
+    "%": (re.compile(r"^(?:%|pour ?cent\b)"), {"%"}),
+    "ans": (re.compile(r"^(?:ans?\b|annees?\b)"), {"ans", "âge"}),
+    "fois": (re.compile(r"^fois\b"), {"fois"}),
+}
+_MONTHLY_RE = re.compile(r"\b(?:par mois|chaque mois|mensuel\w*|tous les mois)\b|/ ?mois")
 _WORD_RE = re.compile(r"[\wÀ-ÿ\u2019'-]+", re.UNICODE)
 _NUMBER_RE = re.compile(r"\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?")
 # fin de phrase : . ! ? (ou …) suivi d'une majuscule ; « … et finir » continue la même phrase
@@ -84,6 +100,24 @@ def _fmt(value) -> str:
     return f"{value:g}".replace(".", ",") if isinstance(value, float) else str(value)
 
 
+def numbers_with_units(text: str) -> list[tuple[float, str, str]]:
+    """(nombre, unité écrite juste après, suite de la phrase) pour chaque nombre en chiffres."""
+    folded = _fold_keep(text)
+    found = []
+    for m in _NUMBER_RE.finditer(folded):
+        value = float(re.sub(r"\s", "", m.group()).replace(",", "."))
+        rest = folded[m.end():].lstrip()
+        unit = next((u for u, (rx, _) in _TEXT_UNITS.items() if rx.match(rest)), "")
+        found.append((value, unit, rest))
+    return found
+
+
+def _fold_keep(text: str) -> str:
+    """Comme comparable(), sans retirer la ponctuation finale (positions des nombres conservées)."""
+    text = unicodedata.normalize("NFD", normalize_title(text).casefold())
+    return "".join(c for c in text if unicodedata.category(c) != "Mn")
+
+
 # ---------- Brain ----------
 class FinanceBrain(BaseBrain):
     last_pick: dict | None = None
@@ -124,11 +158,16 @@ class FinanceBrain(BaseBrain):
         return concept + ":" + ",".join(f"{k}={_fmt(params[k])}" for k in sorted(params))
 
     def combinations(self, concept: str) -> list[dict]:
+        """Combinaisons cohérentes ; tout taux de rendement au-dessus de brain.max_rate (8 %) est écarté."""
         spec = self._brain()["concepts"][concept].get("params", {})
+        max_rate = float(self._brain().get("max_rate", 8))
         names = list(spec)
         combos = []
         for values in itertools.product(*(spec[n] for n in names)):
-            params = self.resolve_params(concept, dict(zip(names, values, strict=True)))
+            raw = dict(zip(names, values, strict=True))
+            if float(raw.get("rate", 0)) > max_rate:
+                continue
+            params = self.resolve_params(concept, raw)
             if params is not None:
                 combos.append(params)
         return combos
@@ -243,7 +282,15 @@ class FinanceBrain(BaseBrain):
         return {"last_pick": self.last_pick}
 
     def restore_state(self, state: dict) -> None:
-        self.last_pick = dict((state or {}).get("last_pick") or {}) or None
+        """Reprise d'un sujet en attente ; ValueError s'il n'est plus valide avec le YAML actuel (concept
+        retiré, taux au-dessus du plafond...) : le pipeline l'abandonne et choisit un nouveau sujet."""
+        pick = dict((state or {}).get("last_pick") or {})
+        concept, params = pick.get("concept"), pick.get("params")
+        if concept not in (self._brain().get("concepts") or {}):
+            raise ValueError(f"concept « {concept} » absent de la configuration")
+        if params not in self.combinations(concept):
+            raise ValueError(f"paramètres {params} hors des combinaisons autorisées")
+        self.last_pick = pick
 
     def _pick(self) -> tuple[str, dict, dict]:
         if not self.last_pick:
@@ -260,12 +307,65 @@ class FinanceBrain(BaseBrain):
         _, params, spec = self._pick()
         return {float(v) for v in [*params.values(), *(spec.get("constants") or [])]} | self.calc().numbers()
 
+    def number_table(self) -> list[tuple[float, str, str]]:
+        """(valeur, nature, libellé) de chaque chiffre citable : entrées, constantes, résultats de calc.py."""
+        _, params, spec = self._pick()
+        result = self.calc()
+        table = [(float(v), PARAM_UNITS.get(k, ""), PARAM_LABELS.get(k, k)) for k, v in params.items()]
+        table += [(float(c), "", "constante du concept") for c in [*(spec.get("constants") or []),
+                                                                    *result.extra_numbers]]
+        table += [(v.value, v.unit, v.label) for v in result.values.values()]
+        return table
+
+    def meaning_issues(self, text: str, what: str) -> list[str]:
+        """Chaque nombre écrit avec une unité doit exister dans la table AVEC cette unité ; un versement mensuel
+        s'écrit avec « par mois », et « par mois » ne s'accole jamais à un montant qui n'est pas mensuel."""
+        issues, table = [], self.number_table()
+        for sentence in sentences(text) or [text]:
+            monthly_said = _MONTHLY_RE.search(_fold_keep(sentence)) is not None
+            for value, unit, rest in numbers_with_units(sentence):
+                matches = [(k, label) for v, k, label in table if v == value]
+                if not matches:
+                    continue                                    # nombre inconnu : signalé par text_issues
+                if unit:
+                    kinds = _TEXT_UNITS[unit][1]
+                    fitting = [(k, label) for k, label in matches if k in kinds or k == ""]
+                    if not fitting:
+                        issues.append(f"{what} : « {_fmt(value)} {unit} » ne correspond à rien dans les calculs "
+                                      f"({'; '.join(label for _, label in matches)})")
+                        continue
+                    matches = fitting
+                if unit == "€" and all(k == "€/mois" for k, _ in matches) and not monthly_said:
+                    issues.append(f"{what} : « {_fmt(value)} € » est un versement mensuel, écris « par mois »")
+                after = rest[_TEXT_UNITS["€"][0].match(rest).end():].lstrip() if unit == "€" else ""
+                if after and _MONTHLY_RE.match(after) and not any(k == "€/mois" for k, _ in matches):
+                    issues.append(f"{what} : « {_fmt(value)} € par mois » est faux, ce montant n'est pas mensuel")
+        return issues
+
+    def hype_issues(self, text: str, what: str) -> list[str]:
+        """Formulations absolues ou alarmistes (brain.style.hype_patterns, regex sur le texte sans accents)."""
+        folded = _fold_keep(text)
+        found = []
+        for pattern in self.style_cfg().get("hype_patterns") or []:
+            m = re.search(pattern, folded)
+            if m:
+                found.append(f"{what} exagère (« {m.group()} ») : reste factuel et mesuré")
+        return found
+
     def numbers_block(self) -> str:
         """Liste lisible des chiffres autorisés, avec ce qu'ils désignent (entrées puis résultats)."""
         _, params, _ = self._pick()
         lines = [f"- {PARAM_LABELS.get(k, k)} : {_fmt(v)}" for k, v in params.items()]
         lines += [f"- {v.label} : {v.text}" for v in self.calc().values.values()]
         return "\n".join(lines)
+
+    def hook_example(self) -> str:
+        """Exemple d'accroche du concept (brain.concepts.<c>.hook_example, clés de calc.py entre accolades)."""
+        _, _, spec = self._pick()
+        example = spec.get("hook_example")
+        if not example:
+            return "Mettre moins d'argent… et finir avec plus."
+        return example.format_map({k: v.text for k, v in self.calc().values.items()})
 
     # ---------- Accroches ----------
     def hook_issues(self, text: str, topic: str) -> list[str]:
@@ -286,7 +386,7 @@ class FinanceBrain(BaseBrain):
         cfg = self.style_cfg()
         values = dict(topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""), n=n,
                       max_hook_words=cfg["max_hook_words"],
-                      numbers_block=self.numbers_block())
+                      numbers_block=self.numbers_block(), hook_example=self.hook_example())
         valid = []
         for attempt in range(2):
             data = self.llm.call_json_with_retry(
@@ -319,7 +419,9 @@ class FinanceBrain(BaseBrain):
             results_block="\n".join(f"- {v.label} : {v.text}" for v in self.calc().values.values()),
             main_result=f"{self.calc().main.label} : {self.calc().main.text}",
             chosen_hook=(chosen_hook or {}).get("text", ""), scene_count=scene_count,
-            max_sentence_words=cfg["max_sentence_words"], templates=", ".join(f'"{t}"' for t in TEMPLATES),
+            max_sentence_words=cfg["max_sentence_words"], storyboard=fstory.describe(concept),
+            reveal_results="; ".join(f"{self.calc().values[k].label} = {self.calc().values[k].text}"
+                                     for k in self.reveal_keys()),
         )
         user = self.fill(sections["user"], **values)
         if correction_feedback:
@@ -327,8 +429,25 @@ class FinanceBrain(BaseBrain):
         return [{"role": "system", "content": self.fill(sections["system"], **values)},
                 {"role": "user", "content": user}]
 
+    def reveal_keys(self) -> tuple[str, ...]:
+        concept, _, _ = self._pick()
+        return fstory.reveal_keys(concept, self.calc().headline)
+
+    def target_scene_count(self) -> int:
+        """Le storyboard du concept fixe le nombre de scènes."""
+        concept, _, _ = self._pick()
+        return len(fstory.storyboard(concept))
+
     def validate_script_specifics(self, data, topic):
-        """Structure : bandeau en deux segments, hypothèse exacte, accroche en tête, gabarits connus."""
+        """Comme _validate_structure, en journalisant le motif de chaque rejet (le script est alors régénéré)."""
+        try:
+            self._validate_structure(data)
+        except ValueError as e:
+            print(f"   ↻ Script (structure) : {e}")
+            raise
+
+    def _validate_structure(self, data):
+        """Structure : bandeau en deux segments, hypothèse exacte, accroche en tête, storyboard imposé."""
         concept, params, _ = self._pick()
         title = clean_text(data.get("on_screen_title", ""))
         parts = [p.strip() for p in title.split("|")]
@@ -342,10 +461,13 @@ class FinanceBrain(BaseBrain):
         data["calc"] = self.calc().to_dict()                           # chiffres et courbes des gabarits
         if not str(data.get("closing_cta", "")).strip():
             raise ValueError("closing_cta manquant.")
+        expected = len(fstory.storyboard(concept))
+        if len(data["scenes"]) != expected:
+            raise ValueError(f"il faut exactement {expected} scènes, dans l'ordre du storyboard.")
+        for note in fstory.apply(concept, data["scenes"]):           # rôles et gabarits fixés par le code
+            print(f"   🧩 Storyboard : {note}")
         for scene in data["scenes"]:
             scene["text"] = clean_text(scene["text"])
-            if scene.get("template") not in TEMPLATES:
-                raise ValueError(f"scène {scene.get('id')} : template inconnu « {scene.get('template')} ».")
             scene.setdefault("voice_type", "narrator")
         hook = (self.chosen_hook_text or "").strip()
         if hook and not comparable(data["scenes"][0]["text"]).startswith(comparable(hook)):
@@ -369,7 +491,38 @@ class FinanceBrain(BaseBrain):
         extra = sorted({n for n in numbers_in(text) if n not in allowed})
         if extra:
             issues.append(f"{what} cite un nombre non autorisé : {', '.join(_fmt(n) for n in extra)}")
+        issues += self.hype_issues(text, what)
+        issues += self.meaning_issues(text, what)
         return issues
+
+    def llm_meaning_issues(self, data: dict) -> list[str]:
+        """brain.meaning_check: llm -> un appel reçoit la table des calculs et le script, répond oui/non avec
+        motif. Un « non », ou une vérification impossible, fait régénérer le script : rien n'est publié sans."""
+        if self._brain().get("meaning_check") != "llm" or self.llm is None:
+            return []
+        concept, params, _ = self._pick()
+        lines = [f"Scène {s.get('id')} : {s.get('text', '')}" for s in data.get("scenes", [])]
+        lines += [f"Bandeau : {data.get('on_screen_title', '')}", f"Titre : {data.get('title', '')}",
+                  f"Question finale : {data.get('closing_cta', '')}"]
+        table = [f"- {label} : {fcalc.fmt_number(v)} {unit}".rstrip() for v, unit, label in self.number_table()]
+        sections = self.read_sections("meaning.md")
+        values = {"hypothesis": self.hypothesis(concept, params), "table": "\n".join(table),
+                  "script": "\n".join(lines)}
+        try:
+            verdict = self.llm.call_json_with_retry(
+                [{"role": "system", "content": self.fill(sections["system"], **values)},
+                 {"role": "user", "content": self.fill(sections["user"], **values)}],
+                temperature=0.0, max_completion_tokens=1200, **self.simple_routing())
+        except Exception as e:
+            return [f"vérification du sens des chiffres impossible ({e})"]
+        if verdict.get("ok") is True and not verdict.get("problems"):
+            print("   ✔️ Sens des chiffres vérifié par le LLM.")
+            return []
+        problems = [p for p in verdict.get("problems") or [] if isinstance(p, dict)]
+        if not problems:
+            return ["vérification du sens des chiffres : réponse négative sans motif"]
+        return [f"sens des chiffres, {p.get('ou') or p.get('scene') or '?'} : {p.get('motif') or p.get('reason')}"
+                for p in problems]
 
     def check_script_logic(self, topic, data):
         """Style et fond : phrases courtes, aucun terme interdit, tutoiement, aucun nombre inventé."""
@@ -386,10 +539,14 @@ class FinanceBrain(BaseBrain):
             issues += self.text_issues(str(data.get(key, "")), what)
         if count_words(data.get("closing_cta", "")) > limit:
             issues.append(f"la question finale dépasse {limit} mots")
-        main = self.calc().main
-        said = {n for scene in data.get("scenes", []) for n in numbers_in(scene.get("text", ""))}
-        if main.value not in said:
-            issues.append(f"le résultat principal n'est pas dit dans la narration : {main.label} = {main.text}")
+        reveal = next((s for s in data.get("scenes", []) if s.get("role") == "reveal"), None)
+        said = set(numbers_in(reveal.get("text", ""))) if reveal else set()
+        for key in self.reveal_keys():
+            value = self.calc().values[key]
+            if value.value not in said:
+                issues.append(f"la scène du résultat ne dit pas : {value.label} = {value.text}")
+        if not issues:
+            issues += self.llm_meaning_issues(data)
         for issue in issues:
             print(f"   ↻ Script : {issue}")
         return issues
