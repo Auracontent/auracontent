@@ -108,3 +108,38 @@ def test_scene_count_rejection_drops_pending_and_moves_on(monkeypatch, tmp_path)
 
 def test_base_brain_exports_scene_count_error():
     assert issubclass(base_brain.SceneCountError, ValueError)        # même traitement qu'avant pour les autres
+
+
+# ---------- 2. Matière courte : 4 scènes au moins ----------
+def test_short_material_never_below_four_scenes(monkeypatch):
+    monkeypatch.delenv("VIDEO_DURATION", raising=False)
+    brain = _mystery()
+    assert brain.min_scenes() == 4
+    brain._source = {"facts": ["f"] * 4}
+    assert brain.target_scene_count() == 4
+    brain._source = {"facts": ["f"] * 9}
+    assert brain.target_scene_count() > 4
+
+
+class _Facts:
+    def __init__(self, n):
+        self.n = n
+
+    def call_json_with_retry(self, messages, **kw):
+        return {"faits": [f"fait {i}" for i in range(self.n)], "reponse": "Parce que."}
+
+
+def test_too_few_facts_for_four_scenes_rejects_before_script(capsys):
+    trial = {"source": {"title": "Opéra de Lyon", "extract": "x"}, "focus": ["Opéra"]}
+    brain = _mystery(_Facts(3))
+    brain.config["brain"]["min_facts"] = 2                         # même avec un min_facts plus bas
+    assert brain.extract_facts(dict(trial), "t") is False
+    assert "4 scènes au moins" in capsys.readouterr().out
+    assert _mystery(_Facts(4)).extract_facts(dict(trial), "t") is True
+
+
+def test_tolerance_never_goes_below_floor():
+    brain = _mystery()
+    data = {"scenes": [{"id": i, "text": "x"} for i in range(1, 4)], "closing_cta": "?"}
+    with pytest.raises(SceneCountError, match="au moins 4"):
+        brain.validate_script_specifics(data, "t")

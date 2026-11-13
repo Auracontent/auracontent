@@ -66,6 +66,7 @@ YEAR_RE = re.compile(r"(?<!\d)(?:[3-9]\d{2}|1\d{3}|20[0-2]\d)(?!\d)")
 MONTHS = r"janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre"
 DATE_RE = re.compile(rf"\b\d{{1,2}}(?:er)?\s+(?:{MONTHS})\b|\b(?:{MONTHS})\s+\d{{3,4}}\b", re.IGNORECASE)
 DEFAULT_MIN_FACTS = 4
+DEFAULT_MIN_SCENES = 3               # brain.min_scenes : plancher du script (cible et résultat)
 
 
 def fold(text: str) -> str:
@@ -382,7 +383,8 @@ class MysteryBrain(BaseBrain):
         """Faits utilisables sur le sujet précis, tirés de la source (gros modèle : véracité), et réponse à
         la question du titre. Moins de brain.min_facts faits, ou pas de réponse : sujet écarté."""
         b = self.config.get("brain", {})
-        min_facts = int(b.get("min_facts", DEFAULT_MIN_FACTS))
+        # au moins un fait par scène : sans assez de faits pour le plancher de scènes, le sujet est écarté
+        min_facts = max(int(b.get("min_facts", DEFAULT_MIN_FACTS)), self.min_scenes())
         sections = self.read_sections("facts.md")
         user = self.fill(sections["user"], title=title, focus=" / ".join(trial.get("focus") or []) or title,
                          source_block=source_text(trial["source"]))
@@ -399,7 +401,8 @@ class MysteryBrain(BaseBrain):
             answer = ""
         print(f"   📋 {len(facts)} fait(s) utilisable(s) sur le sujet ; réponse au titre : {answer or 'AUCUNE'}")
         if len(facts) < min_facts:
-            print(f"   ↻ Moins de {min_facts} faits dans la source : sujet écarté.")
+            print(f"   ↻ Moins de {min_facts} faits dans la source (il en faut un par scène, "
+                  f"{self.min_scenes()} scènes au moins) : sujet écarté avant le script.")
             return False
         if b.get("require_title_answer", True) and not answer:
             print(f"   ↻ La source ne répond pas à la question du titre ({data.get('question') or '?'}) : sujet écarté.")
@@ -685,15 +688,19 @@ class MysteryBrain(BaseBrain):
                 raise
             raise TopicRejected(f"nombre de scènes non tenu : {e.__cause__}") from e
 
+    def min_scenes(self) -> int:
+        return int(self.config.get("brain", {}).get("min_scenes", DEFAULT_MIN_SCENES))
+
     def target_scene_count(self) -> int:
-        """Matière courte (brain.short_video.max_facts faits au plus) : vidéo de 20 à 25 s plutôt qu'un
-        script étiré jusqu'à la durée visée."""
+        """Matière courte (brain.short_video.max_facts faits au plus) : vidéo courte plutôt qu'un script étiré
+        jusqu'à la durée visée, jamais sous brain.min_scenes."""
         count = super().target_scene_count()
         short = dict(self.config.get("brain", {}).get("short_video") or {})
         facts = len((self._source or {}).get("facts") or [])
         if short and facts and facts <= int(short.get("max_facts", 6)):
             per_scene = float(self.config.get("brain", {}).get("seconds_per_scene", 8))
-            short_count = max(int(short.get("min_scenes", 3)), round(float(short.get("seconds", 24)) / per_scene))
+            short_count = max(int(short.get("min_scenes", 3)), self.min_scenes(),
+                              round(float(short.get("seconds", 24)) / per_scene))
             if short_count < count:
                 print(f"⏱️ Matière courte ({facts} faits) : {short_count} scènes, environ "
                       f"{short.get('seconds', 24)} s, plutôt que {count}.")
@@ -801,6 +808,8 @@ class MysteryBrain(BaseBrain):
         return data.get("verbe") is True
 
     def validate_script_specifics(self, data, topic):
+        if len(data["scenes"]) < self.min_scenes():      # la tolérance de comptage ne passe pas sous le plancher
+            raise SceneCountError(f"{len(data['scenes'])} scènes : il en faut au moins {self.min_scenes()}.")
         if not str(data.get("closing_cta", "")).strip():
             raise ValueError("champ 'closing_cta' manquant.")
         self.validate_headline(data)

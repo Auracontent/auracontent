@@ -25,8 +25,11 @@ brain:
   # Moins de min_facts faits, ou une source qui ne répond pas à la question du titre : sujet écarté.
   min_facts: 4
   require_title_answer: true
-  # Matière courte (max_facts faits au plus) : vidéo de 20 à 25 s plutôt qu'un script étiré
-  short_video: {max_facts: 6, seconds: 24, min_scenes: 3}
+  # Matière courte (max_facts faits au plus) : vidéo d'environ 30 s (4 scènes) plutôt qu'un script étiré
+  short_video: {max_facts: 6, seconds: 32, min_scenes: 4}
+  # Jamais moins de 4 scènes (cible et script rendu, tolérance comprise) ; il faut au moins un fait par
+  # scène, sinon le sujet est écarté avant d'écrire le script
+  min_scenes: 4
 
   # Sources de sujets, essayées dans l'ordre : anecdotes « Le saviez-vous ? » de Wikipédia (lieu ou objet
   # situé en France, d'après Wikidata), puis recherche Wikipédia par mots-clés aléatoires (repli)

@@ -1079,9 +1079,9 @@ def test_short_material_gives_a_short_video(monkeypatch):
     monkeypatch.delenv("VIDEO_DURATION", raising=False)
     brain = _mystery_brain()
     brain._source = {"facts": ["f"] * 5}
-    assert brain.target_scene_count() == 3                       # environ 24 s plutôt que 45
+    assert brain.target_scene_count() == 4                       # environ 30 s plutôt que 45
     brain._source = {"facts": ["f"] * 9}
-    assert brain.target_scene_count() > 3
+    assert brain.target_scene_count() > 4
 
 
 def test_script_prompt_carries_anecdote_cited_articles_and_facts():
