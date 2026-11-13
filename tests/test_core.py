@@ -1169,7 +1169,8 @@ def test_topic_needs_enough_images_and_falls_back_to_best_illustrated(monkeypatc
     brain._find_source = lambda region, category, used: next(pages)
     brain.count_source_images = lambda source, details, focus=None: (counts.get(source["title"], 0),) * 2
     titles = []
-    brain._accept_title = lambda trial, used: titles.append(trial["source"]["title"]) or f"Titre {trial['source']['title']}"
+    brain._accept_title = lambda trial, used, check_reversal=True: (
+        titles.append(trial["source"]["title"]) or f"Titre {trial['source']['title']}")
     assert brain.pick_topic() == "Titre Lieu 1"                # 10 essais, aucun à 5 images : le mieux illustré
     assert titles == ["Lieu 1"] and brain.last_pick["source_images"] == 4
     out = capsys.readouterr().out

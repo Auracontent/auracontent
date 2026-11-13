@@ -288,10 +288,10 @@ class MysteryBrain(BaseBrain):
 
         if tested:
             print(f"⚠️ Aucun sujet ne passe tous les contrôles en {max_attempts} essais : "
-                  "repli sur le sujet testé le mieux illustré.")
+                  "repli sur le sujet testé le mieux illustré, sans repasser le contrôle du retournement.")
             for trial in sorted((t for t in tested.values() if t["focus_images"]), key=lambda t: -t["images"])[:3]:
                 print(f"   ↪ « {trial['source']['title']} » ({trial['images']} image(s))")
-                title = self._accept_title(trial, used)
+                title = self._accept_title(trial, used, check_reversal=False)
                 if title:
                     return self._retain(trial, title)
         raise RuntimeError(f"Aucun sujet valide trouvé après {max_attempts} tentatives.")
@@ -353,8 +353,9 @@ class MysteryBrain(BaseBrain):
         names = [n for n in names if n and name_matches(reference, n)]
         return names or default
 
-    def _accept_title(self, trial: dict, used) -> str | None:
-        """Titre écrit d'après la source, avec retournement et sans doublon ; None sinon."""
+    def _accept_title(self, trial: dict, used, check_reversal: bool = True) -> str | None:
+        """Titre écrit d'après la source, avec retournement et sans doublon ; None sinon.
+        `check_reversal=False` (repli) : le contrôle du retournement n'est pas repassé, les autres le sont."""
         title = self._write_title(trial["title_vars"], trial["source"], trial.get("focus"))
         if not title:
             return None
@@ -367,7 +368,7 @@ class MysteryBrain(BaseBrain):
         if focus and not mentions_focus(title, focus, place):
             print(f"   ↻ Titre rejeté : « {title} » ne nomme pas « {' / '.join(focus)} ».")
             return None
-        ok, reason = self.has_reversal(title, trial["source"])
+        ok, reason = self.has_reversal(title, trial["source"]) if check_reversal else (True, "")
         if not ok:
             print(f"   ↻ Titre sans retournement rejeté : « {title} » ({reason or 'motif non fourni par le juge'})")
             return None

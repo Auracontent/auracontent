@@ -195,3 +195,50 @@ def test_every_title_rejection_line_carries_a_reason():
     lines = [ln for ln in source.splitlines() if "Titre" in ln and "rejeté" in ln and "print(" in ln]
     assert len(lines) >= 4
     assert all(re.search(r"\(\{|ne nomme pas|\(\{reason", ln) for ln in lines), lines
+
+
+# ---------- 3. Repli : le sujet le mieux illustré, sans repasser le contrôle du retournement ----------
+def _trial(title="Abbaye de Clairvaux"):
+    return {"source": {"title": title, "url": "u", "extract": f"{title} devint une prison en 1808."},
+            "focus": [], "details": {}, "images": 9, "focus_images": 9, "region": {"name": "Grand Est"},
+            "category": {"name": "abbaye"}, "title_vars": {}}
+
+
+def test_accept_title_without_reversal_check_never_calls_judge():
+    brain = _mystery()
+    brain._write_title = lambda *a, **k: "Abbaye de Clairvaux devint une prison en 1808"
+    brain.is_duplicate_topic_llm = lambda title, used: (False, None)
+    brain.extract_facts = lambda trial, title: True
+
+    def judge(*a):
+        raise AssertionError("le repli ne repasse pas le contrôle du retournement")
+
+    brain.has_reversal = judge
+    assert brain._accept_title(_trial(), [], check_reversal=False) == "Abbaye de Clairvaux devint une prison en 1808"
+    brain.has_reversal = lambda title, source: (False, "simple fait")
+    assert brain._accept_title(_trial(), []) is None                 # boucle normale : contrôle appliqué
+
+
+def test_fallback_skips_reversal_but_keeps_other_checks(monkeypatch, capsys):
+    from auracontent.channels.mystery import brain as mb
+
+    monkeypatch.setattr(mb, "load_global_history", lambda: [])
+    monkeypatch.setattr(mb, "load_used_sources", lambda: set())
+    monkeypatch.setattr(mb, "load_last_regions", lambda **k: [])
+    monkeypatch.setattr(mb, "load_last_categories", lambda **k: [])
+    monkeypatch.setattr(mb, "place_details", lambda qid: {"commune": "C"})
+    pages = iter([{"title": f"Lieu {i}", "url": "u", "extract": "x"} for i in range(10)])
+    brain = _mystery()
+    brain._anecdotes = []
+    brain._find_source = lambda region, category, used: next(pages)
+    brain.count_source_images = lambda source, details, focus=None: (6 + int(source["title"][-1]),) * 2
+    calls = []
+
+    def accept(trial, used, check_reversal=True):
+        calls.append((trial["source"]["title"], check_reversal))
+        return None if check_reversal else f"Titre {trial['source']['title']}"   # le juge rejette tout
+
+    brain._accept_title = accept
+    assert brain.pick_topic() == "Titre Lieu 9"                   # le mieux illustré (15 images)
+    assert calls[:10] == [(f"Lieu {i}", True) for i in range(10)] and calls[10] == ("Lieu 9", False)
+    assert "sans repasser le contrôle du retournement" in capsys.readouterr().out
