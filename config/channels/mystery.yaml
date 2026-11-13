@@ -47,6 +47,10 @@ brain:
   script_models: ["gemini", "gpt-oss-120b", "qwen3-235b", "deepseek-chat"]   # fragments de nom
   script_wait_rounds: 3
   script_wait_seconds: 60
+  # 429 (limite par minute) : fournisseur suivant dès le premier refus, sans attendre (Groq gpt-oss-20b :
+  # 8 000 tokens/min, des 429 en rafale). Si tous les modèles autorisés sont saturés, script_wait_rounds
+  # s'applique toujours.
+  rate_limit: fallback
   # Notation des accroches (phrase complète, verbe conjugué, note) et extraction des faits : ces modèles.
   # Tâches simples (choix de page, objet de l'anecdote, titre, retournement, doublon, génération des
   # accroches, bandeau, légende) : petits modèles. S'ils échouent tous, repli sur les autres modèles, sauf ceux du script (Gemini et gros modèles).

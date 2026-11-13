@@ -143,3 +143,12 @@ def test_tolerance_never_goes_below_floor():
     data = {"scenes": [{"id": i, "text": "x"} for i in range(1, 4)], "closing_cta": "?"}
     with pytest.raises(SceneCountError, match="au moins 4"):
         brain.validate_script_specifics(data, "t")
+
+
+# ---------- 4. Bascule au premier 429 ----------
+def test_mystery_rate_limit_fallback_on_every_route():
+    brain = _mystery()
+    assert brain.config["brain"]["rate_limit"] == "fallback"
+    assert brain.script_routing()["rate_limit"] == "fallback"
+    assert brain.simple_routing()["rate_limit"] == "fallback"
+    assert brain.script_routing()["wait_rounds"] == 3              # saturation générale : on attend toujours

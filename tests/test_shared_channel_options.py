@@ -57,8 +57,8 @@ def test_unknown_rate_limit_value_is_rejected(monkeypatch):
 
 
 def test_routing_unchanged_without_rate_limit_option():
-    mystery = load_channel_config("mystery")["brain"]
-    assert "rate_limit" not in mystery
+    # mystery a choisi `rate_limit: fallback` ; sans l'option, le routage reste celui d'avant
+    mystery = {k: v for k, v in load_channel_config("mystery")["brain"].items() if k != "rate_limit"}
     assert "rate_limit" not in simple_routing_from(mystery)
     assert rate_limit_routing_from(mystery) == {}
     assert simple_routing_from({}) == {}
