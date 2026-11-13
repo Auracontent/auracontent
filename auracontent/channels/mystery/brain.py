@@ -360,7 +360,7 @@ class MysteryBrain(BaseBrain):
             return None
         issues = claim_issues(title, source_text(trial["source"], max_chars=100000), "titre")
         if issues:
-            print(f"   ↻ Titre rejeté : {issues[0]}")
+            print(f"   ↻ Titre rejeté ({issues[0]}) : « {title} »")
             return None
         focus = trial.get("focus") or []
         place = place_terms_of(trial.get("details"))
@@ -369,7 +369,7 @@ class MysteryBrain(BaseBrain):
             return None
         ok, reason = self.has_reversal(title, trial["source"])
         if not ok:
-            print(f"   ↻ Titre sans retournement rejeté : « {title} » ({reason})")
+            print(f"   ↻ Titre sans retournement rejeté : « {title} » ({reason or 'motif non fourni par le juge'})")
             return None
         is_dup, matched = self.is_duplicate_topic_llm(title, used)
         if is_dup:
@@ -566,12 +566,25 @@ class MysteryBrain(BaseBrain):
             temperature=1.0, max_completion_tokens=200, **self.simple_routing(),
         )
         title = str(data.get("title", "")).strip().strip('"«» ')
-        low = title.lower()
-        if (not title or len(title) > MAX_TITLE_CHARS or len(title.split()) > 14
-                or any(w in low for w in BANNED_TITLE_WORDS)):
-            print(f"   ↻ Titre rejeté : {title!r}")
+        reason = self.title_format_issue(title)
+        if reason:
+            print(f"   ↻ Titre rejeté ({reason}) : {title!r}")
             return None
         return title
+
+    @staticmethod
+    def title_format_issue(title: str) -> str | None:
+        """Motif du rejet d'un titre sur sa forme (longueur, mots interdits), ou None s'il est acceptable."""
+        if not title:
+            return "titre vide"
+        if len(title) > MAX_TITLE_CHARS:
+            return f"{len(title)} caractères, maximum {MAX_TITLE_CHARS}"
+        if len(title.split()) > 14:
+            return f"{len(title.split())} mots, maximum 14"
+        banned = [w.strip() for w in BANNED_TITLE_WORDS if w in title.lower()]
+        if banned:
+            return f"mot interdit « {banned[0]} »"
+        return None
 
     # ==========================================
     # HOOKS

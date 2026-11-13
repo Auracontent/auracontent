@@ -152,3 +152,46 @@ def test_mystery_rate_limit_fallback_on_every_route():
     assert brain.script_routing()["rate_limit"] == "fallback"
     assert brain.simple_routing()["rate_limit"] == "fallback"
     assert brain.script_routing()["wait_rounds"] == 3              # saturation générale : on attend toujours
+
+
+# ---------- 5. Motif de chaque titre rejeté ----------
+@pytest.mark.parametrize("title, reason", [
+    ("", "titre vide"),
+    ("x" * 90, "90 caractères"),
+    (" ".join(["mot"] * 15), "15 mots"),
+    ("Le plus vieux pont de France", "mot interdit « le plus »"),
+    ("Une histoire incroyable", "mot interdit « incroyable »"),
+])
+def test_title_format_rejection_always_has_reason(title, reason):
+    assert reason in MysteryBrain.title_format_issue(title)
+
+
+def test_valid_title_has_no_format_issue():
+    assert MysteryBrain.title_format_issue("Pourquoi cette abbaye est-elle devenue une prison ?") is None
+
+
+class _TitleLLM:
+    def __init__(self, title):
+        self.title = title
+
+    def call_json_with_retry(self, messages, **kw):
+        return {"title": self.title}
+
+
+def test_write_title_logs_reason(capsys):
+    brain = _mystery(_TitleLLM("Le plus vieux pont de France"))
+    title_vars = {k: "" for k in ("forced_region", "forced_category", "forced_format")}
+    assert brain._write_title(title_vars, {"title": "Pont", "extract": "x"}) is None
+    out = capsys.readouterr().out
+    assert "Titre rejeté (mot interdit « le plus »)" in out
+
+
+def test_every_title_rejection_line_carries_a_reason():
+    """Toutes les lignes « Titre rejeté » du brain précisent un motif (pas de rejet muet)."""
+    import inspect
+    import re
+
+    source = inspect.getsource(MysteryBrain)
+    lines = [ln for ln in source.splitlines() if "Titre" in ln and "rejeté" in ln and "print(" in ln]
+    assert len(lines) >= 4
+    assert all(re.search(r"\(\{|ne nomme pas|\(\{reason", ln) for ln in lines), lines
