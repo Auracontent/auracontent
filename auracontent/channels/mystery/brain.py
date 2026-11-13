@@ -10,7 +10,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from auracontent.core.brain.base_brain import BaseBrain, VeracityIssue
+from auracontent.core.brain.base_brain import BaseBrain, SceneCountError, TopicRejected, VeracityIssue
 from auracontent.services.scraping.anecdotes import collect_french_anecdotes
 from auracontent.services.scraping.wikipedia import fetch_intro, fetch_page, find_candidates, place_details
 from auracontent.services.visuals.asset_manager import subject_settings
@@ -674,6 +674,16 @@ class MysteryBrain(BaseBrain):
         if self._source.get("answer"):
             block += f"\n\nRÉPONSE À LA QUESTION DU SUJET (à donner dans le script) : {self._source['answer']}"
         return block
+
+    def generate_script(self, topic, chosen_hook=None):
+        """Un sujet sur lequel le LLM ne tient pas le nombre de scènes est abandonné tout de suite (jamais repris
+        à l'exécution suivante, où il échouerait de la même façon) : le pipeline passe au sujet suivant."""
+        try:
+            return super().generate_script(topic, chosen_hook=chosen_hook)
+        except RuntimeError as e:
+            if isinstance(e, TopicRejected) or not isinstance(e.__cause__, SceneCountError):
+                raise
+            raise TopicRejected(f"nombre de scènes non tenu : {e.__cause__}") from e
 
     def target_scene_count(self) -> int:
         """Matière courte (brain.short_video.max_facts faits au plus) : vidéo de 20 à 25 s plutôt qu'un
