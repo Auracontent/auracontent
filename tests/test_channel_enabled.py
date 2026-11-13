@@ -17,7 +17,7 @@ class _Recorder:
     ran: ClassVar[list] = []
 
     def __init__(self, *a, **k):
-        self.channels = {}
+        self.channels, self.usage = {}, {}
 
     @classmethod
     def create_default(cls):
@@ -73,3 +73,12 @@ def test_publish_skips_disabled_channel(monkeypatch):
 
     monkeypatch.setattr(publish, "get_latest_video", boom)
     assert publish.publish_channel("finance") is True
+
+
+def test_budget_line_counts_successful_calls_per_script():
+    from auracontent.core.brain.llm_client import LLMClient
+
+    client = LLMClient.__new__(LLMClient)
+    client.usage = {"Gemini": {"calls": 5, "failures": 1, "prompt_tokens": 4000, "completion_tokens": 2000}}
+    line = client.budget_line(2)
+    assert "4 appel(s) réussi(s)" in line and "par script : 2.0 appel(s), 2000 + 1000 tokens" in line

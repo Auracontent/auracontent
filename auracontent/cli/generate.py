@@ -63,6 +63,8 @@ def main(argv: list[str]) -> int:
 
     for line in llm.usage_report():
         print(line)
+    if llm.usage:
+        print(llm.budget_line(sum(results.values())))
 
     # On ne sauvegarde l'état que si au moins une chaîne a réussi (évite de « brûler » un sujet sans vidéo).
     # Après un échec, seul le sujet en attente est sauvé : l'exécution suivante le reprend.
