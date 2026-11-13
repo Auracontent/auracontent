@@ -1,4 +1,4 @@
-"""Chaîne finance, phase 1 : configuration, registre, choix du sujet, filtres et script (LLM factice)."""
+"""Chaîne finance : configuration, registre, choix du sujet, filtres et script (LLM factice)."""
 import json
 
 import pytest
@@ -129,7 +129,9 @@ def test_hook_filters_log_reasons():
     topic = brain.describe("interets_composes", brain.last_pick["params"])
     assert brain.hook_issues("Mettre moins d'argent… et finir avec plus.", topic) == []
     assert any("mots" in i for i in brain.hook_issues("Un deux trois quatre cinq six sept huit neuf dix onze douze treize.", topic))
-    assert any("2100" in i or "2 100" in i for i in brain.hook_issues("Léa finit avec 2100 €.", topic))
+    assert brain.hook_issues("Léa finit avec 2 100 €.", topic) == []               # résultat de calc.py
+    assert any("2500" in i or "2 500" in i for i in brain.hook_issues("Léa finit avec 2500 €.", topic))
+    assert any("472" in i for i in brain.hook_issues("Léa a 472 € de plus.", topic))  # écart non arrondi
     assert any("vouvoie" in i for i in brain.hook_issues("Vous allez être surpris.", topic))
     assert any("livret A" in i for i in brain.hook_issues("Le livret A ne suffit pas.", topic))
     assert brain.hook_issues("100 € à 20 ans battent 300 € à 40 ans.", topic) == []
@@ -165,7 +167,9 @@ def _script(first_scene: str):
                "template": "deux_arbres", "mood": "surprise", "pause_after_ms": 400}]
     scenes += [{"id": i, "text": "Les gains rapportent à leur tour des gains.", "role": "mechanism",
                 "visual": "un arbre qui pousse", "template": "deux_arbres", "mood": "calm", "pause_after_ms": 400}
-               for i in range(2, 8)]
+               for i in range(2, 7)]
+    scenes.append({"id": 7, "text": "À 65 ans, Léa a 2 100 € et Hugo 1 630 €.", "role": "reveal",
+                   "visual": "deux arbres", "template": "deux_arbres", "mood": "surprise", "pause_after_ms": 400})
     return {"title": "Moins d'argent, plus à l'arrivée", "on_screen_title": "100 € À 20 ANS | BATTENT 300 € À 40",
             "hypothesis": "reformulée", "closing_cta": "Et toi, tu aurais parié sur qui ?", "scenes": scenes}
 
@@ -190,6 +194,7 @@ def test_run_channel_script_only_regenerates_and_saves(finance_state, monkeypatc
     assert script["scenes"][0]["text"] == "Mettre moins d'argent… et finir avec plus."
     assert script["hypothesis"] == "7 %/an · versement unique · avant inflation"
     assert "unresolved_issues" not in script
+    assert script["calc"]["headline"] == "lea_final" and script["calc"]["values"]["lea_final"]["value"] == 2100
     assert all(call.get("rate_limit") == "fallback" for call in llm.calls)       # bascule au premier 429
     history = json.loads((finance_state / "finance" / "global_history.json").read_text(encoding="utf-8"))
     assert history[0]["concept"] == "interets_composes" and history[0]["channel"] == "finance"

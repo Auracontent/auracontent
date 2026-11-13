@@ -3,7 +3,8 @@
 Même principe que mystery : sujet -> accroches notées (bandit) -> script contrôlé, régénéré tant qu'un
 contrôle échoue. Différence : le sujet n'est pas une page Wikipédia mais un CONCEPT permanent (intérêts
 composés, inflation...) avec des PARAMÈTRES (âges, taux, durées, montants). Les résultats chiffrés viennent
-de calc.py (phase 2) : le LLM n'écrit jamais un nombre absent des données d'entrée.
+de calc.py : le LLM choisit parmi des sujets déjà calculés et n'écrit jamais un nombre absent des données
+d'entrée ou des résultats de calc.py ; le résultat principal doit être dit dans la narration.
 """
 from __future__ import annotations
 
@@ -13,6 +14,7 @@ import re
 import unicodedata
 from pathlib import Path
 
+from auracontent.channels.finance import calc as fcalc
 from auracontent.core.brain.base_brain import BaseBrain
 from auracontent.utils.topic_tracker import load_global_history, load_last_categories, load_used_values
 
@@ -109,6 +111,9 @@ class FinanceBrain(BaseBrain):
             params["late_amount"] = params["early_amount"] * params["late_amount_factor"]
             if params["late_age"] - params["early_age"] < 15 or params["end_age"] - params["late_age"] < 15:
                 return None
+            # l'idée du concept (« commencer tôt pèse plus que la mise ») doit être vraie avec ces chiffres
+            if fcalc.compute(concept, params)["gap"] <= 0:
+                return None
         if concept == "cout_du_temps" and params["delay_years"] >= params["horizon_years"] / 2:
             return None
         return params
@@ -163,7 +168,32 @@ class FinanceBrain(BaseBrain):
         raise KeyError(concept)
 
     def pick_topic(self) -> str:
-        """Concept absent des dernières vidéos, puis une combinaison de paramètres jamais traitée."""
+        """Un candidat inédit par concept (hors concepts récents), puis le choix du LLM parmi eux."""
+        candidates = self.topic_candidates()
+        if not candidates:
+            raise RuntimeError("Aucune combinaison concept + paramètres inédite.")
+        concept, params = self.choose_candidate(candidates)
+        self.last_pick = {"category": concept, "concept": concept, "topic_key": self.topic_key(concept, params),
+                          "params": params}
+        return self.describe(concept, params)
+
+    def _first_unused(self, concept: str, used: set, used_titles: set) -> dict | None:
+        combos = self.combinations(concept)
+        random.shuffle(combos)
+        for params in combos:
+            if self.topic_key(concept, params) in used:
+                continue
+            topic = self.describe(concept, params)
+            if comparable(topic) in used_titles:
+                print(f"   ↻ Sujet écarté (titre déjà traité) : {topic}")
+                continue
+            return params
+        print(f"   ↻ Concept épuisé : toutes les combinaisons de « {concept} » sont déjà traitées.")
+        return None
+
+    def topic_candidates(self) -> list[tuple[str, dict]]:
+        """Concepts absents des dernières vidéos, chacun avec une combinaison jamais traitée (ordre aléatoire).
+        Si tous ces concepts sont épuisés, les concepts récents servent de réserve."""
         b = self._brain()
         concepts = list(b.get("concepts") or {})
         if not concepts:
@@ -172,25 +202,42 @@ class FinanceBrain(BaseBrain):
         used_titles = {comparable(t) for t in load_global_history(self.channel_name)}
         recent = set(load_last_categories(int(b.get("recent_concepts_window", 2)), channel=self.channel_name))
         random.shuffle(concepts)
-        ordered = [c for c in concepts if c not in recent] + [c for c in concepts if c in recent]
-        for concept in ordered:
-            if concept in recent and len(ordered) > len(recent):
+        fresh = [c for c in concepts if c not in recent]
+        for concept in concepts:
+            if concept in recent and fresh:
                 print(f"   ↻ Concept écarté : « {concept} » traité dans les {len(recent)} dernières vidéos.")
-                continue
-            combos = self.combinations(concept)
-            random.shuffle(combos)
-            for params in combos:
-                key = self.topic_key(concept, params)
-                topic = self.describe(concept, params)
-                if key in used:
-                    continue
-                if comparable(topic) in used_titles:
-                    print(f"   ↻ Sujet écarté (titre déjà traité) : {topic}")
-                    continue
-                self.last_pick = {"category": concept, "concept": concept, "topic_key": key, "params": params}
-                return topic
-            print(f"   ↻ Concept épuisé : toutes les combinaisons de « {concept} » sont déjà traitées.")
-        raise RuntimeError("Aucune combinaison concept + paramètres inédite.")
+        for group in (fresh, [c for c in concepts if c in recent]):
+            found = [(c, p) for c in group if (p := self._first_unused(c, used, used_titles)) is not None]
+            if found:
+                return found
+        return []
+
+    def choose_candidate(self, candidates: list[tuple[str, dict]]) -> tuple[str, dict]:
+        """Le LLM choisit le sujet le plus parlant (il ne renvoie qu'un numéro, jamais un chiffre) ; au moindre
+        problème, ou avec brain.concept_selection: random, le premier candidat (déjà tiré au hasard)."""
+        if self._brain().get("concept_selection", "random") != "llm" or self.llm is None or len(candidates) == 1:
+            return candidates[0]
+        concepts = self._brain()["concepts"]
+        lines = []
+        for i, (concept, params) in enumerate(candidates, 1):
+            result = fcalc.compute(concept, params).main
+            lines.append(f"{i}. {self.describe(concept, params)} (idée : {concepts[concept].get('idea', '')}) "
+                         f"-> résultat : {result.label} = {result.text}")
+        sections = self.read_sections("select.md")
+        values = {"candidates": "\n".join(lines), "count": len(candidates)}
+        try:
+            data = self.llm.call_json_with_retry(
+                [{"role": "system", "content": self.fill(sections["system"], **values)},
+                 {"role": "user", "content": self.fill(sections["user"], **values)}],
+                temperature=0.4, max_completion_tokens=800, **self.simple_routing())
+            index = int(str(data.get("choice", "")).strip()) - 1
+            if 0 <= index < len(candidates):
+                print(f"🧭 Sujet choisi par le LLM parmi {len(candidates)} : {data.get('reason', '')}".rstrip(" :"))
+                return candidates[index]
+            print(f"⚠️ Choix du LLM hors liste ({data.get('choice')!r}) : tirage au hasard.")
+        except Exception as e:                    # le choix est un confort : jamais bloquant
+            print(f"⚠️ Choix du sujet par le LLM impossible ({e}) : tirage au hasard.")
+        return candidates[0]
 
     def export_state(self) -> dict:
         return {"last_pick": self.last_pick}
@@ -204,10 +251,21 @@ class FinanceBrain(BaseBrain):
         concept = self.last_pick["concept"]
         return concept, self.last_pick["params"], self._brain()["concepts"][concept]
 
+    def calc(self) -> fcalc.Calc:
+        concept, params, _ = self._pick()
+        return fcalc.compute(concept, params)
+
     def allowed_numbers(self) -> set[float]:
-        """Nombres que le texte peut citer : les données d'entrée (phase 2 : + sorties de calc.py)."""
+        """Nombres que le texte peut citer : données d'entrée, constantes du concept et résultats de calc.py."""
         _, params, spec = self._pick()
-        return {float(v) for v in [*params.values(), *(spec.get("constants") or [])]}
+        return {float(v) for v in [*params.values(), *(spec.get("constants") or [])]} | self.calc().numbers()
+
+    def numbers_block(self) -> str:
+        """Liste lisible des chiffres autorisés, avec ce qu'ils désignent (entrées puis résultats)."""
+        _, params, _ = self._pick()
+        lines = [f"- {PARAM_LABELS.get(k, k)} : {_fmt(v)}" for k, v in params.items()]
+        lines += [f"- {v.label} : {v.text}" for v in self.calc().values.values()]
+        return "\n".join(lines)
 
     # ---------- Accroches ----------
     def hook_issues(self, text: str, topic: str) -> list[str]:
@@ -228,7 +286,7 @@ class FinanceBrain(BaseBrain):
         cfg = self.style_cfg()
         values = dict(topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""), n=n,
                       max_hook_words=cfg["max_hook_words"],
-                      allowed_numbers=", ".join(_fmt(v) for v in sorted(self.allowed_numbers())))
+                      numbers_block=self.numbers_block())
         valid = []
         for attempt in range(2):
             data = self.llm.call_json_with_retry(
@@ -258,6 +316,8 @@ class FinanceBrain(BaseBrain):
             topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""),
             hypothesis=self.hypothesis(concept, params),
             params_block="\n".join(f"- {PARAM_LABELS.get(k, k)} : {_fmt(v)}" for k, v in params.items()),
+            results_block="\n".join(f"- {v.label} : {v.text}" for v in self.calc().values.values()),
+            main_result=f"{self.calc().main.label} : {self.calc().main.text}",
             chosen_hook=(chosen_hook or {}).get("text", ""), scene_count=scene_count,
             max_sentence_words=cfg["max_sentence_words"], templates=", ".join(f'"{t}"' for t in TEMPLATES),
         )
@@ -279,6 +339,7 @@ class FinanceBrain(BaseBrain):
             raise ValueError(f"segment du bandeau de plus de 20 caractères : « {too_long[0]} ».")
         data["on_screen_title"] = " | ".join(parts)
         data["hypothesis"] = self.hypothesis(concept, params)          # jamais reformulée par le LLM
+        data["calc"] = self.calc().to_dict()                           # chiffres et courbes des gabarits
         if not str(data.get("closing_cta", "")).strip():
             raise ValueError("closing_cta manquant.")
         for scene in data["scenes"]:
@@ -325,6 +386,10 @@ class FinanceBrain(BaseBrain):
             issues += self.text_issues(str(data.get(key, "")), what)
         if count_words(data.get("closing_cta", "")) > limit:
             issues.append(f"la question finale dépasse {limit} mots")
+        main = self.calc().main
+        said = {n for scene in data.get("scenes", []) for n in numbers_in(scene.get("text", ""))}
+        if main.value not in said:
+            issues.append(f"le résultat principal n'est pas dit dans la narration : {main.label} = {main.text}")
         for issue in issues:
             print(f"   ↻ Script : {issue}")
         return issues

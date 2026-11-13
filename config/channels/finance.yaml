@@ -26,6 +26,9 @@ brain:
   script_wait_rounds: 2
   script_wait_seconds: 60
   simple_models: ["gpt-oss-20b", "llama-3.1-8b", "gpt-4.1-mini", "gpt-4o-mini", "glm-4.5-flash", "qwen-flash"]
+  # Si tous les petits modèles échouent : repli sur les autres, Gemini compris ; seuls les gros modèles
+  # du script restent exclus des tâches simples
+  simple_fallback_excluded: ["gpt-oss-120b", "deepseek-chat"]
 
   # Style parlé : tutoiement, ton posé, phrases courtes, aucun jargon
   style:
@@ -40,6 +43,9 @@ brain:
   # Concepts permanents. Le sujet = concept + paramètres ; la déduplication porte sur les deux.
   # Les valeurs autorisées sont les seules que le script peut citer en entrée (les résultats viennent de calc.py).
   recent_concepts_window: 2   # un concept ne revient pas dans les 2 dernières vidéos
+  # Le LLM choisit parmi un candidat inédit par concept (résultats déjà calculés par calc.py) ; « random » :
+  # tirage au hasard. En cas d'échec du LLM, tirage au hasard.
+  concept_selection: "llm"
   concepts:
     interets_composes:
       label: "intérêts composés"

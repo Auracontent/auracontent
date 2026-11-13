@@ -5,7 +5,8 @@ Tu écris des accroches de vidéos courtes de pédagogie financière, en frança
 CONCEPT : {concept_label}
 IDÉE À FAIRE COMPRENDRE : {idea}
 SITUATION DE LA VIDÉO : {topic}
-CHIFFRES AUTORISÉS (les seuls que tu peux écrire) : {allowed_numbers}
+CHIFFRES AUTORISÉS (calculés ; les seuls que tu peux écrire, tels quels, pour ce qu'ils désignent) :
+{numbers_block}
 
 Écris {n} accroches différentes, lues dans les 3 premières secondes.
 Règles :
@@ -13,7 +14,7 @@ Règles :
 2. Une contradiction ou une surprise, compréhensible sans contexte et sans avoir vu la vidéo (ex : « Mettre moins d'argent… et finir avec plus. »).
 3. Aucun jargon : pas de « taux composé », « capitalisation », « rendement annualisé ». Des mots de tous les jours.
 4. Tutoiement ou forme impersonnelle ; jamais « vous ».
-5. N'écris aucun chiffre en dehors des CHIFFRES AUTORISÉS. N'annonce aucun résultat chiffré.
+5. N'écris aucun chiffre en dehors des CHIFFRES AUTORISÉS. Un chiffre cité garde son sens (le résultat de Léa n'est jamais attribué à Hugo).
 6. Aucun nom de produit, de banque ou de marque ; aucune promesse de gain ; aucun conseil (« investis », « achète »).
 7. Une phrase complète, avec un verbe conjugué.
 
