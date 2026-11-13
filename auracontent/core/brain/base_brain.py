@@ -18,6 +18,10 @@ class VeracityIssue(str):
 
 class TopicRejected(RuntimeError):
     """Le sujet ne peut pas donner un script véridique : on l'abandonne et on passe au suivant."""
+
+
+class SceneCountError(ValueError):
+    """Le LLM n'a pas tenu le nombre de scènes demandé (une chaîne peut alors abandonner le sujet)."""
 _SECTION_HEADER = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
 
@@ -196,7 +200,7 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
                 last_error = e
                 print(f"❌ Échec de génération avec {candidate_count} scènes : {e}")
 
-        raise RuntimeError(f"Impossible de générer un script. Dernière erreur : {last_error}")
+        raise RuntimeError(f"Impossible de générer un script. Dernière erreur : {last_error}") from last_error
 
     def _generate_script_attempt(self, topic, scene_count, chosen_hook, max_retries):
         """Boucle de correction (validation de structure puis fact-check)."""
@@ -215,7 +219,7 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
             tolerance = int(self.config.get("brain", {}).get("scene_count_tolerance", 0))
             if abs(len(scenes) - scene_count) > tolerance:
                 if last:
-                    raise ValueError(f"Échec du comptage des scènes après {max_retries + 1} tentatives.")
+                    raise SceneCountError(f"Échec du comptage des scènes après {max_retries + 1} tentatives.")
                 correction_feedback = (f"CORRECTION OBLIGATOIRE : génère EXACTEMENT {scene_count} scènes. "
                                        f"Tu en as fait {len(scenes)}.")
                 continue

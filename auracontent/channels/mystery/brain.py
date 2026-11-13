@@ -10,7 +10,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from auracontent.core.brain.base_brain import BaseBrain, VeracityIssue
+from auracontent.core.brain.base_brain import BaseBrain, SceneCountError, TopicRejected, VeracityIssue
 from auracontent.services.scraping.anecdotes import collect_french_anecdotes
 from auracontent.services.scraping.wikipedia import fetch_intro, fetch_page, find_candidates, place_details
 from auracontent.services.visuals.asset_manager import subject_settings
@@ -66,6 +66,7 @@ YEAR_RE = re.compile(r"(?<!\d)(?:[3-9]\d{2}|1\d{3}|20[0-2]\d)(?!\d)")
 MONTHS = r"janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre"
 DATE_RE = re.compile(rf"\b\d{{1,2}}(?:er)?\s+(?:{MONTHS})\b|\b(?:{MONTHS})\s+\d{{3,4}}\b", re.IGNORECASE)
 DEFAULT_MIN_FACTS = 4
+DEFAULT_MIN_SCENES = 3               # brain.min_scenes : plancher du script (cible et résultat)
 
 
 def fold(text: str) -> str:
@@ -287,10 +288,10 @@ class MysteryBrain(BaseBrain):
 
         if tested:
             print(f"⚠️ Aucun sujet ne passe tous les contrôles en {max_attempts} essais : "
-                  "repli sur le sujet testé le mieux illustré.")
+                  "repli sur le sujet testé le mieux illustré, sans repasser le contrôle du retournement.")
             for trial in sorted((t for t in tested.values() if t["focus_images"]), key=lambda t: -t["images"])[:3]:
                 print(f"   ↪ « {trial['source']['title']} » ({trial['images']} image(s))")
-                title = self._accept_title(trial, used)
+                title = self._accept_title(trial, used, check_reversal=False)
                 if title:
                     return self._retain(trial, title)
         raise RuntimeError(f"Aucun sujet valide trouvé après {max_attempts} tentatives.")
@@ -352,23 +353,24 @@ class MysteryBrain(BaseBrain):
         names = [n for n in names if n and name_matches(reference, n)]
         return names or default
 
-    def _accept_title(self, trial: dict, used) -> str | None:
-        """Titre écrit d'après la source, avec retournement et sans doublon ; None sinon."""
+    def _accept_title(self, trial: dict, used, check_reversal: bool = True) -> str | None:
+        """Titre écrit d'après la source, avec retournement et sans doublon ; None sinon.
+        `check_reversal=False` (repli) : le contrôle du retournement n'est pas repassé, les autres le sont."""
         title = self._write_title(trial["title_vars"], trial["source"], trial.get("focus"))
         if not title:
             return None
         issues = claim_issues(title, source_text(trial["source"], max_chars=100000), "titre")
         if issues:
-            print(f"   ↻ Titre rejeté : {issues[0]}")
+            print(f"   ↻ Titre rejeté ({issues[0]}) : « {title} »")
             return None
         focus = trial.get("focus") or []
         place = place_terms_of(trial.get("details"))
         if focus and not mentions_focus(title, focus, place):
             print(f"   ↻ Titre rejeté : « {title} » ne nomme pas « {' / '.join(focus)} ».")
             return None
-        ok, reason = self.has_reversal(title, trial["source"])
+        ok, reason = self.has_reversal(title, trial["source"]) if check_reversal else (True, "")
         if not ok:
-            print(f"   ↻ Titre sans retournement rejeté : « {title} » ({reason})")
+            print(f"   ↻ Titre sans retournement rejeté : « {title} » ({reason or 'motif non fourni par le juge'})")
             return None
         is_dup, matched = self.is_duplicate_topic_llm(title, used)
         if is_dup:
@@ -382,7 +384,8 @@ class MysteryBrain(BaseBrain):
         """Faits utilisables sur le sujet précis, tirés de la source (gros modèle : véracité), et réponse à
         la question du titre. Moins de brain.min_facts faits, ou pas de réponse : sujet écarté."""
         b = self.config.get("brain", {})
-        min_facts = int(b.get("min_facts", DEFAULT_MIN_FACTS))
+        # au moins un fait par scène : sans assez de faits pour le plancher de scènes, le sujet est écarté
+        min_facts = max(int(b.get("min_facts", DEFAULT_MIN_FACTS)), self.min_scenes())
         sections = self.read_sections("facts.md")
         user = self.fill(sections["user"], title=title, focus=" / ".join(trial.get("focus") or []) or title,
                          source_block=source_text(trial["source"]))
@@ -399,7 +402,8 @@ class MysteryBrain(BaseBrain):
             answer = ""
         print(f"   📋 {len(facts)} fait(s) utilisable(s) sur le sujet ; réponse au titre : {answer or 'AUCUNE'}")
         if len(facts) < min_facts:
-            print(f"   ↻ Moins de {min_facts} faits dans la source : sujet écarté.")
+            print(f"   ↻ Moins de {min_facts} faits dans la source (il en faut un par scène, "
+                  f"{self.min_scenes()} scènes au moins) : sujet écarté avant le script.")
             return False
         if b.get("require_title_answer", True) and not answer:
             print(f"   ↻ La source ne répond pas à la question du titre ({data.get('question') or '?'}) : sujet écarté.")
@@ -563,12 +567,25 @@ class MysteryBrain(BaseBrain):
             temperature=1.0, max_completion_tokens=200, **self.simple_routing(),
         )
         title = str(data.get("title", "")).strip().strip('"«» ')
-        low = title.lower()
-        if (not title or len(title) > MAX_TITLE_CHARS or len(title.split()) > 14
-                or any(w in low for w in BANNED_TITLE_WORDS)):
-            print(f"   ↻ Titre rejeté : {title!r}")
+        reason = self.title_format_issue(title)
+        if reason:
+            print(f"   ↻ Titre rejeté ({reason}) : {title!r}")
             return None
         return title
+
+    @staticmethod
+    def title_format_issue(title: str) -> str | None:
+        """Motif du rejet d'un titre sur sa forme (longueur, mots interdits), ou None s'il est acceptable."""
+        if not title:
+            return "titre vide"
+        if len(title) > MAX_TITLE_CHARS:
+            return f"{len(title)} caractères, maximum {MAX_TITLE_CHARS}"
+        if len(title.split()) > 14:
+            return f"{len(title.split())} mots, maximum 14"
+        banned = [w.strip() for w in BANNED_TITLE_WORDS if w in title.lower()]
+        if banned:
+            return f"mot interdit « {banned[0]} »"
+        return None
 
     # ==========================================
     # HOOKS
@@ -675,15 +692,29 @@ class MysteryBrain(BaseBrain):
             block += f"\n\nRÉPONSE À LA QUESTION DU SUJET (à donner dans le script) : {self._source['answer']}"
         return block
 
+    def generate_script(self, topic, chosen_hook=None):
+        """Un sujet sur lequel le LLM ne tient pas le nombre de scènes est abandonné tout de suite (jamais repris
+        à l'exécution suivante, où il échouerait de la même façon) : le pipeline passe au sujet suivant."""
+        try:
+            return super().generate_script(topic, chosen_hook=chosen_hook)
+        except RuntimeError as e:
+            if isinstance(e, TopicRejected) or not isinstance(e.__cause__, SceneCountError):
+                raise
+            raise TopicRejected(f"nombre de scènes non tenu : {e.__cause__}") from e
+
+    def min_scenes(self) -> int:
+        return int(self.config.get("brain", {}).get("min_scenes", DEFAULT_MIN_SCENES))
+
     def target_scene_count(self) -> int:
-        """Matière courte (brain.short_video.max_facts faits au plus) : vidéo de 20 à 25 s plutôt qu'un
-        script étiré jusqu'à la durée visée."""
+        """Matière courte (brain.short_video.max_facts faits au plus) : vidéo courte plutôt qu'un script étiré
+        jusqu'à la durée visée, jamais sous brain.min_scenes."""
         count = super().target_scene_count()
         short = dict(self.config.get("brain", {}).get("short_video") or {})
         facts = len((self._source or {}).get("facts") or [])
         if short and facts and facts <= int(short.get("max_facts", 6)):
             per_scene = float(self.config.get("brain", {}).get("seconds_per_scene", 8))
-            short_count = max(int(short.get("min_scenes", 3)), round(float(short.get("seconds", 24)) / per_scene))
+            short_count = max(int(short.get("min_scenes", 3)), self.min_scenes(),
+                              round(float(short.get("seconds", 24)) / per_scene))
             if short_count < count:
                 print(f"⏱️ Matière courte ({facts} faits) : {short_count} scènes, environ "
                       f"{short.get('seconds', 24)} s, plutôt que {count}.")
@@ -791,6 +822,8 @@ class MysteryBrain(BaseBrain):
         return data.get("verbe") is True
 
     def validate_script_specifics(self, data, topic):
+        if len(data["scenes"]) < self.min_scenes():      # la tolérance de comptage ne passe pas sous le plancher
+            raise SceneCountError(f"{len(data['scenes'])} scènes : il en faut au moins {self.min_scenes()}.")
         if not str(data.get("closing_cta", "")).strip():
             raise ValueError("champ 'closing_cta' manquant.")
         self.validate_headline(data)

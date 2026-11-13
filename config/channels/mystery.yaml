@@ -25,8 +25,11 @@ brain:
   # Moins de min_facts faits, ou une source qui ne répond pas à la question du titre : sujet écarté.
   min_facts: 4
   require_title_answer: true
-  # Matière courte (max_facts faits au plus) : vidéo de 20 à 25 s plutôt qu'un script étiré
-  short_video: {max_facts: 6, seconds: 24, min_scenes: 3}
+  # Matière courte (max_facts faits au plus) : vidéo d'environ 30 s (4 scènes) plutôt qu'un script étiré
+  short_video: {max_facts: 6, seconds: 32, min_scenes: 4}
+  # Jamais moins de 4 scènes (cible et script rendu, tolérance comprise) ; il faut au moins un fait par
+  # scène, sinon le sujet est écarté avant d'écrire le script
+  min_scenes: 4
 
   # Sources de sujets, essayées dans l'ordre : anecdotes « Le saviez-vous ? » de Wikipédia (lieu ou objet
   # situé en France, d'après Wikidata), puis recherche Wikipédia par mots-clés aléatoires (repli)
@@ -44,6 +47,10 @@ brain:
   script_models: ["gemini", "gpt-oss-120b", "qwen3-235b", "deepseek-chat"]   # fragments de nom
   script_wait_rounds: 3
   script_wait_seconds: 60
+  # 429 (limite par minute) : fournisseur suivant dès le premier refus, sans attendre (Groq gpt-oss-20b :
+  # 8 000 tokens/min, des 429 en rafale). Si tous les modèles autorisés sont saturés, script_wait_rounds
+  # s'applique toujours.
+  rate_limit: fallback
   # Notation des accroches (phrase complète, verbe conjugué, note) et extraction des faits : ces modèles.
   # Tâches simples (choix de page, objet de l'anecdote, titre, retournement, doublon, génération des
   # accroches, bandeau, légende) : petits modèles. S'ils échouent tous, repli sur les autres modèles, sauf ceux du script (Gemini et gros modèles).

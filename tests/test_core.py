@@ -1079,9 +1079,9 @@ def test_short_material_gives_a_short_video(monkeypatch):
     monkeypatch.delenv("VIDEO_DURATION", raising=False)
     brain = _mystery_brain()
     brain._source = {"facts": ["f"] * 5}
-    assert brain.target_scene_count() == 3                       # environ 24 s plutôt que 45
+    assert brain.target_scene_count() == 4                       # environ 30 s plutôt que 45
     brain._source = {"facts": ["f"] * 9}
-    assert brain.target_scene_count() > 3
+    assert brain.target_scene_count() > 4
 
 
 def test_script_prompt_carries_anecdote_cited_articles_and_facts():
@@ -1169,7 +1169,8 @@ def test_topic_needs_enough_images_and_falls_back_to_best_illustrated(monkeypatc
     brain._find_source = lambda region, category, used: next(pages)
     brain.count_source_images = lambda source, details, focus=None: (counts.get(source["title"], 0),) * 2
     titles = []
-    brain._accept_title = lambda trial, used: titles.append(trial["source"]["title"]) or f"Titre {trial['source']['title']}"
+    brain._accept_title = lambda trial, used, check_reversal=True: (
+        titles.append(trial["source"]["title"]) or f"Titre {trial['source']['title']}")
     assert brain.pick_topic() == "Titre Lieu 1"                # 10 essais, aucun à 5 images : le mieux illustré
     assert titles == ["Lieu 1"] and brain.last_pick["source_images"] == 4
     out = capsys.readouterr().out
