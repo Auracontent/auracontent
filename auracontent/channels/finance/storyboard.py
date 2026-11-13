@@ -1,8 +1,10 @@
 """Storyboard de la chaîne finance : la suite des scènes de chaque concept est fixée ici, pas par le LLM.
 
-Le LLM écrit le texte de chaque scène et choisit seulement, dans `visual`, une variante parmi celles que le
-gabarit sait réellement dessiner (VARIANTS). Les rôles et les gabarits viennent de STORYBOARDS ; la scène
-« reveal » doit dire les résultats de REVEAL_KEYS (par défaut : le résultat principal de calc.py).
+Chaque concept a sa propre suite (5 à 7 scènes, rôles adaptés : la règle des 72 n'a pas de scène « belief »
+mais deux exemples chiffrés). Le LLM écrit le texte de chaque scène et choisit seulement, dans `visual`, une
+variante parmi celles que le gabarit sait réellement dessiner (VARIANTS). Les rôles et les gabarits viennent
+de STORYBOARDS ; SCENE_KEYS dit quels résultats de calc.py chaque rôle doit citer (par défaut : la scène
+« reveal » cite le résultat principal) ; MUST_SAY, les expressions que la narration doit contenir.
 """
 from __future__ import annotations
 
@@ -25,32 +27,39 @@ ROLES: dict[str, str] = {
     "belief": "ce que tout le monde croit",
     "mechanism": "le mécanisme, avec une image concrète",
     "reveal": "le résultat chiffré",
+    "example": "un deuxième exemple chiffré, avec l'autre taux",
     "takeaway": "ce qu'il faut retenir",
     "disclaimer": "rappel : exemple simplifié",
 }
 
-# (rôle, gabarit) scène par scène. 7 scènes de ~7 s : 45-60 s de vidéo.
+# (rôle, gabarit) scène par scène, propre à chaque concept : 5 à 7 scènes de ~7-9 s, 45-60 s de vidéo.
 STORYBOARDS: dict[str, tuple[tuple[str, str], ...]] = {
+    # deux personnages, une intuition à contredire : la suite complète
     "interets_composes": (("hook", "deux_arbres"), ("context", "curseur_temps"), ("belief", "barres"),
                           ("mechanism", "deux_courbes"), ("reveal", "deux_arbres"), ("takeaway", "barres"),
                           ("disclaimer", "carte_fin")),
-    "inflation": (("hook", "barres"), ("context", "curseur_temps"), ("belief", "barres"),
-                  ("mechanism", "deux_courbes"), ("reveal", "barres"), ("takeaway", "curseur_temps"),
-                  ("disclaimer", "carte_fin")),
+    # pas d'intuition contraire à poser : le mécanisme (les prix montent) suffit
+    "inflation": (("hook", "barres"), ("context", "curseur_temps"), ("mechanism", "deux_courbes"),
+                  ("reveal", "barres"), ("takeaway", "curseur_temps"), ("disclaimer", "carte_fin")),
     "cout_du_temps": (("hook", "deux_courbes"), ("context", "curseur_temps"), ("belief", "barres"),
                       ("mechanism", "curseur_temps"), ("reveal", "deux_courbes"), ("takeaway", "barres"),
                       ("disclaimer", "carte_fin")),
-    "frais": (("hook", "barres"), ("context", "curseur_temps"), ("belief", "deux_courbes"),
-              ("mechanism", "barres"), ("reveal", "deux_courbes"), ("takeaway", "barres"),
-              ("disclaimer", "carte_fin")),
-    "regle_72": (("hook", "curseur_temps"), ("context", "barres"), ("belief", "barres"),
-                 ("mechanism", "curseur_temps"), ("reveal", "curseur_temps"), ("takeaway", "deux_courbes"),
-                 ("disclaimer", "carte_fin")),
+    "frais": (("hook", "barres"), ("context", "curseur_temps"), ("mechanism", "barres"),
+              ("reveal", "deux_courbes"), ("takeaway", "barres"), ("disclaimer", "carte_fin")),
+    # une règle et deux exemples chiffrés, sans scène « belief »
+    "regle_72": (("hook", "curseur_temps"), ("mechanism", "curseur_temps"), ("reveal", "barres"),
+                 ("example", "barres"), ("takeaway", "deux_courbes"), ("disclaimer", "carte_fin")),
 }
 
-# Résultats (clés de calc.py) à dire dans la scène « reveal » ; absent = le résultat principal seul.
-REVEAL_KEYS: dict[str, tuple[str, ...]] = {
-    "cout_du_temps": ("cost", "paid_gap"),
+# Résultats (clés de calc.py) que chaque rôle doit citer ; absent = {"reveal": (résultat principal,)}.
+SCENE_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
+    "cout_du_temps": {"reveal": ("cost", "paid_gap")},
+    "regle_72": {"reveal": ("years_rule",), "example": ("years_rule_b",)},
+}
+
+# Expressions que la narration doit contenir (comparaison sans casse ni accents).
+MUST_SAY: dict[str, tuple[str, ...]] = {
+    "regle_72": ("règle des 72",),
 }
 
 
@@ -61,8 +70,12 @@ def storyboard(concept: str) -> tuple[tuple[str, str], ...]:
         raise KeyError(f"Concept sans storyboard : {concept}") from None
 
 
-def reveal_keys(concept: str, headline: str) -> tuple[str, ...]:
-    return REVEAL_KEYS.get(concept, (headline,))
+def scene_keys(concept: str, headline: str) -> dict[str, tuple[str, ...]]:
+    return SCENE_KEYS.get(concept, {"reveal": (headline,)})
+
+
+def must_say(concept: str) -> tuple[str, ...]:
+    return MUST_SAY.get(concept, ())
 
 
 def describe(concept: str) -> str:

@@ -109,8 +109,9 @@ def interets_composes(p: dict) -> Calc:
         _v("lea_final", f"Léa à {p['end_age']} ans", lea_r, "€"),
         _v("hugo_final", f"Hugo à {p['end_age']} ans", hugo_r, "€"),
         _v("gap", "écart en faveur de Léa", lea_r - hugo_r, "€"),
-        _v("lea_multiple", "la mise de Léa est multipliée par", round_1(lea / p["early_amount"]), "fois"),
-        _v("hugo_multiple", "la mise de Hugo est multipliée par", round_1(hugo / p["late_amount"]), "fois"),
+        # sans unité : on écrit « multipliée par 24 », jamais « multipliée par 24 fois »
+        _v("lea_multiple", "la mise de Léa est multipliée par", round_1(lea / p["early_amount"]), ""),
+        _v("hugo_multiple", "la mise de Hugo est multipliée par", round_1(hugo / p["late_amount"]), ""),
     ]
     ages = list(range(p["early_age"], p["end_age"] + 1))
     series = {"x": ages, "x_label": "âge",
@@ -184,16 +185,25 @@ def frais(p: dict) -> Calc:
 
 
 def regle_72(p: dict) -> Calc:
-    approx = 72 / p["rate"]
-    exact = math.log(2) / math.log(1 + p["rate"] / 100)
+    """Deux exemples : `rate` (le premier) et `rate_b` (le second, plus élevé)."""
+    def double(rate):
+        return round_1(72 / rate), round_1(math.log(2) / math.log(1 + rate / 100))
+
+    rule, exact = double(p["rate"])
+    rule_b, exact_b = double(p["rate_b"])
     values = [
-        _v("years_rule", f"72 divisé par {fmt_number(p['rate'])}", round_1(approx), "ans"),
-        _v("years_exact", "durée exacte pour doubler", round_1(exact), "ans"),
-        _v("years_quadruple", "durée pour quadrupler (deux doublements)", round_1(2 * approx), "ans"),
+        _v("years_rule", f"72 divisé par {fmt_number(p['rate'])} (temps pour doubler à {fmt_number(p['rate'])} %)",
+           rule, "ans"),
+        _v("years_exact", f"durée exacte pour doubler à {fmt_number(p['rate'])} %", exact, "ans"),
+        _v("years_rule_b", f"72 divisé par {fmt_number(p['rate_b'])} (temps pour doubler à "
+           f"{fmt_number(p['rate_b'])} %)", rule_b, "ans"),
+        _v("years_exact_b", f"durée exacte pour doubler à {fmt_number(p['rate_b'])} %", exact_b, "ans"),
     ]
-    n = math.ceil(2 * exact)
+    n = math.ceil(exact)
     series = {"x": list(range(n + 1)), "x_label": "années",
-              "a": [round(grow(100, p["rate"], y)) for y in range(n + 1)], "a_label": "100 € placés"}
+              "a": [round(grow(100, p["rate"], y)) for y in range(n + 1)],
+              "b": [round(grow(100, p["rate_b"], y)) for y in range(n + 1)],
+              "a_label": f"{fmt_number(p['rate'])} %/an", "b_label": f"{fmt_number(p['rate_b'])} %/an"}
     return Calc("regle_72", {v.key: v for v in values}, "years_rule", series, extra_numbers=(72, 2))
 
 

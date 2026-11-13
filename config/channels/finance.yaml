@@ -99,10 +99,11 @@ brain:
         years: [20, 30]
     regle_72:
       label: "règle des 72"
-      idea: "72 divisé par le taux donne à peu près le nombre d'années pour doubler"
+      idea: "la règle des 72 : 72 divisé par le taux donne à peu près le nombre d'années pour doubler ; deux taux comparés"
       constants: [72]           # nombres propres au concept, autorisés dans le texte
       params:
         rate: [2, 3, 4, 6, 8]
+        rate_b: [3, 4, 6, 8]     # second exemple, toujours plus élevé que le premier
 
 # Audio : mêmes services que mystery. Voix native (méthode B1 : aucune direction de jeu ajoutée,
 # vitesse naturelle).

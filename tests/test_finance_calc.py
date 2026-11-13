@@ -80,8 +80,8 @@ def test_frais():
 
 
 def test_regle_72():
-    r = calc.compute("regle_72", {"rate": 12})
-    assert (r["years_rule"], r["years_exact"], r["years_quadruple"]) == (6, 6.1, 12)
+    r = calc.compute("regle_72", {"rate": 4, "rate_b": 8})
+    assert (r["years_rule"], r["years_exact"], r["years_rule_b"], r["years_exact_b"]) == (18, 17.7, 9, 9)
     assert {72, 2} <= r.numbers()
 
 
@@ -130,11 +130,13 @@ def _picked(concept, params):
 
 
 def _frais_script(reveal: str):
-    scenes = [{"id": i, "text": "Les frais grignotent ton argent chaque année.", "role": "mechanism",
-               "visual": "une fuite", "template": "deux_courbes", "mood": "calm", "pause_after_ms": 300}
-              for i in range(1, 7)]
-    scenes.append({"id": 7, "text": reveal, "role": "reveal", "visual": "deux courbes",
-                   "template": "deux_courbes", "mood": "surprise", "pause_after_ms": 300})
+    from auracontent.channels.finance import storyboard
+
+    scenes = [{"id": i, "text": "Les frais grignotent ton argent chaque année.", "role": role,
+               "visual": "une fuite", "template": template, "mood": "calm", "pause_after_ms": 300}
+              for i, (role, template) in enumerate(storyboard.storyboard("frais"), 1)]
+    next(s for s in scenes if s["role"] == "reveal")["text"] = reveal
+    scenes[-1]["text"] = "C'est un exemple simplifié."
     return {"title": "Les frais", "on_screen_title": "2 % DE FRAIS | 5 300 € PERDUS",
             "closing_cta": "Tu regardes les frais avant de signer ?", "scenes": scenes}
 
@@ -156,14 +158,14 @@ def test_script_with_invented_number_is_rejected():
 def test_script_without_main_result_is_rejected():
     brain = _picked("frais", FRAIS)
     issues = brain.check_script_logic("t", _frais_script("Au final, les frais mangent une grande part."))
-    assert any("scène du résultat" in i and "5 300 €" in i for i in issues)
+    assert any("ne dit pas" in i and "5 300 €" in i for i in issues)
 
 
 def test_prompts_carry_computed_results():
     brain = _picked("frais", FRAIS)
     messages = brain.build_script_prompt("t", 7, {"text": "x"})
     assert "coût total des frais : 5 300 €" in messages[1]["content"]
-    assert "À DIRE DANS LA SCÈNE DU RÉSULTAT : coût total des frais = 5 300 €" in messages[1]["content"]
+    assert "scène « le résultat chiffré » : coût total des frais = 5 300 €" in messages[1]["content"]
     assert "'visual' au choix" in messages[1]["content"]
     assert "résultat sans frais : 16 000 €" in brain.numbers_block()
 
@@ -174,6 +176,8 @@ def test_validate_stores_calc_for_templates():
     brain.validate_script_specifics(data, "t")
     assert data["calc"]["values"]["lost"]["text"] == "5 300 €"
     assert len(data["calc"]["series"]["a"]) == 21
+    reveal = next(s for s in data["scenes"] if s["role"] == "reveal")
+    assert reveal["spoken"] == "Les frais te coûtent cinq mille trois cents euros."
 
 
 # ---------- Choix du sujet ----------

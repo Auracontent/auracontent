@@ -15,6 +15,7 @@ Pour chaque phrase qui contient un chiffre, vérifie :
 2. il désigne la même chose que son libellé (le résultat de Léa n'est pas celui de Hugo, un versement mensuel est dit « par mois », un total versé n'est pas un résultat final, une durée n'est pas un âge) ;
 3. l'affirmation qui l'entoure est vraie d'après la TABLE et l'HYPOTHÈSE (pas de « tu perds tout », pas de comparaison inversée, pas de promesse).
 Les phrases sans chiffre ne sont rejetées que si elles affirment quelque chose de faux d'après la TABLE.
+4. Chaque scène apporte un fait, un chiffre ou une étape du raisonnement ; rejette une scène de remplissage qui n'apporte rien (« Tu cherches un moyen simple… »). La dernière scène, un simple rappel que c'est un exemple simplifié, est acceptée.
 
 RETOURNE :
 {"ok": true, "problems": []}

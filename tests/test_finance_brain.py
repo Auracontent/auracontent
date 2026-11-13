@@ -91,7 +91,7 @@ def test_pick_topic_dedups_concept_and_params(finance_state, capsys):
     brain.config["brain"]["concepts"] = {"regle_72": brain.config["brain"]["concepts"]["regle_72"]}
     brain.config["brain"]["recent_concepts_window"] = 0
     seen = set()
-    for _ in range(5):                                     # 5 taux possibles (≤ 8 %), tous différents
+    for _ in range(10):                                    # 10 paires de taux (≤ 8 %, le second plus élevé)
         topic = brain.pick_topic()
         assert brain.last_pick["topic_key"] not in seen
         seen.add(brain.last_pick["topic_key"])
@@ -138,8 +138,8 @@ def test_hook_filters_log_reasons():
 
 
 def test_regle_72_constant_allowed():
-    brain = _picked("regle_72", rate=6)
-    brain.last_pick["params"] = {"rate": 6}
+    brain = _brain()
+    brain.last_pick = {"concept": "regle_72", "params": {"rate": 6, "rate_b": 8}}
     assert brain.text_issues("La règle des 72 marche à 6 % par an.", "x") == []
 
 
@@ -170,6 +170,7 @@ def _script(first_scene: str):
     scenes += [{"id": i, "text": "Les gains rapportent à leur tour des gains.", "visual": "arbres",
                 "mood": "calm", "pause_after_ms": 400} for i in range(2, 8)]
     scenes[4]["text"] = "À 65 ans, Léa a 2 100 € et Hugo 1 630 €."      # scène 5 : « reveal » du storyboard
+    scenes[6]["text"] = "C'est un exemple simplifié."                   # scène de fin : rappel sans chiffre
     return {"title": "Moins d'argent, plus à l'arrivée", "on_screen_title": "100 € À 20 ANS | BATTENT 300 € À 40",
             "hypothesis": "reformulée", "closing_cta": "Et toi, tu aurais parié sur qui ?", "scenes": scenes}
 

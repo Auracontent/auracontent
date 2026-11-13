@@ -16,6 +16,7 @@ from pathlib import Path
 
 from auracontent.channels.finance import calc as fcalc
 from auracontent.channels.finance import storyboard as fstory
+from auracontent.channels.finance.spoken import SpokenError, display_text, spoken_text
 from auracontent.core.brain.base_brain import BaseBrain
 from auracontent.utils.topic_tracker import load_global_history, load_last_categories, load_used_values
 
@@ -27,13 +28,15 @@ PARAM_LABELS = {
     "monthly": "versement mensuel (€)", "delay_years": "années d'attente avant de commencer",
     "horizon_years": "durée totale (années)", "fees": "frais (% par an)",
     "late_amount_factor": "Hugo met ce nombre de fois plus que Léa",
+    "rate_b": "second taux d'exemple (% par an)",
 }
+RATE_KEYS = ("rate", "rate_b")                     # plafonnés par brain.max_rate
 # Nature de chaque donnée d'entrée : « âge » et « ans » s'écrivent tous deux « ... ans » ; « €/mois » exige
 # « par mois » dans la phrase.
 PARAM_UNITS = {
     "early_age": "âge", "late_age": "âge", "end_age": "âge", "early_amount": "€", "late_amount": "€",
     "rate": "%", "amount": "€", "inflation": "%", "years": "ans", "monthly": "€/mois", "delay_years": "ans",
-    "horizon_years": "ans", "fees": "%", "late_amount_factor": "fois",
+    "horizon_years": "ans", "fees": "%", "late_amount_factor": "fois", "rate_b": "%",
 }
 # unité écrite après un nombre (texte sans accents) -> natures compatibles de la table
 _TEXT_UNITS = {
@@ -42,6 +45,8 @@ _TEXT_UNITS = {
     "ans": (re.compile(r"^(?:ans?\b|annees?\b)"), {"ans", "âge"}),
     "fois": (re.compile(r"^fois\b"), {"fois"}),
 }
+_PAR_FOIS_RE = re.compile(r"\bpar \d[\d ,]*\s*fois\b")                 # « multipliée par 24 fois »
+_DISCLAIMER_RE = re.compile(r"exemple|simplifi|theori|illustr|hypothese|approximati|estimation")
 _MONTHLY_RE = re.compile(r"\b(?:par mois|chaque mois|mensuel\w*|tous les mois)\b|/ ?mois")
 _WORD_RE = re.compile(r"[\wÀ-ÿ\u2019'-]+", re.UNICODE)
 _NUMBER_RE = re.compile(r"\d+(?:[ \u00a0\u202f]\d{3})*(?:[.,]\d+)?")
@@ -150,6 +155,8 @@ class FinanceBrain(BaseBrain):
                 return None
         if concept == "cout_du_temps" and params["delay_years"] >= params["horizon_years"] / 2:
             return None
+        if concept == "regle_72" and params["rate_b"] <= params["rate"]:   # deux taux, le second plus élevé
+            return None
         return params
 
     @staticmethod
@@ -165,7 +172,7 @@ class FinanceBrain(BaseBrain):
         combos = []
         for values in itertools.product(*(spec[n] for n in names)):
             raw = dict(zip(names, values, strict=True))
-            if float(raw.get("rate", 0)) > max_rate:
+            if any(float(raw.get(k, 0)) > max_rate for k in RATE_KEYS):
                 continue
             params = self.resolve_params(concept, raw)
             if params is not None:
@@ -188,7 +195,8 @@ class FinanceBrain(BaseBrain):
             return (f"Frais : {p['amount']} € à {_fmt(p['rate'])} %/an pendant {p['years']} ans, "
                     f"avec ou sans {_fmt(p['fees'])} % de frais par an")
         if concept == "regle_72":
-            return f"Règle des 72 : à {_fmt(p['rate'])} %/an, en combien d'années ton argent double-t-il ?"
+            return (f"Règle des 72 : à {_fmt(p['rate'])} %/an puis à {_fmt(p['rate_b'])} %/an, en combien "
+                    f"d'années ton argent double-t-il ?")
         raise KeyError(concept)
 
     @staticmethod
@@ -203,7 +211,7 @@ class FinanceBrain(BaseBrain):
         if concept == "frais":
             return f"{_fmt(p['rate'])} %/an avant frais · versement unique · avant inflation"
         if concept == "regle_72":
-            return f"{_fmt(p['rate'])} %/an · gains réinvestis · approximation"
+            return f"{_fmt(p['rate'])} % et {_fmt(p['rate_b'])} %/an · gains réinvestis · approximation"
         raise KeyError(concept)
 
     def pick_topic(self) -> str:
@@ -420,8 +428,11 @@ class FinanceBrain(BaseBrain):
             main_result=f"{self.calc().main.label} : {self.calc().main.text}",
             chosen_hook=(chosen_hook or {}).get("text", ""), scene_count=scene_count,
             max_sentence_words=cfg["max_sentence_words"], storyboard=fstory.describe(concept),
-            reveal_results="; ".join(f"{self.calc().values[k].label} = {self.calc().values[k].text}"
-                                     for k in self.reveal_keys()),
+            scene_results="\n".join(
+                f"- scène « {fstory.ROLES[role]} » : " + " ; ".join(
+                    f"{self.calc().values[k].label} = {self.calc().values[k].text}" for k in keys)
+                for role, keys in self.scene_keys().items()),
+            must_say=", ".join(f"« {m} »" for m in fstory.must_say(concept)) or "rien de plus",
         )
         user = self.fill(sections["user"], **values)
         if correction_feedback:
@@ -429,9 +440,9 @@ class FinanceBrain(BaseBrain):
         return [{"role": "system", "content": self.fill(sections["system"], **values)},
                 {"role": "user", "content": user}]
 
-    def reveal_keys(self) -> tuple[str, ...]:
+    def scene_keys(self) -> dict[str, tuple[str, ...]]:
         concept, _, _ = self._pick()
-        return fstory.reveal_keys(concept, self.calc().headline)
+        return fstory.scene_keys(concept, self.calc().headline)
 
     def target_scene_count(self) -> int:
         """Le storyboard du concept fixe le nombre de scènes."""
@@ -467,7 +478,12 @@ class FinanceBrain(BaseBrain):
         for note in fstory.apply(concept, data["scenes"]):           # rôles et gabarits fixés par le code
             print(f"   🧩 Storyboard : {note}")
         for scene in data["scenes"]:
-            scene["text"] = clean_text(scene["text"])
+            # texte affiché (chiffres « 10 000 € ») et texte parlé (nombres en lettres), produits par le code
+            scene["text"] = display_text(clean_text(scene["text"]))
+            try:
+                scene["spoken"] = spoken_text(scene["text"])
+            except SpokenError as e:
+                raise ValueError(f"scène {scene['id']} : {e} ; écris les chiffres sans autre symbole.") from e
             scene.setdefault("voice_type", "narrator")
         hook = (self.chosen_hook_text or "").strip()
         if hook and not comparable(data["scenes"][0]["text"]).startswith(comparable(hook)):
@@ -492,6 +508,9 @@ class FinanceBrain(BaseBrain):
         if extra:
             issues.append(f"{what} cite un nombre non autorisé : {', '.join(_fmt(n) for n in extra)}")
         issues += self.hype_issues(text, what)
+        m = _PAR_FOIS_RE.search(_fold_keep(text))
+        if m:
+            issues.append(f"{what} : « {m.group()} » ; écris « multipliée par N », sans « fois »")
         issues += self.meaning_issues(text, what)
         return issues
 
@@ -524,6 +543,32 @@ class FinanceBrain(BaseBrain):
         return [f"sens des chiffres, {p.get('ou') or p.get('scene') or '?'} : {p.get('motif') or p.get('reason')}"
                 for p in problems]
 
+    def storyboard_issues(self, data: dict) -> list[str]:
+        """Chiffres exigés par rôle, expressions obligatoires, scène de fin sans chiffre, question sans chiffre."""
+        concept, _, _ = self._pick()
+        scenes, issues = data.get("scenes", []), []
+        for role, keys in self.scene_keys().items():
+            scene = next((s for s in scenes if s.get("role") == role), None)
+            said = set(numbers_in(scene.get("text", ""))) if scene else set()
+            for key in keys:
+                value = self.calc().values[key]
+                if value.value not in said:
+                    issues.append(f"la scène « {fstory.ROLES[role]} » ne dit pas : {value.label} = {value.text}")
+        narration = " ".join(comparable(s.get("text", "")) for s in scenes)
+        for phrase in fstory.must_say(concept):
+            if comparable(phrase) not in narration:
+                issues.append(f"la narration doit nommer « {phrase} »")
+        for scene in scenes:
+            if scene.get("role") != "disclaimer":
+                continue
+            if numbers_in(scene.get("text", "")):
+                issues.append(f"scène {scene.get('id')} (fin) : aucun nouveau chiffre, seulement le rappel")
+            if not _DISCLAIMER_RE.search(_fold_keep(scene.get("text", ""))):
+                issues.append(f"scène {scene.get('id')} (fin) : doit rappeler que c'est un exemple simplifié")
+        if numbers_in(data.get("closing_cta", "")):
+            issues.append("la question finale ne contient aucun chiffre")
+        return issues
+
     def check_script_logic(self, topic, data):
         """Style et fond : phrases courtes, aucun terme interdit, tutoiement, aucun nombre inventé."""
         cfg, issues = self.style_cfg(), []
@@ -539,12 +584,7 @@ class FinanceBrain(BaseBrain):
             issues += self.text_issues(str(data.get(key, "")), what)
         if count_words(data.get("closing_cta", "")) > limit:
             issues.append(f"la question finale dépasse {limit} mots")
-        reveal = next((s for s in data.get("scenes", []) if s.get("role") == "reveal"), None)
-        said = set(numbers_in(reveal.get("text", ""))) if reveal else set()
-        for key in self.reveal_keys():
-            value = self.calc().values[key]
-            if value.value not in said:
-                issues.append(f"la scène du résultat ne dit pas : {value.label} = {value.text}")
+        issues += self.storyboard_issues(data)
         if not issues:
             issues += self.llm_meaning_issues(data)
         for issue in issues:
