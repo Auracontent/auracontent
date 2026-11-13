@@ -357,6 +357,15 @@ class LLMClient:
         lines.append(f"   Total : {total} appel(s), dont {failed} échoué(s).")
         return lines
 
+    def budget_line(self, videos: int) -> str:
+        """Bilan par vidéo : appels réussis (ce que comptent les quotas gratuits) et tokens."""
+        ok = sum(u["calls"] - u["failures"] for u in self.usage.values())
+        tin = sum(u["prompt_tokens"] for u in self.usage.values())
+        tout = sum(u["completion_tokens"] for u in self.usage.values())
+        per = max(videos, 1)
+        return (f"💰 Budget LLM : {ok} appel(s) réussi(s), {tin} tokens en entrée, {tout} en sortie, "
+                f"pour {videos} script(s) ; par script : {ok / per:.1f} appel(s), {tin // per} + {tout // per} tokens.")
+
     @classmethod
     def create_default(cls):
         order = [p.strip() for p in os.getenv("LLM_PROVIDERS", "").split(",") if p.strip()]

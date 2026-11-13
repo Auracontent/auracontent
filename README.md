@@ -113,7 +113,7 @@ auracontent_v2/
 │   └── utils/          # subtitles, trackers, helpers
 ├── config/
 │   ├── settings.py
-│   └── channels/       # one YAML per channel (mystery, finance, kids)
+│   └── channels/       # one YAML per channel (mystery, finance)
 ├── assets/             # fonts, music, SFX, fallback images (per channel + shared)
 ├── scripts/            # standalone helpers (e.g. render_scene.py)
 ├── tests/
@@ -260,7 +260,9 @@ French-language Shorts and TikToks. The channel was renamed in 2026 because more
 3. Register it in `auracontent/channels/registry.py`.
 4. Add its assets under `assets/<name>/`.
 
-Currently registered: **`mystery`**. `finance` and `kids` have configs but are not yet ported to v2.
+Currently registered: **`mystery`** and **`finance`** (« Capital Simple », in progress). `kids` is not ported to v2.
+
+A channel can keep its own history files on Hugging Face (`meta/<channel>/`) with `state: {isolated: true}` in its YAML; channels without it keep the shared files.
 
 ---
 

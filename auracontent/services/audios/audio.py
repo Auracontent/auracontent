@@ -45,6 +45,11 @@ class AudioEngine:
         self.gemini_models = list(audio_cfg.get("gemini_models") or GEMINI_TTS_MODELS)
 
     # ---------- texte ----------
+    @staticmethod
+    def voice_text(scene: dict) -> str:
+        """Texte lu : `spoken` si la chaîne le fournit (finance : nombres en toutes lettres), sinon `text`."""
+        return scene.get("spoken") or scene["text"]
+
     def prepare_text(self, text: str) -> str:
         text = normalize_fr(text)
         for rx, repl in self.pron:
@@ -191,7 +196,7 @@ class AudioEngine:
         return cuts
 
     def _gemini_batch(self, scenes) -> None:
-        texts = [self.prepare_text(s["text"]) for s in scenes]
+        texts = [self.prepare_text(self.voice_text(s)) for s in scenes]
         prompt, speech = self._batch_prompt(scenes, texts)
         full = self.out / "narration_full.wav"
         self._gemini_request(prompt, speech, full)
@@ -244,7 +249,7 @@ class AudioEngine:
 
     async def _render(self, scene):
         role = self._role(scene)
-        path, engine = await self.generate(scene["text"], f"scene_{scene['id']}", role, scene)
+        path, engine = await self.generate(self.voice_text(scene), f"scene_{scene['id']}", role, scene)
         scene.update(audio_path=path, tts_engine=engine, duration=max(audio_duration(path), self.min_dur))
         print(f"     Scène {scene['id']} [{role}] via {engine} ({scene['duration']:.1f}s)")
 

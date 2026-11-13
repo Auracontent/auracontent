@@ -14,6 +14,11 @@ def load_channel_config(name: str) -> dict:
     return yaml.safe_load(path.read_text(encoding="utf-8")) or {}
 
 
+def channel_enabled(name: str) -> bool:
+    """`enabled: false` dans le YAML coupe la chaîne (generate et publish) ; clé absente = activée."""
+    return load_channel_config(name).get("enabled", True) is not False
+
+
 class BaseChannel:
     """Une chaîne = sa config YAML + son Brain."""
 
