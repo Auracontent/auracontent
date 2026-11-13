@@ -95,8 +95,16 @@ class GlobalBrain:
         pending = load_pending(channel_name, max_attempts=int(b.get("resume_max_attempts", 3)),
                                max_age_days=float(b.get("resume_max_days", 7))) if resumable and resume else None
         if pending:
+            # Une chaîne peut refuser un sujet en attente devenu invalide (concept retiré du YAML, paramètres
+            # hors limites) en levant ValueError/KeyError : il est abandonné et un nouveau sujet est choisi.
+            try:
+                brain.restore_state(pending["brain"])
+            except (ValueError, KeyError) as e:
+                print(f"🗑️ Sujet en attente abandonné ({e}) : {pending.get('topic')}")
+                clear_pending(channel_name)
+                pending = None
+        if pending:
             # Reprise : sujet, titre et accroche déjà validés lors d'une exécution précédente
-            brain.restore_state(pending["brain"])
             topic, hooks, chosen_hook = pending["topic"], pending["hooks"], pending["chosen_hook"]
             print(f"♻️ Reprise du sujet validé ({pending.get('script_attempts', 0)} échec(s) de script) : {topic}")
             print(f"🪝 Accroche : {chosen_hook.get('text')}")

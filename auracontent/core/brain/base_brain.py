@@ -165,8 +165,10 @@ Réponds uniquement en JSON : {{"is_duplicate": true/false, "matched_topic": "..
         """Point d'entrée standard pour générer un script."""
         target_scenes = self.target_scene_count()
         print(f"⏱️ {target_scenes} scènes visées")
+        # brain.script_max_retries : corrections demandées au LLM après le premier essai (absent = 2)
+        retries = int(self.config.get("brain", {}).get("script_max_retries", 2))
         return self.generate_script_with_target(
-            topic, scene_count=target_scenes, chosen_hook=chosen_hook
+            topic, scene_count=target_scenes, chosen_hook=chosen_hook, max_retries=retries
         )
 
     def generate_script_with_target(self, topic, scene_count=11, chosen_hook=None, max_retries=2):
