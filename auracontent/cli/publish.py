@@ -15,7 +15,7 @@ import time
 import requests
 from dotenv import load_dotenv
 
-from auracontent.channels.base_channel import load_channel_config
+from auracontent.channels.base_channel import channel_enabled, load_channel_config
 from auracontent.services.publishing.caption import apply_caption_footer, apply_hashtag_rules
 from auracontent.services.publishing.hf_storage import get_latest_video
 from auracontent.services.publishing.zernio import check_audio_loudness, publish_to_platform
@@ -41,6 +41,9 @@ def _fetch_caption(caption_url: str, fallback: str) -> str:
 
 
 def publish_channel(channel: str) -> bool:
+    if not channel_enabled(channel):
+        print(f"⏭️ {channel} : désactivée (`enabled: false` dans config/channels/{channel}.yaml), rien n'est publié.")
+        return True
     cfg = load_channel_config(channel).get("publish")
     if not cfg:
         print(f"⏭️ {channel} : pas de section `publish` dans le YAML, ignorée.")

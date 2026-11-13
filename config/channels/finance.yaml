@@ -1,4 +1,7 @@
 channel_name: "finance"
+# Chaîne coupée tant qu'elle n'est pas validée : generate et publish l'ignorent (mystery n'a pas cette clé,
+# donc reste active). Essai local : generate finance --script-only --allow-disabled.
+enabled: false
 description: "Capital Simple : les chiffres, sans jargon. Épargne, intérêts composés, inflation : un mécanisme, des chiffres calculés, en moins d'une minute."
 
 # Historiques propres à la chaîne (assets/shared/state/finance/, meta/finance/ sur Hugging Face) :
