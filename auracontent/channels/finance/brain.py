@@ -485,7 +485,9 @@ class FinanceBrain(BaseBrain):
             except SpokenError as e:
                 raise ValueError(f"scène {scene['id']} : {e} ; écris les chiffres sans autre symbole.") from e
             scene.setdefault("voice_type", "narrator")
-        hook = (self.chosen_hook_text or "").strip()
+        # l'accroche passe par le même formatage des nombres que la narration (« 1500 € » -> « 1 500 € ») :
+        # sinon la comparaison échoue dès qu'un montant dépasse 999
+        hook = display_text(clean_text(self.chosen_hook_text or "")).strip()
         if hook and not comparable(data["scenes"][0]["text"]).startswith(comparable(hook)):
             raise ValueError("la scène 1 doit commencer mot pour mot par l'accroche obligatoire.")
 

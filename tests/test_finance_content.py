@@ -289,3 +289,24 @@ def test_audio_reads_spoken_when_present():
     assert AudioEngine.voice_text({"text": "72 = 18", "spoken": "soixante-douze égale dix-huit"}) == \
         "soixante-douze égale dix-huit"
     assert AudioEngine.voice_text({"text": "Texte de mystery"}) == "Texte de mystery"   # sans `spoken` : inchangé
+
+
+# ---------- Run du 14/11 : accroche à montant de plus de 999, années gagnées (règle des 72) ----------
+def test_hook_with_thousands_matches_formatted_scene_one():
+    """« 1500 € » dans l'accroche, « 1 500 € » dans la scène 1 (formatée par le code) : même accroche."""
+    params = {"early_age": 20, "late_age": 45, "early_amount": 500, "late_amount_factor": 3, "rate": 7, "end_age": 60}
+    brain = _picked("interets_composes", params)
+    brain.chosen_hook_text = "500 € à 20 ans battent 1500 € à 45 ans."
+    scenes = [{"id": i, "text": "Les gains rapportent des gains.", "visual": ""}
+              for i in range(1, len(storyboard.storyboard("interets_composes")) + 1)]
+    scenes[0]["text"] = "500 € à 20 ans battent 1500 € à 45 ans."
+    data = {"title": "t", "on_screen_title": "500 € À 20 ANS | BATTENT 1 500 €", "closing_cta": "Et toi ?",
+            "scenes": scenes}
+    brain.validate_script_specifics(data, "t")
+    assert data["scenes"][0]["text"].startswith("500 € à 20 ans battent 1 500 €")
+
+
+def test_regle_72_years_saved_is_an_allowed_number():
+    brain = _picked("regle_72", {"rate": 2, "rate_b": 3})
+    assert brain.calc()["years_saved"] == 12
+    assert brain.hook_issues("Passer de 2 % à 3 % te fait gagner 12 ans.", "sujet") == []
