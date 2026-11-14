@@ -107,3 +107,32 @@ def test_every_storyboard_template_has_a_drawing():
     assert used <= set(storyboard.VARIANTS)
     assert set(storyboard.VARIANTS) == {"deux_arbres", "deux_courbes", "barres", "curseur_temps", "carte_fin",
                                         "personnages"}
+
+
+@pytest.mark.parametrize("delay, horizon", [(5, 40), (5, 30), (10, 30)])
+@pytest.mark.parametrize("variant", ["frise", "sablier"])
+def test_close_timeline_steps_do_not_overlap(delay, horizon, variant):
+    """Run du 14/11 : 5 ans d'attente sur 40, les libellés « début » et « on attend » se chevauchaient."""
+    params = {"monthly": 200, "rate": 5, "delay_years": delay, "horizon_years": horizon}
+    for role in ("context", "mechanism"):
+        visuals.build_scene("cout_du_temps", params, {"role": role, "template": "curseur_temps", "visual": variant},
+                            4.0, hypothesis="5 %/an")
+
+
+def _yaml_sample(every: int = 25):
+    brain = BaseChannel("finance", FinanceBrain, None).brain
+    for concept in brain.config["brain"]["concepts"]:
+        combos = brain.combinations(concept)
+        for params in combos[::every] + combos[-1:]:
+            yield concept, params
+
+
+@pytest.mark.parametrize("concept, params", list(_yaml_sample()))
+def test_yaml_combinations_pass_layout(concept, params):
+    """Échantillon des combinaisons du YAML (une sur 25, plus la dernière), contrôles bloquants appliqués à
+    chaque scène et variante. Le balayage complet se lance hors tests (toutes les combinaisons)."""
+    hyp = FinanceBrain.hypothesis(concept, params)
+    for role, template in [*storyboard.storyboard(concept), ("cta", "carte_fin")]:
+        for variant in storyboard.VARIANTS[template]:
+            visuals.build_scene(concept, params, {"role": role, "template": template, "visual": variant}, 4.0,
+                                hypothesis=hyp, question="Quand as-tu prévu de commencer ?")

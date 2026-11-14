@@ -406,18 +406,28 @@ def timeline(steps: list[Item], *, resolve: Resolver, title: str = "", subtitle:
                    "points": [(0, 0), ((f.right - f.left) * k, 0)],
                    "keys": [{"t": 0.05, "progress": 0}, {"t": 0.5, "progress": 1}], "surface": 0})
     t_walk0, t_walk1 = 0.2 * D, 0.85 * D
+    # libellés répartis sans se chevaucher : deux étapes proches (0 et 5 ans sur 40) gardent un écart minimal
+    label_w, gap = 225, 10
+    anchors = [min(max(pos[i] - 80, f.left), f.right - label_w) for i in range(len(steps))]
+    for i in range(1, len(anchors)):
+        anchors[i] = max(anchors[i], anchors[i - 1] + label_w + gap)
+    for i in range(len(anchors) - 1, -1, -1):
+        limit = f.right - label_w if i == len(anchors) - 1 else anchors[i + 1] - label_w - gap
+        anchors[i] = min(anchors[i], limit)
+    if len(steps) * (label_w + gap) - gap > f.right - f.left:
+        raise ValueError(f"frise : {len(steps)} étapes ne tiennent pas côte à côte")
     for i, step in enumerate(steps):
         frac = (pos[i] - x0) / max(x1 - x0, 1)
         t = t_walk0 + (t_walk1 - t_walk0) * frac
         layers.append({"type": "path", "role": "decor", "id": f"graduation-{i}", "x": pos[i] * k,
                        "y": (surface - 18) * k, "points": [(0, 0), (0, 36 * k)], "lineWidth": 6, "color": step.color,
                        "from": t, "sfx": _sfx(t, "tap.wav", 0.25)})
-        anchor = min(max(pos[i] - 80, f.left), f.right - 200)
+        anchor = anchors[i]
         layers.append(text(f"etape-{i}", step.text, anchor, surface + 26, 58, f, color=step.color, role="value",
-                           start=t, w_px=230))
+                           start=t, w_px=label_w))
         if step.label:
             layers.append(text(f"etape-{i}-legende", step.label, anchor, surface + 88, 46, f, color=GRAY, start=t,
-                               w_px=230, bold=True))
+                               w_px=label_w, bold=True))
     char_h = min(300, surface - top - 30)
     margin = 60                                             # le personnage reste entier sur la frise
     who = grounded(resolve, walker, char_h, x0 + margin, surface, f)
