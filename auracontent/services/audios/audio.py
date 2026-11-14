@@ -66,10 +66,16 @@ class AudioEngine:
         "cta": "Warm, direct, conversational, like talking to one viewer.",
     }
 
+    def _directions(self, scene: dict) -> list[str]:
+        """Consignes de jeu par rôle de scène ; audio.role_directions: false les coupe (voix native, finance)."""
+        if self.cfg.get("role_directions", True) is False:
+            return []
+        extras = [self.ROLE_DIRECTIONS.get(scene.get("role", "")), scene.get("voice_direction")]
+        return [e for e in extras if e]
+
     def _gemini_style(self, role, scene):
         style = self.cfg["gemini"][role]["style"]
-        extras = [self.ROLE_DIRECTIONS.get(scene.get("role", "")), scene.get("voice_direction")]
-        return " ".join([style] + [e for e in extras if e])
+        return " ".join([style, *self._directions(scene)])
 
     @staticmethod
     def _retry_delay(body: str) -> float | None:
@@ -140,8 +146,7 @@ class AudioEngine:
         multi = len(set(roles)) > 1
         directions = []
         for i, scene in enumerate(scenes, start=1):
-            extras = [self.ROLE_DIRECTIONS.get(scene.get("role", "")), scene.get("voice_direction")]
-            extras = [e for e in extras if e]
+            extras = self._directions(scene)
             if extras:
                 directions.append(f"- Paragraph {i}: {' '.join(extras)}")
         header = [self.cfg["gemini"]["narrator"]["style"]]
