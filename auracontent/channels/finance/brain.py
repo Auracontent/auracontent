@@ -569,6 +569,14 @@ class FinanceBrain(BaseBrain):
             issues.append("la question finale ne contient aucun chiffre")
         return issues
 
+    def build_visuals(self, script: dict, scenes: list[dict], work_dir, video_cfg: dict) -> list:
+        """Scènes dessinées (moteur linework, sprites de la vidéo test), une par scène, à la durée de la voix ;
+        effets sonores calés sur l'action dans scene["sfx_cues"]. Mise en page refusée = vidéo non produite."""
+        from auracontent.channels.finance import visuals
+
+        cfg = dict((self.config.get("visuals") or {}).get("linework") or {})
+        return visuals.render_scenes(script, scenes, work_dir, cfg)
+
     def check_script_logic(self, topic, data):
         """Style et fond : phrases courtes, aucun terme interdit, tutoiement, aucun nombre inventé."""
         cfg, issues = self.style_cfg(), []

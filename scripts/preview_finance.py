@@ -4,6 +4,7 @@
     python scripts/preview_finance.py arbres --mp4                 # + la scène en MP4
     python scripts/preview_finance.py arbres --compare <vidéo>     # planche côte à côte avec la vidéo test
     python scripts/preview_finance.py arbres --overlay             # bandeau et sous-titre simulés (Poppins)
+    python scripts/preview_finance.py tout                         # chaque scène des 5 storyboards, chaque variante
 
 Ne touche pas à scripts/render_scene.py (mystery). Les contrôles de mise en page sont bloquants : une scène
 refusée affiche ses motifs et le script s'arrête.
@@ -59,7 +60,60 @@ def sheet(rows: list[list[Image.Image]], target: Path, labels: list[str]) -> Pat
     return target
 
 
+PARAMS = {
+    "interets_composes": {"early_age": 20, "late_age": 40, "early_amount": 100, "late_amount": 300,
+                          "late_amount_factor": 3, "rate": 7, "end_age": 65},
+    "inflation": {"amount": 10000, "inflation": 3, "years": 20},
+    "cout_du_temps": {"monthly": 100, "rate": 5, "delay_years": 10, "horizon_years": 40},
+    "frais": {"amount": 5000, "rate": 6, "fees": 2, "years": 20},
+    "regle_72": {"rate": 4, "rate_b": 8},
+}
+
+
+def everything(duration: float = 6.0) -> int:
+    """Chaque scène de chaque storyboard, avec chaque variante : contrôles bloquants + planche par concept."""
+    from auracontent.channels.finance import storyboard
+    from auracontent.channels.finance.brain import FinanceBrain
+
+    OUT.mkdir(parents=True, exist_ok=True)
+    failures = 0
+    for concept, params in PARAMS.items():
+        frames, labels = [], []
+        hyp = FinanceBrain.hypothesis(concept, params)
+        roles = [*storyboard.storyboard(concept), ("cta", "carte_fin")]
+        for role, template in roles:
+            for variant in storyboard.VARIANTS[template]:
+                scene = {"role": role, "template": template, "visual": variant}
+                try:
+                    built = visuals.build_scene(concept, params, scene, duration, hypothesis=hyp,
+                                                question="À quel âge as-tu commencé ?")
+                except (LayoutError, ValueError, KeyError) as e:
+                    failures += 1
+                    print(f"❌ {concept} / {role} / {template}:{variant} : {e}")
+                    continue
+                frames.append(Painter(built).frame(duration - 0.1))
+                labels.append(f"{role} · {variant}")
+        if frames:
+            cols = 5
+            w, h = 540, 960
+            rows = (len(frames) + cols - 1) // cols
+            sheet_img = Image.new("RGB", (cols * (w + 10), rows * (h + 50)), "white")
+            d = ImageDraw.Draw(sheet_img)
+            font = ImageFont.truetype(str(visuals.ASSETS / "fonts" / "Poppins-Bold.ttf"), 30)
+            for i, (im, label) in enumerate(zip(frames, labels, strict=True)):
+                x, y = (i % cols) * (w + 10), (i // cols) * (h + 50)
+                d.text((x + 6, y + 6), label, font=font, fill="#1A1A1A")
+                sheet_img.paste(im.resize((w, h)), (x, y + 45))
+            target = OUT / f"tout_{concept}.png"
+            sheet_img.save(target)
+            print(f"🖼️ {concept} : {len(frames)} scène(s) -> {target}")
+    print(f"{'✅ aucune mise en page refusée' if not failures else f'❌ {failures} scène(s) refusée(s)'}")
+    return 1 if failures else 0
+
+
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["tout"]:
+        return everything()
     ap = argparse.ArgumentParser()
     ap.add_argument("scene", choices=sorted(DEMO))
     ap.add_argument("--mp4", action="store_true")

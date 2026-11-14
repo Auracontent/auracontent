@@ -223,14 +223,16 @@ class Painter:
         alpha = max(0.0, min(1.0, lay.get("alpha", 1)))
         sx, sy = lay.get("scaleX", 1), lay.get("scaleY", 1)
         px, py = lay.get("pivotX", 0) * s, lay.get("pivotY", 0) * s
+        ox, oy = x * s, y * s
         if (sx, sy) != (1, 1):
+            # échelle autour du pivot (comme le moteur B1) : le pivot reste à sa place
             nw, nh = max(1, round(piece.width * abs(sx))), max(1, round(piece.height * abs(sy)))
             piece = piece.resize((nw, nh), Image.LANCZOS)
             if sx < 0:
                 piece = piece.transpose(Image.FLIP_LEFT_RIGHT)
+            ox, oy = ox + px * (1 - abs(sx)), oy + py * (1 - abs(sy))
             px, py = px * abs(sx), py * abs(sy)
         angle = lay.get("angle", 0) or 0
-        ox, oy = x * s, y * s
         if angle:
             # rotation autour du pivot : on centre le pivot dans un carré assez grand, puis on tourne
             r = math.ceil(max(math.hypot(px, py), math.hypot(piece.width - px, py), math.hypot(px, piece.height - py),
@@ -245,6 +247,26 @@ class Painter:
             piece.putalpha(a)
         canvas.alpha_composite(piece, (round(ox), round(oy))) if _inside(canvas, piece, ox, oy) else \
             _composite_clipped(canvas, piece, round(ox), round(oy))
+
+    def _box(self, canvas: Image.Image, lay: dict) -> None:
+        """Rectangle plein (fill) au contour d'encre tracé à la main (barres, jauges, cartes)."""
+        s = self.s
+        x, y = lay.get("x", 0) * s, lay.get("y", 0) * s
+        w, h = lay.get("w", 100) * s, lay.get("h", 100) * s
+        if w < 1 or h < 1:
+            return
+        alpha = lay.get("alpha", 1)
+        overlay = Image.new("RGBA", canvas.size, (0, 0, 0, 0))
+        d = ImageDraw.Draw(overlay)
+        if lay.get("fill"):
+            d.rectangle([x, y, x + w, y + h], fill=_rgba(lay["fill"], alpha * lay.get("fillOpacity", 1)))
+        if lay.get("outline", INK):
+            j = _wobble(str(lay.get("id") or lay.get("fill") or "box"), 8, 1.6 * s)
+            pts = [(x + j[0], y + j[1]), (x + w + j[2], y + j[3]), (x + w + j[4], y + h + j[5]),
+                   (x + j[6], y + h + j[7]), (x + j[0], y + j[1])]
+            width = max(1, round(lay.get("lineWidth", 4) * s))
+            d.line(pts, fill=_rgba(lay.get("outline", INK), alpha), width=width, joint="curve")
+        canvas.alpha_composite(overlay)
 
     def paint(self, canvas: Image.Image, lay: dict, t: float) -> None:
         s, kind = self.s, lay["type"]
@@ -267,6 +289,8 @@ class Painter:
             for i, line in enumerate(lines):
                 d.text((0, i * size * LINE_HEIGHT), line, font=font, fill=_rgba(lay.get("color", INK)), anchor="la")
             self._place(canvas, piece, lay, x, y)
+        elif kind == "box":
+            self._box(canvas, lay)
         elif kind == "marker":
             w, h = lay.get("w", 200) * s, lay.get("h", 40) * s
             shown = w * max(0.0, min(1.0, lay.get("progress", 1)))
@@ -292,6 +316,16 @@ class Painter:
                 canvas.alpha_composite(overlay)
         else:
             raise ValueError(f"type de calque inconnu : {kind}")
+
+
+def _wobble(seed: str, n: int, amp: float) -> list[float]:
+    """Tremblé déterministe du trait (même scène, même dessin d'une image à l'autre)."""
+    x = sum(ord(c) * (i + 1) for i, c in enumerate(seed)) or 1
+    out = []
+    for _ in range(n):
+        x = (x * 1103515245 + 12345) % 2 ** 31
+        out.append((x / 2 ** 31 * 2 - 1) * amp)
+    return out
 
 
 def _inside(canvas, piece, ox, oy) -> bool:

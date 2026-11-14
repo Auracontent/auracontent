@@ -196,7 +196,7 @@ def test_run_channel_script_only_regenerates_and_saves(finance_state, monkeypatc
     assert script["hypothesis"] == "7 %/an · versement unique · avant inflation"
     assert "unresolved_issues" not in script
     assert script["calc"]["headline"] == "lea_final" and script["calc"]["values"]["lea_final"]["value"] == 2100
-    assert [s["template"] for s in script["scenes"]] == ["deux_arbres", "curseur_temps", "barres", "deux_courbes",
+    assert [s["template"] for s in script["scenes"]] == ["deux_arbres", "curseur_temps", "personnages", "deux_courbes",
                                                          "deux_arbres", "barres", "carte_fin"]
     assert script["scenes"][0]["visual"] == "piles" and script["scenes"][6]["visual"] == "logo"
     assert any("vérifies les chiffres" in c for c in llm.systems)              # vérification du sens faite

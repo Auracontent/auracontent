@@ -16,8 +16,10 @@ VARIANTS: dict[str, dict[str, str]] = {
                      "ecart": "deux courbes avec l'écart entre elles coloré"},
     "barres": {"barres": "deux ou trois barres verticales comparées",
                "jauge": "une barre qui se vide ou se remplit"},
-    "curseur_temps": {"frise": "une frise des années avec un curseur qui avance",
-                      "sablier": "un sablier qui s'écoule"},
+    "curseur_temps": {"frise": "une frise des années que Léa parcourt",
+                      "sablier": "un compte à rebours : l'aiguille d'une horloge tourne"},
+    "personnages": {"duo": "Léa et Hugo réagissent, une annotation au-dessus",
+                    "seul": "Léa réagit, une annotation au-dessus"},
     "carte_fin": {"logo": "carte de fin avec le logo et l'hypothèse"},
 }
 
@@ -35,13 +37,13 @@ ROLES: dict[str, str] = {
 # (rôle, gabarit) scène par scène, propre à chaque concept : 5 à 7 scènes de ~7-9 s, 45-60 s de vidéo.
 STORYBOARDS: dict[str, tuple[tuple[str, str], ...]] = {
     # deux personnages, une intuition à contredire : la suite complète
-    "interets_composes": (("hook", "deux_arbres"), ("context", "curseur_temps"), ("belief", "barres"),
+    "interets_composes": (("hook", "deux_arbres"), ("context", "curseur_temps"), ("belief", "personnages"),
                           ("mechanism", "deux_courbes"), ("reveal", "deux_arbres"), ("takeaway", "barres"),
                           ("disclaimer", "carte_fin")),
     # pas d'intuition contraire à poser : le mécanisme (les prix montent) suffit
     "inflation": (("hook", "barres"), ("context", "curseur_temps"), ("mechanism", "deux_courbes"),
                   ("reveal", "barres"), ("takeaway", "curseur_temps"), ("disclaimer", "carte_fin")),
-    "cout_du_temps": (("hook", "deux_courbes"), ("context", "curseur_temps"), ("belief", "barres"),
+    "cout_du_temps": (("hook", "deux_courbes"), ("context", "curseur_temps"), ("belief", "personnages"),
                       ("mechanism", "curseur_temps"), ("reveal", "deux_courbes"), ("takeaway", "barres"),
                       ("disclaimer", "carte_fin")),
     "frais": (("hook", "barres"), ("context", "curseur_temps"), ("mechanism", "barres"),

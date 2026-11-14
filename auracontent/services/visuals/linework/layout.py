@@ -40,7 +40,7 @@ class Zones:
     """Zones en pixels de sortie. Valeurs par défaut : vidéo 1080x1920 de Capital Simple."""
     safe: tuple = (0, 200, 930, 1440)                       # x0, y0, x1, y1
     reserved: dict = field(default_factory=lambda: {"bandeau": (0, 200, 1080, 470),
-                                                     "sous-titres": (0, 1190, 1080, 1440)})
+                                                     "sous-titres": (0, 1240, 1080, 1440)})
     support_tolerance: float = 14.0                          # px entre la base d'un objet et sa surface
 
     @classmethod
@@ -84,7 +84,9 @@ class Boxes:
             sized = _sized(path, max(1, round(w * s)), max(1, round(h * s)))
             bb = sized.getchannel("A").getbbox() or (0, 0, 0, 0)
             sx, sy = abs(lay.get("scaleX", 1)), abs(lay.get("scaleY", 1))
-            box = (x * s + bb[0] * sx, y * s + bb[1] * sy, x * s + bb[2] * sx, y * s + bb[3] * sy)
+            ox = x * s + lay.get("pivotX", 0) * s * (1 - sx)       # échelle autour du pivot
+            oy = y * s + lay.get("pivotY", 0) * s * (1 - sy)
+            box = (ox + bb[0] * sx, oy + bb[1] * sy, ox + bb[2] * sx, oy + bb[3] * sy)
         elif lay["type"] == "text":
             size = round(lay.get("size", 52) * s)
             font = self.painter.font(lay, size)
@@ -95,8 +97,13 @@ class Boxes:
             bottom = max(b[3] + i * size * LINE_HEIGHT for i, b in enumerate(parts))
             width = max(b[2] for b in parts)
             box = (x * s, y * s + top, x * s + width, y * s + bottom)
-        elif lay["type"] == "marker":
+        elif lay["type"] in ("marker", "box"):
             box = (x * s, y * s, (x + lay.get("w", 200)) * s, (y + lay.get("h", 40)) * s)
+        elif lay["type"] == "path" and lay.get("points"):
+            xs = [p[0] for p in lay["points"]]
+            ys = [p[1] for p in lay["points"]]
+            half = lay.get("lineWidth", 3) / 2
+            box = ((x + min(xs) - half) * s, (y + min(ys) - half) * s, (x + max(xs) + half) * s, (y + max(ys) + half) * s)
         else:
             w = lay.get("w", 200)
             box = (x * s, (y - 30) * s, (x + w) * s, (y + 30) * s)

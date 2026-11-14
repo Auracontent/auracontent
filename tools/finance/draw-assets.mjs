@@ -199,6 +199,10 @@ sprite('hugo-shock', 320, 500, ctx => figure(ctx, {...HUGO, facing: 1, mood: 'sh
 tree('tree-hugo', 300, 6, 120);
 tree('tree-lea', 520, 14, 190);
 
+// Sol de Capital Simple : même trait que « ground », rempli au papier de la charte (#F7F3EA) pour ne pas
+// faire de bande claire sous la ligne sur le fond de la chaîne.
+sprite('ground-paper', 420, 400, ctx => { ctx.fillStyle = '#F7F3EA'; ctx.fillRect(0, 10, 420, 390); ink(ctx, [[6, 12], [140, 9], [280, 13], [414, 10]], {w: 4, straight: true}); });
+
 // ----- poses ajoutées pour Capital Simple (même construction que les poses de la vidéo test) -----
 // Debout, bras le long du corps, neutre ; surprise : bouche ronde, mains ouvertes ; montrer du doigt : bras
 // tendu à l'horizontale vers la droite, index tendu (on retourne le sprite pour montrer à gauche).

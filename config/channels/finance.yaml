@@ -109,6 +109,7 @@ brain:
 # vitesse naturelle).
 audio:
   engines: [gemini, edge]
+  role_directions: false     # voix native : aucune consigne de jeu ajoutée selon le rôle de la scène
   batch_tts: true
   gemini:
     narrator:
@@ -150,13 +151,23 @@ video_composer:
   headline_shadow_color: ""
 
   # Sous-titres Poppins, encre sur papier, chiffres en or ; au-dessus de y = 1440 (zone de sécurité)
-  subtitle_style: "FontName=Poppins,FontSize=13,Bold=1,PrimaryColour=&H001A1A1A,OutlineColour=&H00EAF3F7,BorderStyle=1,Outline=1.2,Shadow=0,Alignment=2,MarginL=30,MarginR=60,MarginV=82"
+  # MarginV=72 : bas des sous-titres à y=1440 (zone de sécurité), soit 1240-1440 sur deux lignes ; la scène
+  # dessinée garde la bande 470-1235 (visuals.linework.layout)
+  subtitle_style: "FontName=Poppins,FontSize=13,Bold=1,PrimaryColour=&H001A1A1A,OutlineColour=&H00EAF3F7,BorderStyle=1,Outline=1.2,Shadow=0,Alignment=2,MarginL=30,MarginR=60,MarginV=72"
   subtitle_uppercase: false
   subtitle_highlight_color: "#E0A526"
 
 visuals:
   map_scene:
     enabled: false
+  # Scènes dessinées (style de la vidéo test : papier quadrillé, trait à la main, Caveat) ; zones en pixels de
+  # sortie. Contrôles bloquants : texte coupé, hors zone sûre, zones réservées, chevauchements, appuis.
+  linework:
+    background: "#F7F3EA"
+    grid: true
+    layout:
+      safe: [0, 200, 930, 1440]
+      reserved: {bandeau: [0, 200, 1080, 470], sous-titres: [0, 1240, 1080, 1440]}
 
 mascot:
   enabled: false

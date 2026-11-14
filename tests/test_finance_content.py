@@ -152,7 +152,7 @@ def test_apply_forces_roles_templates_and_known_variants():
               for v in ("piles", "SABLIER", "une fusée", "ecart", "arbres", "jauge", "logo")]
     notes = storyboard.apply("interets_composes", scenes)
     assert [s["template"] for s in scenes] == [t for _, t in storyboard.storyboard("interets_composes")]
-    assert [s["visual"] for s in scenes] == ["piles", "sablier", "barres", "ecart", "arbres", "jauge", "logo"]
+    assert [s["visual"] for s in scenes] == ["piles", "sablier", "duo", "ecart", "arbres", "jauge", "logo"]
     assert len(notes) == 1 and "une fusée" in notes[0]
 
 
