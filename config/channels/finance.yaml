@@ -129,6 +129,7 @@ video_composer:
   music_gain: 0.0            # pas de musique
   fonts_dir: "finance/fonts"
   sfx_dir: "finance/sfx"
+  require_all_scenes: true   # une scène en échec = vidéo refusée (jamais de vidéo tronquée)
   source_credit_enabled: false
 
   watermark_filename: "capital_simple_watermark.png"

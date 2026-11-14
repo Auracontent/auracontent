@@ -304,6 +304,10 @@ class VideoPipeline:
         rendered = composer.render_all_scenes(scenes, assets)
         if not rendered:
             raise RuntimeError("aucune scène rendue.")
+        if self.channel.section("video_composer").get("require_all_scenes") and len(rendered) != len(scenes):
+            # video_composer.require_all_scenes : jamais de vidéo tronquée (absent = scènes en échec sautées)
+            raise RuntimeError(f"{len(scenes) - len(rendered)} scène(s) sur {len(scenes)} non rendue(s) : "
+                               "vidéo incomplète refusée.")
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         headline = (script.get("on_screen_title") or title) if composer.headline_persistent else None
         final = composer.concatenate_with_transitions(rendered, f"{self.name}_{stamp}.mp4", headline=headline)

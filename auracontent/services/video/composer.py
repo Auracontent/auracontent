@@ -233,26 +233,38 @@ class Composer:
         path = os.path.join(self.sfx_dir, filename)
         return path if os.path.exists(path) else None
 
-    def _cue_stream(self, cue: dict, total_duration: float):
-        """Effet synchronisé sur l'action (scene["sfx_cues"]) : {"time", "path" ou "file", "gain"}."""
-        path = cue.get("path") or os.path.join(self.sfx_dir, str(cue.get("file", "")))
-        start = float(cue.get("time", 0))
-        if not os.path.exists(path) or not 0 <= start < total_duration:
-            return None
-        length = min(get_duration(path), total_duration - start)
-        if length <= 0:
-            return None
-        return (_to_stereo_48k(ffmpeg.input(path).audio)
-                .filter("volume", float(cue.get("gain", self.sfx_gain)))
-                .filter("atrim", duration=length)
-                .filter("adelay", delays=int(start * 1000), all=1)
-                .filter("apad"))
+    def _cue_path(self, cue: dict) -> str:
+        return cue.get("path") or os.path.join(self.sfx_dir, str(cue.get("file", "")))
+
+    def _cue_streams(self, cues: list[dict], total_duration: float) -> list:
+        """Effets synchronisés sur l'action (scene["sfx_cues"]) : {"time", "path" ou "file", "gain"}.
+
+        Chaque fichier n'est ouvert qu'une fois puis dupliqué (asplit) : deux chaînes identiques (même effet,
+        même gain) seraient fusionnées par ffmpeg-python en un nœud à deux sorties, que FFmpeg refuse."""
+        kept = []
+        for cue in cues:
+            path, start = self._cue_path(cue), float(cue.get("time", 0))
+            if not os.path.exists(path) or not 0 <= start < total_duration:
+                continue
+            length = min(get_duration(path), total_duration - start)
+            if length > 0:
+                kept.append((path, start, length, float(cue.get("gain", self.sfx_gain))))
+        streams = []
+        for path in dict.fromkeys(p for p, *_ in kept):
+            uses = [c for c in kept if c[0] == path]
+            base = _to_stereo_48k(ffmpeg.input(path).audio)
+            branches = [base] if len(uses) == 1 else [base.filter_multi_output("asplit", len(uses))[i]
+                                                      for i in range(len(uses))]
+            for branch, (_, start, length, gain) in zip(branches, uses, strict=True):
+                streams.append(branch.filter("volume", gain).filter("atrim", duration=length)
+                               .filter("adelay", delays=int(start * 1000), all=1).filter("apad"))
+        return streams
 
     def _build_scene_audio(self, audio_path: str, scene: dict, total_duration: float):
         voice_stream = ffmpeg.input(audio_path).audio
         if scene.get("sfx_cues"):
             # effets calés sur l'action de la scène (gabarits animés) ; aucun effet de rôle/humeur en plus
-            cues = [c for c in (self._cue_stream(cue, total_duration) for cue in scene["sfx_cues"]) if c]
+            cues = self._cue_streams(scene["sfx_cues"], total_duration)
             if not cues:
                 return voice_stream
             return ffmpeg.filter([_to_stereo_48k(voice_stream), *cues], "amix", inputs=len(cues) + 1,

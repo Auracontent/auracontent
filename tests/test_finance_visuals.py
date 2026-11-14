@@ -136,3 +136,57 @@ def test_yaml_combinations_pass_layout(concept, params):
         for variant in storyboard.VARIANTS[template]:
             visuals.build_scene(concept, params, {"role": role, "template": template, "visual": variant}, 4.0,
                                 hypothesis=hyp, question="Quand as-tu prévu de commencer ?")
+
+
+@pytest.mark.skipif(not __import__("shutil").which("ffmpeg"), reason="ffmpeg absent")
+def test_repeated_sound_cue_mixes(tmp_path):
+    """Run du 14/11 : le même effet deux fois dans une scène faisait échouer FFmpeg (scène sautée)."""
+    import subprocess
+
+    import ffmpeg
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.services.video.composer import Composer
+
+    voice = tmp_path / "v.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "sine=f=220:d=3", "-ar", "48000", str(voice)],
+                   check=True)
+    composer = Composer(load_channel_config("finance")["video_composer"], channel_name="finance")
+    scene = {"sfx_cues": [{"time": 0.2, "file": "tick.wav", "gain": 0.3}, {"time": 1.0, "file": "tick.wav", "gain": 0.3},
+                          {"time": 1.5, "file": "chime.wav", "gain": 0.3}]}
+    out = tmp_path / "mix.wav"
+    ffmpeg.output(composer._build_scene_audio(str(voice), scene, 3.0), str(out)).overwrite_output().run(quiet=True)
+    assert out.stat().st_size > 100_000
+
+
+def test_incomplete_video_is_refused(monkeypatch, tmp_path):
+    """finance (require_all_scenes) : une scène non rendue = vidéo refusée, jamais une vidéo tronquée."""
+    from auracontent.core import pipeline
+
+    brain = BaseChannel("finance", FinanceBrain, None)
+    assert brain.section("video_composer")["require_all_scenes"] is True
+    assert not BaseChannel("mystery", __import__("auracontent.channels.mystery.brain", fromlist=["MysteryBrain"])
+                           .MysteryBrain, None).section("video_composer").get("require_all_scenes")
+
+    class FakeComposer:
+        headline_persistent = False
+
+        def __init__(self, *a, **k):
+            pass
+
+        def render_all_scenes(self, scenes, assets):
+            return ["a.mp4"]                                       # une seule scène sur deux
+
+    monkeypatch.setattr(pipeline, "Composer", FakeComposer)
+    monkeypatch.setattr(pipeline, "generate_caption", lambda *a, **k: "légende")
+    monkeypatch.setattr(pipeline.VideoPipeline, "_voice", lambda self, scenes: _coro(scenes))
+    monkeypatch.setattr(pipeline.VideoPipeline, "_subtitles", lambda self, scenes: None)
+    monkeypatch.setattr(FinanceBrain, "build_visuals", lambda self, *a: ["a.mp4", "b.mp4", "c.mp4"])
+    vp = pipeline.VideoPipeline(brain, None)
+    vp.work_dir = tmp_path
+    script = {"title": "t", "scenes": [{"id": 1, "text": "a"}, {"id": 2, "text": "b"}], "closing_cta": "Et toi ?"}
+    with pytest.raises(RuntimeError, match="vidéo incomplète refusée"):
+        vp.run(script)
+
+
+async def _coro(value):
+    return value
