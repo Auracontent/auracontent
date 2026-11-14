@@ -1,5 +1,5 @@
 """mystery : contrôle « retournement » assoupli pour les anecdotes « Le saviez-vous ? » (la surprise est-elle
-gardée ?), critère d'origine pour les sujets par mots-clés."""
+gardée ?), critère d'origine pour les sujets par mots-clés ; titre nettoyé de son numéro de liste."""
 import pytest
 from auracontent.channels.base_channel import load_channel_config
 from auracontent.channels.mystery.brain import MysteryBrain
@@ -55,6 +55,19 @@ def test_keyword_topics_keep_the_original_criterion():
 def test_judge_failure_still_rejects():
     ok, reason = _mystery(_Judge(RuntimeError("quota"))).has_reversal(QUESTION, ANECDOTE)
     assert not ok and "contrôle impossible" in reason
+
+
+@pytest.mark.parametrize("raw, clean", [
+    ("1. Le chien Robòt a mené Georges Ravidat à la grotte de Lascaux",
+     "Le chien Robòt a mené Georges Ravidat à la grotte de Lascaux"),
+    ("2) Pourquoi Poissons est jumelé à Avril ?", "Pourquoi Poissons est jumelé à Avril ?"),
+    ("1864 : La barre des Écrins", "1864 : La barre des Écrins"),          # une date n'est pas un numéro
+    ("11 novembre 1918 : Stenay", "11 novembre 1918 : Stenay"),
+])
+def test_list_number_is_stripped_from_title(raw, clean):
+    brain = _mystery(_Judge({"title": raw}))
+    title_vars = {k: "" for k in ("forced_region", "forced_category", "forced_format")}
+    assert brain._write_title(title_vars, {"title": "X", "extract": "y"}) == clean
 
 
 def test_eval_script_covers_the_ten_titles_of_the_run(monkeypatch, capsys):

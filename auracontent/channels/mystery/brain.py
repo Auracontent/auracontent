@@ -663,6 +663,7 @@ class MysteryBrain(BaseBrain):
                 temperature=1.0, max_completion_tokens=200, **self.simple_routing(),
             )
         title = str(data.get("title", "")).strip().strip('"«» ')
+        title = re.sub(r"^\d{1,2}\s*[.)]\s+(?=\D)", "", title)     # numéro de liste laissé par le modèle (« 1. »)
         reason = self.title_format_issue(title)
         if reason:
             print(f"   ↻ Titre rejeté ({reason}) : {title!r}")
