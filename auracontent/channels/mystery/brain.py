@@ -518,12 +518,20 @@ class MysteryBrain(BaseBrain):
         return title
 
     def has_reversal(self, title: str, source: dict) -> tuple[bool, str]:
-        """Le LLM valide que le titre contient un retournement (ce qui s'est passé contredit ce qu'on
-        attendrait). Une simple fondation, naissance ou construction est rejetée. En cas d'erreur du LLM,
-        le titre est rejeté (jamais accepté par défaut)."""
-        sections = self.read_sections("title_check.md")
-        user = self.fill(sections["user"], title=title, source_title=source.get("title", ""),
-                         source_extract=str(source.get("extract", ""))[:1500])
+        """Le LLM valide le titre. Sujet trouvé par mots-clés : il doit contenir un retournement (ce qui s'est
+        passé contredit ce qu'on attendrait ; une simple fondation ou construction est rejetée). Anecdote
+        « Le saviez-vous ? », surprenante par nature : rejeté seulement s'il perd la surprise de l'anecdote,
+        jamais parce qu'il est une question ou une explication. En cas d'erreur du LLM, le titre est rejeté
+        (jamais accepté par défaut)."""
+        if source.get("anecdote"):
+            sections = self.read_sections("title_check_anecdote.md")
+            user = self.fill(sections["user"], title=title, anecdote=source["anecdote"])
+            key = "garde_surprise"
+        else:
+            sections = self.read_sections("title_check.md")
+            user = self.fill(sections["user"], title=title, source_title=source.get("title", ""),
+                             source_extract=str(source.get("extract", ""))[:1500])
+            key = "retournement"
         try:
             with self.llm_stage("retournement"):
                 data = self.llm.call_json_with_retry(
@@ -532,7 +540,7 @@ class MysteryBrain(BaseBrain):
                 )
         except (RuntimeError, ValueError) as e:
             return False, f"contrôle impossible : {e}"
-        return data.get("retournement") is True, str(data.get("raison", "")).strip()
+        return data.get(key) is True, str(data.get("raison", "")).strip()
 
     # ==========================================
     # SOURCES DE SUJETS (brain.topic_sources)
