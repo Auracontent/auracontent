@@ -30,12 +30,16 @@ def test_edge_failure_fails_without_other_voice(tmp_path, monkeypatch):
     async def forbidden(*a, **k):
         raise AssertionError("aucune autre voix")
 
+    async def no_wait(s):
+        pass
+
     monkeypatch.setattr(AudioEngine, "_edge", broken_edge)
     monkeypatch.setattr(AudioEngine, "_gemini", forbidden, raising=False)
+    monkeypatch.setattr("auracontent.services.audios.audio.asyncio.sleep", no_wait)
     with pytest.raises(RuntimeError, match="Aucun moteur TTS"):
         asyncio.run(engine.process_script([{"id": 1, "text": "Bonjour.", "role": "hook"},
                                            {"id": 2, "text": "Suite.", "role": "context"}]))
-    assert calls == ["edge"]
+    assert calls == ["edge"] * 3                                   # même voix, 3 essais, puis échec
 
 
 # ---------- Le sujet reste en attente si la vidéo échoue ----------
@@ -125,3 +129,46 @@ def test_workflow_uses_finance_gemini_key_only_for_finance():
     generate = next(s for s in job["steps"] if s.get("name", "").startswith("🎬"))
     assert "--upload --sync-state" in generate["run"]                    # Hugging Face, pas de publication
     assert not any("publish" in s.get("run", "") for s in job["steps"])
+
+
+# ---------- Même voix réessayée 3 fois, jamais une autre ----------
+def _engine(tmp_path, monkeypatch, outcomes, cfg=None):
+    engine = AudioEngine(cfg or load_channel_config("finance")["audio"], output_dir=str(tmp_path))
+    calls, sleeps = [], []
+
+    async def edge(self, text, role, path):
+        calls.append(1)
+        outcome = outcomes[len(calls) - 1]
+        if isinstance(outcome, Exception):
+            raise outcome
+        path.write_bytes(b"x")
+
+    async def fake_sleep(s):
+        sleeps.append(s)
+
+    monkeypatch.setattr(AudioEngine, "_edge", edge)
+    monkeypatch.setattr("auracontent.services.audios.audio.audio_duration", lambda p: 2.0)
+    monkeypatch.setattr("auracontent.services.audios.audio.asyncio.sleep", fake_sleep)
+    return engine, calls, sleeps
+
+
+def test_edge_is_retried_then_succeeds(tmp_path, monkeypatch):
+    engine, calls, sleeps = _engine(tmp_path, monkeypatch, [ConnectionError("1"), ConnectionError("2"), "ok"])
+    _path, used = asyncio.run(engine.generate("Bonjour.", "s1"))
+    assert used == "edge" and len(calls) == 3 and len(sleeps) == 2 and all(3 <= s <= 5 for s in sleeps)
+
+
+def test_edge_fails_after_three_tries(tmp_path, monkeypatch):
+    engine, calls, _ = _engine(tmp_path, monkeypatch, [ConnectionError("x")] * 3)
+    with pytest.raises(RuntimeError, match="Aucun moteur TTS"):
+        asyncio.run(engine.generate("Bonjour.", "s1"))
+    assert len(calls) == 3
+
+
+def test_without_retries_option_single_try(tmp_path, monkeypatch):
+    cfg = {"engines": ["edge"], "edge": {"narrator": {"voice": "fr-FR-HenriNeural"}}}
+    engine, calls, sleeps = _engine(tmp_path, monkeypatch, [ConnectionError("x")], cfg)
+    with pytest.raises(RuntimeError):
+        asyncio.run(engine.generate("Bonjour.", "s1"))
+    assert len(calls) == 1 and sleeps == []
+    assert "retries" not in load_channel_config("mystery")["audio"]

@@ -119,6 +119,8 @@ brain:
 # la vidéo échoue et le sujet reste en attente (brain.history_after_video), jamais une autre voix.
 audio:
   engines: [edge]
+  retries: 3                 # même voix jusqu'à 3 fois par scène (pause de 3 à 5 s), jamais une autre voix
+  retry_pause: [3, 5]
   role_directions: false     # voix native : aucune consigne de jeu ajoutée selon le rôle de la scène
   edge:
     # Rémy ralenti à -8 % (choix du 15/11) : environ 2,6 mots/s, 45 s pour 100 mots avec la question finale
