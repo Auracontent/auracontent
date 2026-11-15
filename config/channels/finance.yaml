@@ -120,7 +120,8 @@ audio:
   engines: [edge]
   role_directions: false     # voix native : aucune consigne de jeu ajoutée selon le rôle de la scène
   edge:
-    narrator: {voice: "fr-FR-RemyMultilingualNeural", rate: "+0%", pitch: "+0Hz"}
+    # Rémy ralenti à -8 % (choix du 15/11) : environ 2,6 mots/s, 45 s pour 100 mots avec la question finale
+    narrator: {voice: "fr-FR-RemyMultilingualNeural", rate: "-8%", pitch: "+0Hz"}
 
 # Vidéo (Composer). Polices, effets et bandeau propres à la chaîne ; fond papier clair.
 video_composer:

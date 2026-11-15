@@ -12,7 +12,7 @@ from auracontent.services.audios.audio import AudioEngine
 def test_finance_voice_is_edge_only_same_voice():
     audio = load_channel_config("finance")["audio"]
     assert audio["engines"] == ["edge"]
-    assert audio["edge"]["narrator"]["voice"].startswith("fr-FR-")
+    assert audio["edge"]["narrator"] == {"voice": "fr-FR-RemyMultilingualNeural", "rate": "-8%", "pitch": "+0Hz"}
 
 
 def test_mystery_voice_unchanged():
