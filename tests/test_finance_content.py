@@ -329,6 +329,7 @@ def test_short_narration_is_regenerated():
 
 def test_yaml_minimum_narration_and_prompt():
     brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
-    assert BaseChannel("finance", FinanceBrain, None).brain.min_words() == 105
-    brain.config["brain"]["min_narration_words"] = 105
-    assert "105 mots au moins" in brain.build_script_prompt("t", 6, {"text": "h"})[1]["content"]
+    assert BaseChannel("finance", FinanceBrain, None).brain.min_words() == 100
+    brain.config["brain"]["min_narration_words"] = 100
+    prompt = brain.build_script_prompt("t", 6, {"text": "h"})[1]["content"]
+    assert "environ 125 mots (jamais moins de 100)" in prompt

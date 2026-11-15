@@ -428,7 +428,7 @@ class FinanceBrain(BaseBrain):
             main_result=f"{self.calc().main.label} : {self.calc().main.text}",
             chosen_hook=(chosen_hook or {}).get("text", ""), scene_count=scene_count,
             max_sentence_words=cfg["max_sentence_words"], storyboard=fstory.describe(concept),
-            min_words=self.min_words(),
+            min_words=self.min_words(), target_words=self.min_words() + 25,   # le LLM vise toujours un peu court
             scene_results="\n".join(
                 f"- scène « {fstory.ROLES[role]} » : " + " ; ".join(
                     f"{self.calc().values[k].label} = {self.calc().values[k].text}" for k in keys)
