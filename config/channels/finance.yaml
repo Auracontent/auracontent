@@ -17,9 +17,13 @@ brain:
   target_duration: 50       # secondes (surchargé par VIDEO_DURATION dans le workflow) ; cible 45-60 s
   seconds_per_scene: 7      # 50 s -> 7 scènes
   scene_count_tolerance: 0   # storyboard fixé par concept : nombre de scènes exact
-  # Narration de 100 mots au moins (le prompt en demande 125) : environ 40 s de voix (2,5 mots/s mesurés), 45 s
-  # avec la question finale et les transitions ; la vidéo du 14/11 (68 mots) ne durait que 29,5 s
-  min_narration_words: 100
+  # Longueur calculée : (durée visée - question finale) x débit de la voix, en mots PRONONCÉS (montants en
+  # toutes lettres). Rémy à -8 % : 2,6 mots/s mesurés (78 mots en 29,8 s). Accroche et fin courtes, le reste
+  # réparti ; un script sous 90 % de la cible est régénéré avec les scènes à allonger et de combien.
+  voice_words_per_second: 2.6
+  cta_seconds: 3
+  hook_words: 10
+  end_words: 8
   script_max_retries: 4      # contrôles stricts (chiffres, sens, exagération) : jusqu'à 5 essais
   resume_max_attempts: 3
   # Sujet inscrit à l'historique seulement une fois la vidéo produite : si elle échoue (voix Edge

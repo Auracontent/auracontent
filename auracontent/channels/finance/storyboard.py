@@ -40,9 +40,10 @@ STORYBOARDS: dict[str, tuple[tuple[str, str], ...]] = {
     "interets_composes": (("hook", "deux_arbres"), ("context", "curseur_temps"), ("belief", "personnages"),
                           ("mechanism", "deux_courbes"), ("reveal", "deux_arbres"), ("takeaway", "barres"),
                           ("disclaimer", "carte_fin")),
-    # pas d'intuition contraire à poser : le mécanisme (les prix montent) suffit
-    "inflation": (("hook", "barres"), ("context", "curseur_temps"), ("mechanism", "deux_courbes"),
-                  ("reveal", "barres"), ("takeaway", "curseur_temps"), ("disclaimer", "carte_fin")),
+    # 7 scènes : l'intuition « l'argent qui dort ne perd rien » est posée avant le mécanisme (les prix montent)
+    "inflation": (("hook", "barres"), ("context", "curseur_temps"), ("belief", "personnages"),
+                  ("mechanism", "deux_courbes"), ("reveal", "barres"), ("takeaway", "curseur_temps"),
+                  ("disclaimer", "carte_fin")),
     "cout_du_temps": (("hook", "deux_courbes"), ("context", "curseur_temps"), ("belief", "personnages"),
                       ("mechanism", "curseur_temps"), ("reveal", "deux_courbes"), ("takeaway", "barres"),
                       ("disclaimer", "carte_fin")),

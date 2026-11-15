@@ -155,6 +155,10 @@ def _cast(concept, p):
     if concept == "cout_du_temps":
         return ([{"pose": "lea-neutral.png", "then": "lea-shrug.png", "x": 420}],
                 f"Attendre {p['delay_years']} ans ?", f"{fmt(p['monthly'])} € par mois")
+    if concept == "inflation":
+        return ([{"pose": "lea-neutral.png", "then": "lea-surprise.png", "x": 420,
+                  "motion": "Léa découvre que son argent achète moins"}],
+                f"{fmt(p['amount'])} € qui dorment", f"pendant {p['years']} ans")
     return [{"pose": "lea-neutral.png", "then": "lea-surprise.png", "x": 420}], "", ""
 
 

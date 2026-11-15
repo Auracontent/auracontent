@@ -18,7 +18,7 @@ ACCROCHE OBLIGATOIRE : {chosen_hook}
 RÈGLES :
 0. La scène 1 COMMENCE MOT POUR MOT par l'ACCROCHE OBLIGATOIRE.
 1. Ton posé, tutoiement (« tu », « ton argent »), jamais « vous ». Comme si tu expliquais à un ami, sans jargon.
-2. {max_sentence_words} mots AU PLUS par phrase. Une idée par phrase. L'accroche et la dernière scène : 1 phrase. Chaque autre scène : 2 phrases courtes (16 à 22 mots, environ 8 secondes). Script complet : environ {target_words} mots (jamais moins de {min_words}).
+2. {max_sentence_words} mots AU PLUS par phrase. Une idée par phrase. L'accroche et la dernière scène : 1 phrase ; les autres scènes : 2 phrases courtes. LONGUEUR VISÉE (mots prononcés, un montant en chiffres compte pour ses mots en toutes lettres) : {scene_words}.
 3. CHIFFRES : n'écris que les DONNÉES D'ENTRÉE et les RÉSULTATS CALCULÉS ci-dessus, en chiffres, tels quels (ex : « 2 100 € », « 6,1 ans »), avec leur unité et pour ce qu'ils désignent. N'écris AUCUN autre nombre : pas de calcul, pas d'arrondi différent, pas d'estimation. Un versement mensuel s'écrit toujours avec « par mois ». Écris « multipliée par 24 », jamais « multipliée par 24 fois ». Trois chiffres au plus par scène.
 3bis. Mesuré et factuel : rien d'absolu ni d'alarmiste (« toute ta richesse », « détruire », « fortune », « ruiner », « tout perdre », « énorme », « magique »). Toute affirmation chiffrée reprend exactement un chiffre ci-dessus.
 4. Pédagogie générale uniquement : aucun nom de produit, de banque ou de marque ; aucun conseil personnalisé ni impératif d'achat (« investis », « achète », « place ton argent ») ; aucune promesse de gain.

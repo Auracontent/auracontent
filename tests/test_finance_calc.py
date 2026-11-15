@@ -126,7 +126,7 @@ def _picked(concept, params):
     brain = _brain()
     resolved = brain.resolve_params(concept, params)
     brain.last_pick = {"concept": concept, "params": resolved, "topic_key": brain.topic_key(concept, resolved)}
-    brain.config["brain"]["min_narration_words"] = 0          # scripts factices courts : règle testée à part
+    brain.config["brain"]["voice_words_per_second"] = 0      # scripts factices courts : règle testée à part
     return brain
 
 

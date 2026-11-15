@@ -9,6 +9,7 @@ d'entrée ou des résultats de calc.py ; le résultat principal doit être dit d
 from __future__ import annotations
 
 import itertools
+import os
 import random
 import re
 import unicodedata
@@ -121,6 +122,13 @@ def _fold_keep(text: str) -> str:
     """Comme comparable(), sans retirer la ponctuation finale (positions des nombres conservées)."""
     text = unicodedata.normalize("NFD", normalize_title(text).casefold())
     return "".join(c for c in text if unicodedata.category(c) != "Mn")
+
+
+def spoken_text_safe(text: str) -> str:
+    try:
+        return spoken_text(display_text(text))
+    except SpokenError:
+        return text
 
 
 # ---------- Brain ----------
@@ -428,7 +436,7 @@ class FinanceBrain(BaseBrain):
             main_result=f"{self.calc().main.label} : {self.calc().main.text}",
             chosen_hook=(chosen_hook or {}).get("text", ""), scene_count=scene_count,
             max_sentence_words=cfg["max_sentence_words"], storyboard=fstory.describe(concept),
-            min_words=self.min_words(), target_words=self.min_words() + 25,   # le LLM vise toujours un peu court
+            scene_words=self.scene_words_text(),
             bandeau_lengths=self.bandeau_lengths(), bandeau_rule=self.bandeau_rule_text(),
             scene_results="\n".join(
                 f"- scène « {fstory.ROLES[role]} » : " + " ; ".join(
@@ -586,9 +594,39 @@ class FinanceBrain(BaseBrain):
         texts = list(dict.fromkeys(self.calc().values[k].text for k in keys))
         return "; ".join(f"« {t} » = {len(t)} caractères" for t in texts)
 
-    def min_words(self) -> int:
-        """brain.min_narration_words : longueur minimale de la narration (voix d'environ 2,5 mots par seconde)."""
-        return int(self._brain().get("min_narration_words", 0))
+    def scene_words_text(self) -> str:
+        """Cibles de mots par scène pour le prompt (un montant en chiffres compte pour les mots prononcés)."""
+        targets = self.scene_word_targets()
+        if not targets:
+            return "1 ou 2 phrases courtes par scène."
+        return " ; ".join(f"scène {i} : environ {t} mots" for i, t in enumerate(targets, 1))
+
+    def duration_target(self) -> float:
+        """Durée visée (s) : VIDEO_DURATION (workflow) ou brain.target_duration."""
+        try:
+            return float(os.getenv("VIDEO_DURATION") or self._brain().get("target_duration", 45))
+        except ValueError:
+            return float(self._brain().get("target_duration", 45))
+
+    def scene_word_targets(self) -> list[int]:
+        """Mots PARLÉS visés par scène : (durée visée - question finale) x débit de la voix (brain.
+        voice_words_per_second, mesuré : Rémy à -8 % = 2,6), accroche et fin courtes, le reste réparti.
+        Liste vide si le débit n'est pas configuré (pas de contrôle de longueur)."""
+        b = self._brain()
+        wps = float(b.get("voice_words_per_second", 0) or 0)
+        if wps <= 0:
+            return []
+        concept, _, _ = self._pick()
+        n = len(fstory.storyboard(concept))
+        total = round((self.duration_target() - float(b.get("cta_seconds", 3))) * wps)
+        hook, end = int(b.get("hook_words", 10)), int(b.get("end_words", 8))
+        middle = max(8, round((total - hook - end) / max(n - 2, 1)))
+        return [hook] + [middle] * (n - 2) + [end]
+
+    @staticmethod
+    def spoken_words(scene: dict) -> int:
+        """Mots prononcés (montants en toutes lettres) : c'est ce qui fait la durée de la voix."""
+        return count_words(scene.get("spoken") or spoken_text_safe(scene.get("text", "")))
 
     def storyboard_issues(self, data: dict) -> list[str]:
         """Chiffres exigés par rôle, expressions obligatoires, scène de fin sans chiffre, question sans chiffre."""
@@ -620,10 +658,16 @@ class FinanceBrain(BaseBrain):
                 issues.append(f"la question finale invite à agir (« {term} ») : pose une question sur le mécanisme "
                               "(comment, pourquoi, combien), jamais une invitation à placer ou investir")
                 break
-        words = sum(count_words(s.get("text", "")) for s in scenes)
-        if self.min_words() and words < self.min_words():
-            issues.append(f"script trop court : {words} mots, il en faut au moins {self.min_words()} (vidéo de 45 s "
-                          "au moins) ; donne deux phrases courtes à chaque scène hors accroche et fin")
+        targets = self.scene_word_targets()
+        if targets and len(targets) == len(scenes):
+            said = [self.spoken_words(s) for s in scenes]
+            wps = float(self._brain().get("voice_words_per_second"))
+            if sum(said) < 0.9 * sum(targets):
+                short = [f"scène {i} : {w} mots, vise {t} (+{t - w})"
+                         for i, (w, t) in enumerate(zip(said, targets, strict=True), 1) if t - w >= 3]
+                issues.append(f"script trop court : {sum(said)} mots prononcés (environ {sum(said) / wps:.0f} s), il "
+                              f"en faut {sum(targets)} (environ {sum(targets) / wps:.0f} s) ; allonge : "
+                              + " ; ".join(short))
         return issues
 
     def caption_issues(self, script: dict, caption: str) -> list[str]:
