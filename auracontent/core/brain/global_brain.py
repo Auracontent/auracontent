@@ -120,7 +120,14 @@ class GlobalBrain:
             print(f"🗑️ Sujet en attente abandonné ({e}) : {pending.get('topic')}")
             clear_pending(channel_name)
             return None
-        return pending["script"]
+        script = pending["script"]
+        checker = getattr(brain, "pending_hook_issues", None)
+        hook = (script.get("hook") or {}).get("text", "") if isinstance(script.get("hook"), dict) else ""
+        issues = checker(hook, script.get("topic", "")) if callable(checker) and hook else []
+        if issues:
+            print(f"↻ Script en attente écarté, son accroche ne passe plus ({' ; '.join(issues)}) : nouveau script.")
+            return None
+        return script
 
     def finalize_channel(self, channel_name: str, script_path: Path) -> None:
         """Sujet traité : inscrit à l'historique, retiré de l'attente (après le script, ou après la vidéo)."""
@@ -143,15 +150,23 @@ class GlobalBrain:
                 print(f"🗑️ Sujet en attente abandonné ({e}) : {pending.get('topic')}")
                 clear_pending(channel_name)
                 pending = None
+        topic = None
         if pending:
             # Reprise : sujet, titre et accroche déjà validés lors d'une exécution précédente
             topic, hooks, chosen_hook = pending["topic"], pending["hooks"], pending["chosen_hook"]
             print(f"♻️ Reprise du sujet validé ({pending.get('script_attempts', 0)} échec(s) de script) : {topic}")
-            print(f"🪝 Accroche : {chosen_hook.get('text')}")
-            return topic, hooks, chosen_hook
+            # une chaîne peut refaire contrôler l'accroche gardée (règles plus strictes depuis) : accroche
+            # refusée = nouvelles accroches pour le même sujet
+            checker = getattr(brain, "pending_hook_issues", None)
+            issues = checker(chosen_hook.get("text", ""), topic) if callable(checker) else []
+            if not issues:
+                print(f"🪝 Accroche : {chosen_hook.get('text')}")
+                return topic, hooks, chosen_hook
+            print(f"↻ Accroche en attente refusée ({' ; '.join(issues)}) : nouvelles accroches pour ce sujet.")
         # 1. Sujet (l'anti-doublon sur l'historique global est fait dans pick_topic)
-        topic = brain.pick_topic()
-        print(f"🎯 Sujet retenu : {topic}")
+        if topic is None:
+            topic = brain.pick_topic()
+            print(f"🎯 Sujet retenu : {topic}")
 
         # 2. Accroche choisie par le bandit (pattern le plus performant, 20 % d'exploration)
         hooks = brain.generate_hook_variants(topic, n=5, previous_stats_list=previous_stats_list)

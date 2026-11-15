@@ -214,3 +214,41 @@ def test_mystery_pending_never_carries_a_script(tmp_path, monkeypatch):
     monkeypatch.setattr(pt, "PENDING_PATH", tmp_path / "pending.json")
     pt.save_pending("mystery", {"topic": "t", "hooks": [], "chosen_hook": {}, "brain": {}})
     assert "script" not in pt.load_pending("mystery")
+
+
+# ---------- Run 2 du 15/11 : accroche fautive du sujet inflation en attente ----------
+def test_pending_inflation_hook_is_regenerated_before_resume(tmp_path, monkeypatch):
+    from auracontent.core.brain import global_brain as gbm
+    from auracontent.services.publishing import state_sync
+    from auracontent.utils import pending_topic as pt
+
+    monkeypatch.setattr(state_sync, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(pt, "PENDING_PATH", tmp_path / "pending_topics.json")
+    state_sync.is_isolated.cache_clear()
+    params = {"amount": 10000, "inflation": 3, "years": 30}
+    pick = {"category": "inflation", "concept": "inflation", "params": params,
+            "topic_key": "inflation:amount=10000,inflation=3,years=30"}
+    topic = "Inflation : 10000 € qui dorment pendant 30 ans avec 3 % d'inflation par an"
+    bad = {"text": "Dormir ton argent, c\\u2019est perdre 5 880 € en 30 ans.", "pattern": "chiffre", "score": 9}
+    pt.save_pending("finance", {"topic": topic, "hooks": [bad], "chosen_hook": bad, "brain": {"last_pick": pick}})
+
+    gb = gbm.GlobalBrain(llm_client=None)
+    brain = gb.channels["finance"].brain
+    good = {"text": "Tes 10 000 € achètent moins chaque année.", "pattern": "chiffre", "score": 8}
+    monkeypatch.setattr(brain, "generate_hook_variants", lambda t, **k: [good])
+    monkeypatch.setattr(brain, "pick_topic", lambda: (_ for _ in ()).throw(AssertionError("même sujet gardé")))
+    monkeypatch.setattr(gbm, "compute_pattern_scores", lambda *a: {})
+    monkeypatch.setattr(gbm, "load_hook_history", lambda c: [])
+    got_topic, _, chosen = gb._topic_and_hook("finance", gb.channels["finance"], brain, brain.config["brain"], True, [])
+    assert got_topic == topic and chosen["text"] == good["text"]
+    assert pt.load_pending("finance")["chosen_hook"]["text"] == good["text"]
+
+
+def test_valid_pending_hook_is_kept(tmp_path, monkeypatch):
+    from auracontent.channels.base_channel import BaseChannel
+    from auracontent.channels.finance.brain import FinanceBrain
+
+    brain = BaseChannel("finance", FinanceBrain, None).brain
+    brain.last_pick = {"concept": "inflation", "params": {"amount": 10000, "inflation": 3, "years": 30}}
+    assert brain.pending_hook_issues("Tu perds 5 880 € de pouvoir d'achat en 30 ans.", "t") == []
+    assert brain.pending_hook_issues("Dormir ton argent, c'est perdre 5 880 € en 30 ans.", "t")

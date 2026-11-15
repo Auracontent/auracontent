@@ -398,6 +398,13 @@ class FinanceBrain(BaseBrain):
                 break
         return issues
 
+    def pending_hook_issues(self, text: str, topic: str) -> list[str]:
+        """Accroche d'un sujet en attente, recontrôlée à la reprise (règles actuelles du code, puis LLM)."""
+        issues = self.hook_issues(clean_text(text), topic)
+        if not issues and not self.llm_hook_check([{"text": text}]):
+            issues = ["refusée par la vérification du sens et de la grammaire"]
+        return issues
+
     def llm_hook_check(self, hooks: list[dict]) -> list[dict]:
         """Avant la sélection : sens des chiffres (table de calc.py), vérité de l'affirmation et grammaire de
         chaque accroche, en un seul appel. Vérification impossible : les accroches restent (la scène 1, qui
