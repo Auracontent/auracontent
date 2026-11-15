@@ -429,6 +429,7 @@ class FinanceBrain(BaseBrain):
             chosen_hook=(chosen_hook or {}).get("text", ""), scene_count=scene_count,
             max_sentence_words=cfg["max_sentence_words"], storyboard=fstory.describe(concept),
             min_words=self.min_words(), target_words=self.min_words() + 25,   # le LLM vise toujours un peu court
+            bandeau_lengths=self.bandeau_lengths(),
             scene_results="\n".join(
                 f"- scène « {fstory.ROLES[role]} » : " + " ; ".join(
                     f"{self.calc().values[k].label} = {self.calc().values[k].text}" for k in keys)
@@ -545,6 +546,12 @@ class FinanceBrain(BaseBrain):
             return ["vérification du sens des chiffres : réponse négative sans motif"]
         return [f"sens des chiffres, {p.get('ou') or p.get('scene') or '?'} : {p.get('motif') or p.get('reason')}"
                 for p in problems]
+
+    def bandeau_lengths(self) -> str:
+        """Longueur en caractères des montants qui peuvent aller dans le bandeau (20 au plus par segment)."""
+        keys = [k for keys in self.scene_keys().values() for k in keys]
+        texts = list(dict.fromkeys(self.calc().values[k].text for k in keys))
+        return "; ".join(f"« {t} » = {len(t)} caractères" for t in texts)
 
     def min_words(self) -> int:
         """brain.min_narration_words : longueur minimale de la narration (voix d'environ 2,5 mots par seconde)."""

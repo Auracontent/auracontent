@@ -333,3 +333,12 @@ def test_yaml_minimum_narration_and_prompt():
     brain.config["brain"]["min_narration_words"] = 100
     prompt = brain.build_script_prompt("t", 6, {"text": "h"})[1]["content"]
     assert "environ 125 mots (jamais moins de 100)" in prompt
+
+
+def test_sentence_limit_14_and_bandeau_lengths_in_prompt():
+    brain = _picked("cout_du_temps", {"monthly": 200, "rate": 4, "delay_years": 10, "horizon_years": 40})
+    assert BaseChannel("finance", FinanceBrain, None).brain.style_cfg()["max_sentence_words"] == 14
+    assert BaseChannel("finance", FinanceBrain, None).brain.style_cfg()["max_hook_words"] == 12
+    prompt = brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
+    cost = brain.calc().values["cost"].text
+    assert f"« {cost} » = {len(cost)} caractères" in prompt

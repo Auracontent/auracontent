@@ -39,7 +39,7 @@ brain:
 
   # Style parlé : tutoiement, ton posé, phrases courtes, aucun jargon
   style:
-    max_sentence_words: 12
+    max_sentence_words: 14     # 14 (et non 12) : avec 100 mots sur 6-7 scènes, 12 mots par phrase bloquait le LLM
     max_hook_words: 12
     # Formulations absolues ou alarmistes (regex sur le texte en minuscules sans accents)
     hype_patterns: ["\\btout(?:e|es)? (?:ta|ton|tes) (?:richesse|argent|epargne|economies)", "\\bdetrui\\w*",
