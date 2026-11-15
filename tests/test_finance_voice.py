@@ -106,3 +106,22 @@ def test_finalize_channel_saves_history_and_clears_pending(tmp_path, monkeypatch
     path.write_text(json.dumps({"topic": "Frais", "pick": {"concept": "frais"}}), encoding="utf-8")
     g.finalize_channel("finance", path)
     assert saved == [("Frais", "finance", "frais")] and cleared == ["finance"]
+
+
+# ---------- Workflow : clé Gemini propre à finance, jamais celle de mystery ----------
+def test_workflow_uses_finance_gemini_key_only_for_finance():
+    from pathlib import Path
+
+    import yaml
+
+    wf = yaml.safe_load(Path(".github/workflows/generator_video.yml").read_text(encoding="utf-8"))
+    job = wf["jobs"]["generate"]
+    assert job["env"]["GEMINI_API_KEY_FINANCE"] == "${{ secrets.GEMINI_API_KEY_FINANCE }}"
+    assert job["env"]["GEMINI_API_KEY"] == "${{ secrets.GEMINI_API_KEY }}"          # mystery inchangée
+    names = [s.get("name", "") for s in job["steps"]]
+    key_step = next(s for s in job["steps"] if "Clé Gemini" in s.get("name", ""))
+    assert names.index(key_step["name"]) < next(i for i, n in enumerate(names) if "Diagnostic" in n)
+    assert 'GEMINI_API_KEY=$GEMINI_API_KEY_FINANCE' in key_step["run"] and "exit 1" in key_step["run"]
+    generate = next(s for s in job["steps"] if s.get("name", "").startswith("🎬"))
+    assert "--upload --sync-state" in generate["run"]                    # Hugging Face, pas de publication
+    assert not any("publish" in s.get("run", "") for s in job["steps"])

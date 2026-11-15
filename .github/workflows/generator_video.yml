@@ -42,6 +42,7 @@ jobs:
     env:
       CHANNEL: ${{ github.event.inputs.channel || github.event.client_payload.channel || 'mystery' }}
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      GEMINI_API_KEY_FINANCE: ${{ secrets.GEMINI_API_KEY_FINANCE }}   # clé (et quota) propre à finance
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
       OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
       ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
@@ -82,6 +83,21 @@ jobs:
 
       - name: 📦 Installer les dépendances (versions figées par uv.lock)
         run: uv sync --locked --group default --group media
+
+      # finance : sa propre clé Gemini (son propre quota). Jamais de repli sur la clé de mystery : secret absent =
+      # run arrêté. Les autres chaînes gardent GEMINI_API_KEY.
+      - name: 🔑 Clé Gemini de la chaîne
+        run: |
+          if [ "$CHANNEL" = "finance" ]; then
+            if [ -z "$GEMINI_API_KEY_FINANCE" ]; then
+              echo "::error::Secret GEMINI_API_KEY_FINANCE absent : finance n'utilise jamais la clé de mystery."
+              exit 1
+            fi
+            echo "GEMINI_API_KEY=$GEMINI_API_KEY_FINANCE" >> "$GITHUB_ENV"
+            echo "Clé Gemini : GEMINI_API_KEY_FINANCE"
+          else
+            echo "Clé Gemini : GEMINI_API_KEY"
+          fi
 
       # Teste chaque service avec les vraies clés : arrêt en ~20 s si un service critique est KO
       - name: 🩺 Diagnostic des services
