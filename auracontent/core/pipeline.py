@@ -243,6 +243,7 @@ class VideoPipeline:
                 output_path=str(self.work_dir / "subs" / f"scene_{scene['id']}.srt"),
                 uppercase=cfg.get("subtitle_uppercase", False),
                 highlight_color=cfg.get("subtitle_highlight_color"),
+                **({"keep_numbers": True} if cfg.get("subtitle_keep_numbers") else {}),
             )
 
     # ---------- Audience ----------
@@ -276,6 +277,13 @@ class VideoPipeline:
                                    routing=self._simple_routing(),
                                    **({"footer": self.publish_cfg["caption_footer"]}
                                       if self.publish_cfg.get("caption_footer") else {}))
+        # une chaîne peut contrôler sa légende (exagération, chiffres...) et la remplacer par une légende sûre
+        checker = getattr(self.channel.brain, "caption_issues", None)
+        if callable(checker):
+            issues = checker(script, caption)
+            if issues:
+                print(f"   ↻ Légende refusée ({' ; '.join(issues[:3])}) : légende sûre construite par le code.")
+                caption = self.channel.brain.safe_caption(script, title, self.publish_cfg)
 
         print("🎙️ Voix...")
         scenes = asyncio.run(self._voice(scenes))
