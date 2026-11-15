@@ -4,6 +4,7 @@ Tu écris des accroches de vidéos courtes de pédagogie financière, en frança
 # User
 CONCEPT : {concept_label}
 IDÉE À FAIRE COMPRENDRE : {idea}
+{wording}
 SITUATION DE LA VIDÉO : {topic}
 CHIFFRES AUTORISÉS (calculés ; les seuls que tu peux écrire, tels quels, pour ce qu'ils désignent) :
 {numbers_block}

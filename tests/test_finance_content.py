@@ -409,3 +409,54 @@ def test_mechanism_question_passes():
     data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
     data["closing_cta"] = "Pourquoi les premières années comptent-elles autant ?"
     assert not [i for i in brain.check_script_logic("t", data) if "question finale" in i]
+
+
+# ---------- Inflation : une perte est toujours « de pouvoir d'achat » ----------
+INFL = {"amount": 10000, "inflation": 3, "years": 30}
+
+
+def test_inflation_loss_without_purchasing_power_is_rejected():
+    brain = _picked("inflation", INFL)
+    assert brain.calc()["lost"] == 5880
+    assert any("pouvoir d'achat" in i for i in brain.hook_issues("Dormir ton argent, c'est perdre 5 880 € en 30 ans.", "s"))
+    assert brain.hook_issues("Tu perds 5 880 € de pouvoir d'achat en 30 ans.", "s") == []
+    assert brain.hook_issues("Laisser dormir ton argent coûte du pouvoir d'achat.", "s") == []
+
+
+def test_loss_rule_only_for_inflation():
+    brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
+    assert brain.hook_issues("Avec 2 % de frais, tu perds 5 300 € sur 20 ans.", "s") == []
+
+
+class _HookJudge:
+    def __init__(self, answer):
+        self.answer, self.prompts = answer, []
+
+    def call_json_with_retry(self, messages, **kw):
+        self.prompts.append(messages[1]["content"])
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+def test_llm_checks_hooks_before_selection(capsys):
+    judge = _HookJudge({"rejets": [{"numero": 1, "motif": "« Dormir ton argent » n'est pas français"}]})
+    brain = _picked("inflation", INFL, judge)
+    brain.config["brain"]["meaning_check"] = "llm"
+    hooks = [{"text": "Dormir ton argent coûte du pouvoir d'achat."}, {"text": "Tes 10 000 € achètent moins."}]
+    kept = brain.llm_hook_check(hooks)
+    assert [h["text"] for h in kept] == ["Tes 10 000 € achètent moins."]
+    assert "pas français" in capsys.readouterr().out
+    assert "pouvoir d'achat perdu : 5 880 €" in judge.prompts[0] and "1. Dormir ton argent" in judge.prompts[0]
+
+
+def test_hook_check_unavailable_keeps_hooks():
+    brain = _picked("inflation", INFL, _HookJudge(RuntimeError("quota")))
+    brain.config["brain"]["meaning_check"] = "llm"
+    hooks = [{"text": "Tes 10 000 € achètent moins."}]
+    assert brain.llm_hook_check(hooks) == hooks
+
+
+def test_inflation_wording_in_prompts():
+    brain = _picked("inflation", INFL)
+    assert "la somme reste sur le compte" in brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]

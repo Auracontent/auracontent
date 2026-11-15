@@ -89,6 +89,10 @@ brain:
     inflation:
       label: "inflation"
       idea: "l'argent qui dort perd du pouvoir d'achat chaque année"
+      # L'argent reste sur le compte : seule une perte « de pouvoir d'achat » est vraie. Toute « perte » sans ces
+      # mots est rejetée (accroches, narration, bandeau, titre).
+      wording: "Ne dis jamais qu'on perd de l'argent : la somme reste sur le compte. Ce qui baisse, c'est le pouvoir d'achat ; toute perte s'écrit « X € de pouvoir d'achat »."
+      loss_needs: "pouvoir d'achat"
       params:
         amount: [1000, 5000, 10000]
         inflation: [2, 3, 4]

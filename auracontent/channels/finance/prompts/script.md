@@ -5,6 +5,7 @@ Tu écris des scripts de vidéos courtes de pédagogie financière pour la chaî
 SUJET : {topic}
 CONCEPT : {concept_label}
 IDÉE À FAIRE COMPRENDRE : {idea}
+{wording}
 HYPOTHÈSE AFFICHÉE À L'ÉCRAN : {hypothesis}
 DONNÉES D'ENTRÉE :
 {params_block}

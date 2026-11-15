@@ -383,6 +383,55 @@ class FinanceBrain(BaseBrain):
             return "Mettre moins d'argent… et finir avec plus."
         return example.format_map({k: v.text for k, v in self.calc().values.items()})
 
+    def loss_issues(self, text: str, what: str) -> list[str]:
+        """concepts.<c>.loss_needs (inflation : « pouvoir d'achat ») : une perte n'est vraie qu'avec ces mots."""
+        _, _, spec = self._pick()
+        needed = spec.get("loss_needs")
+        if not needed:
+            return []
+        issues = []
+        for sentence in sentences(text) or [text]:
+            folded = _fold_keep(sentence)
+            if re.search(r"\b(perd\w*|pert\w*)\b", folded) and _fold_keep(needed) not in folded:
+                issues.append(f"{what} : « perdre » sans « {needed} » est faux (l'argent reste sur le compte, "
+                              f"c'est le {needed} qui baisse)")
+                break
+        return issues
+
+    def llm_hook_check(self, hooks: list[dict]) -> list[dict]:
+        """Avant la sélection : sens des chiffres (table de calc.py), vérité de l'affirmation et grammaire de
+        chaque accroche, en un seul appel. Vérification impossible : les accroches restent (la scène 1, qui
+        commence par l'accroche, passe ensuite le contrôle de sens du script)."""
+        if not hooks or self._brain().get("meaning_check") != "llm" or self.llm is None:
+            return hooks
+        concept, params, spec = self._pick()
+        table = [f"- {label} : {fcalc.fmt_number(v)} {unit}".rstrip() for v, unit, label in self.number_table()]
+        sections = self.read_sections("hook_check.md")
+        values = {"hypothesis": self.hypothesis(concept, params), "table": "\n".join(table),
+                  "wording": spec.get("wording", ""),
+                  "hooks": "\n".join(f"{i}. {h['text']}" for i, h in enumerate(hooks, 1))}
+        try:
+            data = self.llm.call_json_with_retry(
+                [{"role": "system", "content": self.fill(sections["system"], **values)},
+                 {"role": "user", "content": self.fill(sections["user"], **values)}],
+                temperature=0.0, max_completion_tokens=800, **self.simple_routing())
+        except Exception as e:
+            print(f"   ⚠️ Vérification des accroches impossible ({e}) : contrôle reporté sur le script.")
+            return hooks
+        rejected = {}
+        for item in data.get("rejets") or []:
+            try:
+                rejected[int(item.get("numero"))] = str(item.get("motif") or "motif non fourni")
+            except (TypeError, ValueError, AttributeError):
+                continue
+        kept = []
+        for i, hook in enumerate(hooks, 1):
+            if i in rejected:
+                print(f"   ↻ Accroche rejetée (sens ou grammaire : {rejected[i]}) : « {hook['text']} »")
+            else:
+                kept.append(hook)
+        return kept
+
     # ---------- Accroches ----------
     def hook_issues(self, text: str, topic: str) -> list[str]:
         cfg, issues = self.style_cfg(), []
@@ -401,7 +450,7 @@ class FinanceBrain(BaseBrain):
         sections = self.read_sections("hook.md")
         cfg = self.style_cfg()
         values = dict(topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""), n=n,
-                      max_hook_words=cfg["max_hook_words"],
+                      wording=spec.get("wording", ""), max_hook_words=cfg["max_hook_words"],
                       numbers_block=self.numbers_block(), hook_example=self.hook_example())
         valid = []
         for attempt in range(2):
@@ -418,6 +467,7 @@ class FinanceBrain(BaseBrain):
                     print(f"   ↻ Accroche rejetée ({'; '.join(issues)}) : « {hook['text']} »")
                     continue
                 valid.append(hook)
+            valid = self.llm_hook_check(valid)
             if valid:
                 return valid[:n]
             print(f"   ↻ Aucune accroche valable (essai {attempt + 1}/2).")
@@ -430,6 +480,7 @@ class FinanceBrain(BaseBrain):
         sections = self.read_sections("script.md")
         values = dict(
             topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""),
+            wording=spec.get("wording", ""),
             hypothesis=self.hypothesis(concept, params),
             params_block="\n".join(f"- {PARAM_LABELS.get(k, k)} : {_fmt(v)}" for k, v in params.items()),
             results_block="\n".join(f"- {v.label} : {v.text}" for v in self.calc().values.values()),
@@ -522,6 +573,7 @@ class FinanceBrain(BaseBrain):
         if extra:
             issues.append(f"{what} cite un nombre non autorisé : {', '.join(_fmt(n) for n in extra)}")
         issues += self.hype_issues(text, what)
+        issues += self.loss_issues(text, what)
         m = _PAR_FOIS_RE.search(_fold_keep(text))
         if m:
             issues.append(f"{what} : « {m.group()} » ; écris « multipliée par N », sans « fois »")
