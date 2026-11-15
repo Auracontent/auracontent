@@ -132,3 +132,14 @@ def test_finance_sprites_are_versioned():
         assert manifest and all((ROOT / f"assets/finance/{folder}/{n}.png").exists() for n in manifest)
     for pose in ("lea-neutral", "lea-surprise", "lea-point", "hugo-neutral", "hugo-point"):
         assert (ROOT / f"assets/finance/characters/{pose}.png").exists()
+
+
+def test_left_margin_of_60_px_is_enforced():
+    """La carte de fin touchait le bord gauche (« Capital Simple », baseline, question) : 60 px au moins."""
+    scene = _scene([{"type": "text", "text": "Capital Simple", "x": 30, "y": 900, "size": 80, "role": "text"}])
+    assert any("hors zone de sécurité" in i for i in layout_issues(scene))
+    assert Zones().safe[0] == 60
+    card = visuals.build_scene("regle_72", {"rate": 4, "rate_b": 8}, {"role": "cta", "template": "carte_fin"}, 4.0,
+                               question="Quel taux double ton argent le plus vite ?")
+    texts = [lay for lay in card.layers if lay["type"] == "text"]
+    assert all(lay["x"] * card.scale >= 60 for lay in texts)

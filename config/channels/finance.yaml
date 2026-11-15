@@ -171,7 +171,7 @@ visuals:
     background: "#F7F3EA"
     grid: true
     layout:
-      safe: [0, 200, 930, 1440]
+      safe: [60, 200, 930, 1440]     # marge gauche de 60 px
       reserved: {bandeau: [0, 200, 1080, 470], sous-titres: [0, 1240, 1080, 1440]}
 
 mascot:

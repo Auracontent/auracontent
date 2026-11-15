@@ -33,7 +33,7 @@ class Frame:
     top: int = 470            # sous le bandeau
     bottom: int = 1235        # au-dessus des sous-titres (calés sur y=1440)
     right: int = 925          # zone de sécurité : x <= 930
-    left: int = 40
+    left: int = 70            # marge gauche : 60 px au moins (contrôle bloquant), 10 px de jeu
 
     @property
     def k(self) -> float:                 # pixels de sortie -> unités du plan

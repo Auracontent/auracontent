@@ -2,7 +2,7 @@
 
 - texte coupé : un mot plus large que sa zone, ou un texte qui sort du cadre ;
 - zone de sécurité : texte, chiffres et personnages dans le rectangle sûr (rien au-dessus de y=200, en
-  dessous de y=1440, ni à droite de x=930 : interface des plateformes) ;
+  dessous de y=1440, à droite de x=930 : interface des plateformes, ni à moins de 60 px du bord gauche) ;
 - zones réservées : rien d'important sous le bandeau ni sous les sous-titres posés ensuite par le compositeur ;
 - chevauchement : un texte ne touche ni un personnage ni un autre texte ;
 - support : un objet posé (« rests_on ») a sa base sur la surface de son support (pot sur le sol, pieds sur
@@ -38,7 +38,7 @@ class LayoutError(ValueError):
 @dataclass
 class Zones:
     """Zones en pixels de sortie. Valeurs par défaut : vidéo 1080x1920 de Capital Simple."""
-    safe: tuple = (0, 200, 930, 1440)                       # x0, y0, x1, y1
+    safe: tuple = (60, 200, 930, 1440)                      # x0, y0, x1, y1 : marge gauche de 60 px
     reserved: dict = field(default_factory=lambda: {"bandeau": (0, 200, 1080, 470),
                                                      "sous-titres": (0, 1240, 1080, 1440)})
     support_tolerance: float = 14.0                          # px entre la base d'un objet et sa surface
