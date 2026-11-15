@@ -41,6 +41,24 @@ def _group_words(words: list[str], max_words: int) -> list[list[str]]:
     return groups
 
 
+_THOUSANDS = re.compile(r"^\d{3}([.,;:!?…]*)$")
+_UNIT = re.compile(r"^(€|%|ans?|euros?)([.,;:!?…]*)$", re.IGNORECASE)
+
+
+def keep_numbers_together(words: list[str]) -> list[str]:
+    """« 74 », « 800 », « € » -> « 74 800 € » : un montant (milliers séparés par une espace) et son unité ne
+    sont jamais coupés entre deux légendes. Les espaces internes deviennent insécables (une seule « unité »)."""
+    out: list[str] = []
+    for word in words:
+        prev = out[-1] if out else ""
+        joinable = bool(prev) and re.search(r"\d$", prev) is not None
+        if joinable and (_THOUSANDS.match(word) or _UNIT.match(word)):
+            out[-1] = f"{prev}\u00a0{word}"
+        else:
+            out.append(word)
+    return out
+
+
 def _display(group: list[str], uppercase: bool, highlight_color: str | None) -> str:
     shown = []
     for i, word in enumerate(group):
@@ -63,9 +81,13 @@ def generate_grouped_srt(
     min_caption_dur: float = 0.45,
     uppercase: bool = False,
     highlight_color: str | None = None,
+    keep_numbers: bool = False,
 ) -> str | None:
-    """Découpe `text` en groupes de mots dont la durée est proportionnelle à leur longueur."""
+    """Découpe `text` en groupes de mots dont la durée est proportionnelle à leur longueur.
+    `keep_numbers` : un montant (« 74 800 € ») reste dans une seule légende."""
     words = str(text or "").split()
+    if keep_numbers:
+        words = keep_numbers_together(words)
     if not words or duration <= 0:
         return None
 

@@ -53,9 +53,21 @@ def main(argv: list[str]) -> int:
     results = {}
     for name in channels:
         try:
-            script_path = brain.run_channel(name)
+            # brain.history_after_video (YAML) : le sujet n'est inscrit qu'une fois la vidéo produite ; si la vidéo
+            # échoue (voix indisponible...), il reste en attente pour l'exécution suivante. Absent : dès le script.
+            channel = brain.channels.get(name)
+            deferred = bool(channel and (channel.section("brain") or {}).get("history_after_video"))
+            deferred = deferred and not args.script_only
+            script_path = brain.run_channel(name, finalize=not deferred)
             if not args.script_only:
-                produce_video(brain.channels[name], llm, script_path, upload=args.upload)
+                try:
+                    produce_video(brain.channels[name], llm, script_path, upload=args.upload)
+                except Exception:
+                    if deferred:
+                        print(f"💾 {name} : vidéo en échec, le sujet reste en attente pour la prochaine exécution.")
+                    raise
+                if deferred:
+                    brain.finalize_channel(name, script_path)
             results[name] = True
         except Exception as e:
             print(f"❌ {name} : {e}")

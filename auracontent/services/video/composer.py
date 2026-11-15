@@ -233,26 +233,38 @@ class Composer:
         path = os.path.join(self.sfx_dir, filename)
         return path if os.path.exists(path) else None
 
-    def _cue_stream(self, cue: dict, total_duration: float):
-        """Effet synchronisé sur l'action (scene["sfx_cues"]) : {"time", "path" ou "file", "gain"}."""
-        path = cue.get("path") or os.path.join(self.sfx_dir, str(cue.get("file", "")))
-        start = float(cue.get("time", 0))
-        if not os.path.exists(path) or not 0 <= start < total_duration:
-            return None
-        length = min(get_duration(path), total_duration - start)
-        if length <= 0:
-            return None
-        return (_to_stereo_48k(ffmpeg.input(path).audio)
-                .filter("volume", float(cue.get("gain", self.sfx_gain)))
-                .filter("atrim", duration=length)
-                .filter("adelay", delays=int(start * 1000), all=1)
-                .filter("apad"))
+    def _cue_path(self, cue: dict) -> str:
+        return cue.get("path") or os.path.join(self.sfx_dir, str(cue.get("file", "")))
+
+    def _cue_streams(self, cues: list[dict], total_duration: float) -> list:
+        """Effets synchronisés sur l'action (scene["sfx_cues"]) : {"time", "path" ou "file", "gain"}.
+
+        Chaque fichier n'est ouvert qu'une fois puis dupliqué (asplit) : deux chaînes identiques (même effet,
+        même gain) seraient fusionnées par ffmpeg-python en un nœud à deux sorties, que FFmpeg refuse."""
+        kept = []
+        for cue in cues:
+            path, start = self._cue_path(cue), float(cue.get("time", 0))
+            if not os.path.exists(path) or not 0 <= start < total_duration:
+                continue
+            length = min(get_duration(path), total_duration - start)
+            if length > 0:
+                kept.append((path, start, length, float(cue.get("gain", self.sfx_gain))))
+        streams = []
+        for path in dict.fromkeys(p for p, *_ in kept):
+            uses = [c for c in kept if c[0] == path]
+            base = _to_stereo_48k(ffmpeg.input(path).audio)
+            branches = [base] if len(uses) == 1 else [base.filter_multi_output("asplit", len(uses))[i]
+                                                      for i in range(len(uses))]
+            for branch, (_, start, length, gain) in zip(branches, uses, strict=True):
+                streams.append(branch.filter("volume", gain).filter("atrim", duration=length)
+                               .filter("adelay", delays=int(start * 1000), all=1).filter("apad"))
+        return streams
 
     def _build_scene_audio(self, audio_path: str, scene: dict, total_duration: float):
         voice_stream = ffmpeg.input(audio_path).audio
         if scene.get("sfx_cues"):
             # effets calés sur l'action de la scène (gabarits animés) ; aucun effet de rôle/humeur en plus
-            cues = [c for c in (self._cue_stream(cue, total_duration) for cue in scene["sfx_cues"]) if c]
+            cues = self._cue_streams(scene["sfx_cues"], total_duration)
             if not cues:
                 return voice_stream
             return ffmpeg.filter([_to_stereo_48k(voice_stream), *cues], "amix", inputs=len(cues) + 1,
@@ -769,7 +781,8 @@ class Composer:
             return False
 
     # Habillage final : watermark + bandeau-titre, en un seul encodage
-    def add_watermark(self, input_video_path: str, output_video_path: str, headline: str | None = None) -> bool:
+    def add_watermark(self, input_video_path: str, output_video_path: str, headline: str | None = None,
+                      watermark_until: float | None = None) -> bool:
         has_logo = bool(self.watermark_path and os.path.exists(self.watermark_path))
         if not has_logo and not headline:
             return False
@@ -796,6 +809,8 @@ class Composer:
                     y=self.watermark_y,
                     eof_action="repeat",
                     shortest=1,
+                    # watermark_until : masqué ensuite (cartes de fin au grand logo) ; None = toute la vidéo
+                    **({"enable": f"lt(t,{watermark_until:.3f})"} if watermark_until is not None else {}),
                 )
             if headline:
                 stream = self._add_headline(stream, headline)
@@ -817,7 +832,8 @@ class Composer:
 
     # Pipeline final
     def concatenate_with_transitions(
-        self, video_paths: list[str], output_filename: str = "final_video.mp4", headline: str | None = None
+        self, video_paths: list[str], output_filename: str = "final_video.mp4", headline: str | None = None,
+        watermark_until: float | None = None,
     ) -> str | None:
         raw_final_path = os.path.join(self.temp_dir, "raw_final_stitched.mp4")
         output_path = os.path.join(self.final_dir, output_filename)
@@ -841,7 +857,7 @@ class Composer:
         if not music_mixed:
             self._normalize_or_copy(stitched_path, raw_final_path)
 
-        if not self.add_watermark(raw_final_path, output_path, headline=headline):
+        if not self.add_watermark(raw_final_path, output_path, headline=headline, watermark_until=watermark_until):
             shutil.copy2(raw_final_path, output_path)
 
         _safe_remove(raw_final_path)

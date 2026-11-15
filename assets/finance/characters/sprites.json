@@ -1,0 +1,116 @@
+{
+  "lea-plant": {
+    "w": 300,
+    "h": 420,
+    "shoulder": [
+      130,
+      175
+    ]
+  },
+  "lea-arm-note": {
+    "w": 234.8528137423857,
+    "h": 234.8528137423857,
+    "pivot": [
+      4,
+      4
+    ],
+    "restDirection": "45deg down-right; angle 0"
+  },
+  "lea-arm": {
+    "w": 234.8528137423857,
+    "h": 234.8528137423857,
+    "pivot": [
+      4,
+      4
+    ],
+    "restDirection": "45deg down-right; angle 0"
+  },
+  "lea-shrug": {
+    "w": 300,
+    "h": 470
+  },
+  "lea-joy": {
+    "w": 320,
+    "h": 480,
+    "shoulder": [
+      160,
+      190
+    ]
+  },
+  "lea-arm-up": {
+    "w": 241.92388155425118,
+    "h": 241.92388155425118,
+    "pivot": [
+      4,
+      4
+    ],
+    "restDirection": "45deg down-right; angle 0"
+  },
+  "hugo-stand": {
+    "w": 300,
+    "h": 480,
+    "shoulder": [
+      158,
+      172
+    ]
+  },
+  "hugo-arm-notes": {
+    "w": 238.38834764831842,
+    "h": 238.38834764831842,
+    "pivot": [
+      4,
+      4
+    ],
+    "restDirection": "45deg down-right; angle 0"
+  },
+  "hugo-arm": {
+    "w": 238.38834764831842,
+    "h": 238.38834764831842,
+    "pivot": [
+      4,
+      4
+    ],
+    "restDirection": "45deg down-right; angle 0"
+  },
+  "hugo-smug": {
+    "w": 340,
+    "h": 500,
+    "shoulder": [
+      170,
+      182
+    ]
+  },
+  "hugo-arm-thumb": {
+    "w": 241.92388155425118,
+    "h": 241.92388155425118,
+    "pivot": [
+      4,
+      4
+    ],
+    "restDirection": "45deg down-right; angle 0"
+  },
+  "hugo-shock": {
+    "w": 320,
+    "h": 500
+  },
+  "lea-neutral": {
+    "w": 300,
+    "h": 480
+  },
+  "lea-surprise": {
+    "w": 320,
+    "h": 480
+  },
+  "lea-point": {
+    "w": 380,
+    "h": 480
+  },
+  "hugo-neutral": {
+    "w": 300,
+    "h": 480
+  },
+  "hugo-point": {
+    "w": 380,
+    "h": 480
+  }
+}

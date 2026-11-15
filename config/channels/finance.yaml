@@ -1,7 +1,8 @@
 channel_name: "finance"
-# Chaîne coupée tant qu'elle n'est pas validée : generate et publish l'ignorent (mystery n'a pas cette clé,
-# donc reste active). Essai local : generate finance --script-only --allow-disabled.
-enabled: false
+# Branche feat/finance-video seulement : finance activée pour l'arrêt 2 lancé depuis GitHub Actions (vidéo et
+# légende déposées sur Hugging Face dans finance/, historique dans meta/finance/ ; rien publié sur TikTok ni
+# YouTube). Repasse à false avant fusion dans main tant que les secrets de publication ne sont pas en place.
+enabled: true
 description: "Capital Simple : les chiffres, sans jargon. Épargne, intérêts composés, inflation : un mécanisme, des chiffres calculés, en moins d'une minute."
 
 # Historiques propres à la chaîne (assets/shared/state/finance/, meta/finance/ sur Hugging Face) :
@@ -16,8 +17,14 @@ brain:
   target_duration: 50       # secondes (surchargé par VIDEO_DURATION dans le workflow) ; cible 45-60 s
   seconds_per_scene: 7      # 50 s -> 7 scènes
   scene_count_tolerance: 0   # storyboard fixé par concept : nombre de scènes exact
+  # Narration de 100 mots au moins (le prompt en demande 125) : environ 40 s de voix (2,5 mots/s mesurés), 45 s
+  # avec la question finale et les transitions ; la vidéo du 14/11 (68 mots) ne durait que 29,5 s
+  min_narration_words: 100
   script_max_retries: 4      # contrôles stricts (chiffres, sens, exagération) : jusqu'à 5 essais
   resume_max_attempts: 3
+  # Sujet inscrit à l'historique seulement une fois la vidéo produite : si elle échoue (voix Edge
+  # indisponible...), le sujet reste en attente
+  history_after_video: true
   resume_max_days: 7
   veracity_topic_rounds: 2
 
@@ -36,7 +43,7 @@ brain:
 
   # Style parlé : tutoiement, ton posé, phrases courtes, aucun jargon
   style:
-    max_sentence_words: 12
+    max_sentence_words: 14     # 14 (et non 12) : avec 100 mots sur 6-7 scènes, 12 mots par phrase bloquait le LLM
     max_hook_words: 12
     # Formulations absolues ou alarmistes (regex sur le texte en minuscules sans accents)
     hype_patterns: ["\\btout(?:e|es)? (?:ta|ton|tes) (?:richesse|argent|epargne|economies)", "\\bdetrui\\w*",
@@ -46,6 +53,9 @@ brain:
                     "\\bincroyable\\w*", "\\bdramatique\\w*", "\\bgrignote tout\\b"]
     banned_words: ["rendement garanti", "gain garanti", "sans risque", "investis", "achète", "conseil",
                    "placement sûr", "valeur sûre", "devenir riche", "millionnaire"]
+  # Question finale : une question sur le mécanisme, jamais une invitation à agir (placer, investir...)
+  cta_banned: ["placement", "placements", "placer", "places", "commencer à placer", "investir", "investis",
+               "investissement", "investissements", "épargner"]
   # Produits, banques et marques : jamais cités
   banned_names: ["livret A", "PEL", "LDDS", "assurance-vie", "PEA", "ETF", "bourse", "crypto", "bitcoin",
                  "SCPI", "banque"]
@@ -105,17 +115,14 @@ brain:
         rate: [2, 3, 4, 6, 8]
         rate_b: [3, 4, 6, 8]     # second exemple, toujours plus élevé que le premier
 
-# Audio : mêmes services que mystery. Voix native (méthode B1 : aucune direction de jeu ajoutée,
-# vitesse naturelle).
+# Audio : Edge TTS seul (gratuit, sans quota), même voix à chaque vidéo. Aucun autre moteur : si Edge échoue,
+# la vidéo échoue et le sujet reste en attente (brain.history_after_video), jamais une autre voix.
 audio:
-  engines: [gemini, edge]
-  batch_tts: true
-  gemini:
-    narrator:
-      voice: "Charon"
-      style: ""
+  engines: [edge]
+  role_directions: false     # voix native : aucune consigne de jeu ajoutée selon le rôle de la scène
   edge:
-    narrator: {voice: "fr-FR-RemyMultilingualNeural", rate: "+0%", pitch: "+0Hz"}
+    # Rémy ralenti à -8 % (choix du 15/11) : environ 2,6 mots/s, 45 s pour 100 mots avec la question finale
+    narrator: {voice: "fr-FR-RemyMultilingualNeural", rate: "-8%", pitch: "+0Hz"}
 
 # Vidéo (Composer). Polices, effets et bandeau propres à la chaîne ; fond papier clair.
 video_composer:
@@ -128,6 +135,10 @@ video_composer:
   music_gain: 0.0            # pas de musique
   fonts_dir: "finance/fonts"
   sfx_dir: "finance/sfx"
+  require_all_scenes: true   # une scène en échec = vidéo refusée (jamais de vidéo tronquée)
+  # Question finale : déjà écrite à la main sur la carte de fin, donc sans sous-titres ; pas de filigrane sur
+  # les cartes de fin (le grand logo suffit)
+  cta_scene: {subtitles: false, hide_watermark: true}
   source_credit_enabled: false
 
   watermark_filename: "capital_simple_watermark.png"
@@ -150,13 +161,24 @@ video_composer:
   headline_shadow_color: ""
 
   # Sous-titres Poppins, encre sur papier, chiffres en or ; au-dessus de y = 1440 (zone de sécurité)
-  subtitle_style: "FontName=Poppins,FontSize=13,Bold=1,PrimaryColour=&H001A1A1A,OutlineColour=&H00EAF3F7,BorderStyle=1,Outline=1.2,Shadow=0,Alignment=2,MarginL=30,MarginR=60,MarginV=82"
+  # MarginV=72 : bas des sous-titres à y=1440 (zone de sécurité), soit 1240-1440 sur deux lignes ; la scène
+  # dessinée garde la bande 470-1235 (visuals.linework.layout)
+  subtitle_style: "FontName=Poppins,FontSize=13,Bold=1,PrimaryColour=&H001A1A1A,OutlineColour=&H00EAF3F7,BorderStyle=1,Outline=1.2,Shadow=0,Alignment=2,MarginL=30,MarginR=60,MarginV=72"
   subtitle_uppercase: false
+  subtitle_keep_numbers: true   # « 74 800 € » jamais coupé entre deux légendes
   subtitle_highlight_color: "#E0A526"
 
 visuals:
   map_scene:
     enabled: false
+  # Scènes dessinées (style de la vidéo test : papier quadrillé, trait à la main, Caveat) ; zones en pixels de
+  # sortie. Contrôles bloquants : texte coupé, hors zone sûre, zones réservées, chevauchements, appuis.
+  linework:
+    background: "#F7F3EA"
+    grid: true
+    layout:
+      safe: [60, 200, 930, 1440]     # marge gauche de 60 px
+      reserved: {bandeau: [0, 200, 1080, 470], sous-titres: [0, 1240, 1080, 1440]}
 
 mascot:
   enabled: false

@@ -237,12 +237,16 @@ class VideoPipeline:
     def _subtitles(self, scenes: list[dict]) -> None:
         cfg = self.channel.section("video_composer")
         for scene in scenes:
+            if scene.get("subtitles") is False:               # texte déjà à l'écran (carte de fin, question)
+                scene["srt_path"] = None
+                continue
             scene["srt_path"] = generate_grouped_srt(
                 text=scene["text"],
                 duration=scene["duration"],
                 output_path=str(self.work_dir / "subs" / f"scene_{scene['id']}.srt"),
                 uppercase=cfg.get("subtitle_uppercase", False),
                 highlight_color=cfg.get("subtitle_highlight_color"),
+                **({"keep_numbers": True} if cfg.get("subtitle_keep_numbers") else {}),
             )
 
     # ---------- Audience ----------
@@ -258,6 +262,8 @@ class VideoPipeline:
                 "id": len(scenes) + 1, "text": cta, "role": "cta", "mood": last.get("mood", "intriguing"),
                 "voice_type": "narrator", "scene_type": last.get("scene_type", "generic"),
                 "reuse_previous_asset": True,
+                # video_composer.cta_scene (YAML) : réglages de la scène finale, ex. sans sous-titres ni filigrane
+                **dict(self.channel.section("video_composer").get("cta_scene") or {}),
             })
 
     # ---------- Orchestration ----------
@@ -276,6 +282,13 @@ class VideoPipeline:
                                    routing=self._simple_routing(),
                                    **({"footer": self.publish_cfg["caption_footer"]}
                                       if self.publish_cfg.get("caption_footer") else {}))
+        # une chaîne peut contrôler sa légende (exagération, chiffres...) et la remplacer par une légende sûre
+        checker = getattr(self.channel.brain, "caption_issues", None)
+        if callable(checker):
+            issues = checker(script, caption)
+            if issues:
+                print(f"   ↻ Légende refusée ({' ; '.join(issues[:3])}) : légende sûre construite par le code.")
+                caption = self.channel.brain.safe_caption(script, title, self.publish_cfg)
 
         print("🎙️ Voix...")
         scenes = asyncio.run(self._voice(scenes))
@@ -304,9 +317,14 @@ class VideoPipeline:
         rendered = composer.render_all_scenes(scenes, assets)
         if not rendered:
             raise RuntimeError("aucune scène rendue.")
+        if self.channel.section("video_composer").get("require_all_scenes") and len(rendered) != len(scenes):
+            # video_composer.require_all_scenes : jamais de vidéo tronquée (absent = scènes en échec sautées)
+            raise RuntimeError(f"{len(scenes) - len(rendered)} scène(s) sur {len(scenes)} non rendue(s) : "
+                               "vidéo incomplète refusée.")
         stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
         headline = (script.get("on_screen_title") or title) if composer.headline_persistent else None
-        final = composer.concatenate_with_transitions(rendered, f"{self.name}_{stamp}.mp4", headline=headline)
+        final = composer.concatenate_with_transitions(rendered, f"{self.name}_{stamp}.mp4", headline=headline,
+                                                      watermark_until=self._watermark_until(scenes, rendered, composer))
         if not final:
             raise RuntimeError("assemblage final échoué.")
 
@@ -325,6 +343,18 @@ class VideoPipeline:
             self._upload(final_path, title, caption)
         shutil.rmtree(self.work_dir, ignore_errors=True)
         return final_path
+
+    @staticmethod
+    def _watermark_until(scenes: list[dict], rendered: list[str], composer) -> float | None:
+        """Début (s) de la première scène « hide_watermark » (cartes de fin, à la suite) dans la vidéo montée ;
+        None si aucune : filigrane sur toute la vidéo. Les fondus enchaînés raccourcissent chaque raccord."""
+        index = next((i for i, s in enumerate(scenes) if s.get("hide_watermark")), None)
+        if index is None or len(rendered) != len(scenes):
+            return None
+        from auracontent.services.video.composer import get_duration
+
+        overlap = float(getattr(composer, "transition_duration", 0) or 0)
+        return max(0.0, sum(get_duration(p) for p in rendered[:index]) - index * overlap)
 
     def _upload(self, video: Path, title: str, caption: str) -> None:
         if not self.publish_cfg.get("hf_repo"):

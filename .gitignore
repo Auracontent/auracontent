@@ -32,3 +32,6 @@ __pycache__/
 
 # État synchronisé sur Hugging Face (meta/), source de vérité = HF
 /assets/shared/state/
+
+# Clés locales (jamais commitées)
+.gemini_key*

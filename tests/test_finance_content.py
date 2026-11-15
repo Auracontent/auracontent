@@ -12,6 +12,7 @@ def _picked(concept, params, llm=None):
     brain = BaseChannel("finance", FinanceBrain, llm).brain
     resolved = brain.resolve_params(concept, params)
     brain.last_pick = {"concept": concept, "params": resolved, "topic_key": brain.topic_key(concept, resolved)}
+    brain.config["brain"]["min_narration_words"] = 0          # scripts factices courts : règle testée à part
     return brain
 
 
@@ -152,7 +153,7 @@ def test_apply_forces_roles_templates_and_known_variants():
               for v in ("piles", "SABLIER", "une fusée", "ecart", "arbres", "jauge", "logo")]
     notes = storyboard.apply("interets_composes", scenes)
     assert [s["template"] for s in scenes] == [t for _, t in storyboard.storyboard("interets_composes")]
-    assert [s["visual"] for s in scenes] == ["piles", "sablier", "barres", "ecart", "arbres", "jauge", "logo"]
+    assert [s["visual"] for s in scenes] == ["piles", "sablier", "duo", "ecart", "arbres", "jauge", "logo"]
     assert len(notes) == 1 and "une fusée" in notes[0]
 
 
@@ -289,3 +290,112 @@ def test_audio_reads_spoken_when_present():
     assert AudioEngine.voice_text({"text": "72 = 18", "spoken": "soixante-douze égale dix-huit"}) == \
         "soixante-douze égale dix-huit"
     assert AudioEngine.voice_text({"text": "Texte de mystery"}) == "Texte de mystery"   # sans `spoken` : inchangé
+
+
+# ---------- Run du 14/11 : accroche à montant de plus de 999, années gagnées (règle des 72) ----------
+def test_hook_with_thousands_matches_formatted_scene_one():
+    """« 1500 € » dans l'accroche, « 1 500 € » dans la scène 1 (formatée par le code) : même accroche."""
+    params = {"early_age": 20, "late_age": 45, "early_amount": 500, "late_amount_factor": 3, "rate": 7, "end_age": 60}
+    brain = _picked("interets_composes", params)
+    brain.chosen_hook_text = "500 € à 20 ans battent 1500 € à 45 ans."
+    scenes = [{"id": i, "text": "Les gains rapportent des gains.", "visual": ""}
+              for i in range(1, len(storyboard.storyboard("interets_composes")) + 1)]
+    scenes[0]["text"] = "500 € à 20 ans battent 1500 € à 45 ans."
+    data = {"title": "t", "on_screen_title": "500 € À 20 ANS | BATTENT 1 500 €", "closing_cta": "Et toi ?",
+            "scenes": scenes}
+    brain.validate_script_specifics(data, "t")
+    assert data["scenes"][0]["text"].startswith("500 € à 20 ans battent 1 500 €")
+
+
+def test_regle_72_years_saved_is_an_allowed_number():
+    brain = _picked("regle_72", {"rate": 2, "rate_b": 3})
+    assert brain.calc()["years_saved"] == 12
+    assert brain.hook_issues("Passer de 2 % à 3 % te fait gagner 12 ans.", "sujet") == []
+
+
+# ---------- Run du 14/11 : vidéo de 29,5 s, narration trop courte ----------
+def test_short_narration_is_regenerated():
+    brain = _picked("cout_du_temps", COUT)
+    brain.config["brain"]["min_narration_words"] = 95
+    short = _script("Verser 6 000 € de plus rapporte 23 800 € de plus.")          # 39 mots
+    assert any("script trop court" in i and "95" in i for i in brain.check_script_logic("t", short))
+    long_text = ("Le temps travaille pour toi chaque mois sans effort. "
+                 "Les intérêts produisent à leur tour de nouveaux intérêts chaque année.")
+    for scene in short["scenes"][1:-1]:
+        if scene["role"] != "reveal":
+            scene["text"] = long_text
+    assert not [i for i in brain.check_script_logic("t", short) if "trop court" in i]
+
+
+def test_yaml_minimum_narration_and_prompt():
+    brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
+    assert BaseChannel("finance", FinanceBrain, None).brain.min_words() == 100
+    brain.config["brain"]["min_narration_words"] = 100
+    prompt = brain.build_script_prompt("t", 6, {"text": "h"})[1]["content"]
+    assert "environ 125 mots (jamais moins de 100)" in prompt
+
+
+def test_sentence_limit_14_and_bandeau_lengths_in_prompt():
+    brain = _picked("cout_du_temps", {"monthly": 200, "rate": 4, "delay_years": 10, "horizon_years": 40})
+    assert BaseChannel("finance", FinanceBrain, None).brain.style_cfg()["max_sentence_words"] == 14
+    assert BaseChannel("finance", FinanceBrain, None).brain.style_cfg()["max_hook_words"] == 12
+    prompt = brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
+    cost = brain.calc().values["cost"].text
+    assert f"« {cost} » = {len(cost)} caractères" in prompt
+
+
+# ---------- Bandeau du coût du temps : jamais le coût de l'attente seul ----------
+COUT_5 = {"monthly": 200, "rate": 5, "delay_years": 5, "horizon_years": 40}
+
+
+def _bandeau(brain, bandeau):
+    data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
+    data["on_screen_title"] = bandeau
+    brain.validate_script_specifics(data, "t")
+    return data["on_screen_title"]
+
+
+def test_cost_alone_in_bandeau_is_replaced_by_both_figures(capsys):
+    brain = _picked("cout_du_temps", COUT_5)
+    c = brain.calc()
+    assert (c.values["paid_gap"].text, c.values["cost"].text) == ("12 000 €", "74 800 €")
+    assert _bandeau(brain, "ATTENDRE 5 ANS | COÛTE 74 800 €") == "+12 000 € VERSÉS | +74 800 € AU FINAL"
+    assert "remplacé" in capsys.readouterr().out
+
+
+def test_bandeau_with_both_figures_is_kept():
+    brain = _picked("cout_du_temps", COUT_5)
+    assert _bandeau(brain, "12 000 € DE PLUS | DONNENT 74 800 €") == "12 000 € DE PLUS | DONNENT 74 800 €"
+
+
+def test_other_concepts_bandeau_untouched():
+    brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
+    data = _script("Les frais te coûtent 5 300 €.", concept="frais")
+    data["on_screen_title"] = "2 % DE FRAIS | 5 300 € PERDUS"
+    brain.validate_script_specifics(data, "t")
+    assert data["on_screen_title"] == "2 % DE FRAIS | 5 300 € PERDUS"
+
+
+def test_prompt_states_bandeau_rule_and_meaning_check_covers_bandeau():
+    brain = _picked("cout_du_temps", COUT_5)
+    prompt = brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
+    assert "cite ENSEMBLE 12 000 € et 74 800 €" in prompt
+    assert "BANDEAU et le TITRE" in brain.read_sections("meaning.md")["user"]
+
+
+# ---------- Question finale : jamais une invitation à placer ou investir ----------
+@pytest.mark.parametrize("cta", ["Quand as-tu prévu de commencer ton premier placement ?",
+                                 "Tu vas commencer à placer quand ?", "Prêt à investir dès ce mois-ci ?",
+                                 "Combien vas-tu placer chaque mois ?"])
+def test_incentive_closing_question_is_rejected(cta):
+    brain = _picked("cout_du_temps", COUT_5)
+    data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
+    data["closing_cta"] = cta
+    assert any("invite à agir" in i for i in brain.check_script_logic("t", data))
+
+
+def test_mechanism_question_passes():
+    brain = _picked("cout_du_temps", COUT_5)
+    data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
+    data["closing_cta"] = "Pourquoi les premières années comptent-elles autant ?"
+    assert not [i for i in brain.check_script_logic("t", data) if "question finale" in i]

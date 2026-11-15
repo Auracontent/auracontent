@@ -198,6 +198,8 @@ def regle_72(p: dict) -> Calc:
         _v("years_rule_b", f"72 divisé par {fmt_number(p['rate_b'])} (temps pour doubler à "
            f"{fmt_number(p['rate_b'])} %)", rule_b, "ans"),
         _v("years_exact_b", f"durée exacte pour doubler à {fmt_number(p['rate_b'])} %", exact_b, "ans"),
+        _v("years_saved", f"années gagnées en passant de {fmt_number(p['rate'])} % à {fmt_number(p['rate_b'])} %",
+           round_1(rule - rule_b), "ans"),
     ]
     n = math.ceil(exact)
     series = {"x": list(range(n + 1)), "x_label": "années",

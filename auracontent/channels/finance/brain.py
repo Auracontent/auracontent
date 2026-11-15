@@ -428,6 +428,8 @@ class FinanceBrain(BaseBrain):
             main_result=f"{self.calc().main.label} : {self.calc().main.text}",
             chosen_hook=(chosen_hook or {}).get("text", ""), scene_count=scene_count,
             max_sentence_words=cfg["max_sentence_words"], storyboard=fstory.describe(concept),
+            min_words=self.min_words(), target_words=self.min_words() + 25,   # le LLM vise toujours un peu court
+            bandeau_lengths=self.bandeau_lengths(), bandeau_rule=self.bandeau_rule_text(),
             scene_results="\n".join(
                 f"- scène « {fstory.ROLES[role]} » : " + " ; ".join(
                     f"{self.calc().values[k].label} = {self.calc().values[k].text}" for k in keys)
@@ -467,7 +469,7 @@ class FinanceBrain(BaseBrain):
         too_long = [p for p in parts if len(p) > 20]
         if too_long:
             raise ValueError(f"segment du bandeau de plus de 20 caractères : « {too_long[0]} ».")
-        data["on_screen_title"] = " | ".join(parts)
+        data["on_screen_title"] = self.checked_bandeau(" | ".join(parts))
         data["hypothesis"] = self.hypothesis(concept, params)          # jamais reformulée par le LLM
         data["calc"] = self.calc().to_dict()                           # chiffres et courbes des gabarits
         if not str(data.get("closing_cta", "")).strip():
@@ -478,6 +480,8 @@ class FinanceBrain(BaseBrain):
         for note in fstory.apply(concept, data["scenes"]):           # rôles et gabarits fixés par le code
             print(f"   🧩 Storyboard : {note}")
         for scene in data["scenes"]:
+            if scene["template"] == "carte_fin":
+                scene["hide_watermark"] = True                       # le grand logo de la carte suffit
             # texte affiché (chiffres « 10 000 € ») et texte parlé (nombres en lettres), produits par le code
             scene["text"] = display_text(clean_text(scene["text"]))
             try:
@@ -485,7 +489,9 @@ class FinanceBrain(BaseBrain):
             except SpokenError as e:
                 raise ValueError(f"scène {scene['id']} : {e} ; écris les chiffres sans autre symbole.") from e
             scene.setdefault("voice_type", "narrator")
-        hook = (self.chosen_hook_text or "").strip()
+        # l'accroche passe par le même formatage des nombres que la narration (« 1500 € » -> « 1 500 € ») :
+        # sinon la comparaison échoue dès qu'un montant dépasse 999
+        hook = display_text(clean_text(self.chosen_hook_text or "")).strip()
         if hook and not comparable(data["scenes"][0]["text"]).startswith(comparable(hook)):
             raise ValueError("la scène 1 doit commencer mot pour mot par l'accroche obligatoire.")
 
@@ -543,6 +549,47 @@ class FinanceBrain(BaseBrain):
         return [f"sens des chiffres, {p.get('ou') or p.get('scene') or '?'} : {p.get('motif') or p.get('reason')}"
                 for p in problems]
 
+    def checked_bandeau(self, bandeau: str) -> str:
+        """Bandeau qui ne présente jamais un chiffre seul quand le concept en exige plusieurs (coût du temps :
+        versements en plus ET résultat en plus) ; sinon bandeau construit par le code d'après calc.py."""
+        concept, _, _ = self._pick()
+        rule = fstory.bandeau_rule(concept)
+        if not rule:
+            return bandeau
+        keys, template = rule
+        values = self.calc().values
+        said = set(numbers_in(bandeau))
+        if all(values[k].value in said for k in keys):
+            return bandeau
+        built = template.format(**{k: values[k].text for k in keys}).upper()
+        too_long = [part for part in built.split(" | ") if len(part.strip()) > 20]
+        if too_long:
+            raise ValueError(f"bandeau : il doit citer ensemble {', '.join(values[k].text for k in keys)} "
+                             "en 20 caractères au plus par segment.")
+        print(f"   🧩 Bandeau « {bandeau} » remplacé par « {built} » (les deux chiffres ensemble).")
+        return built
+
+    def bandeau_rule_text(self) -> str:
+        concept, _, _ = self._pick()
+        rule = fstory.bandeau_rule(concept)
+        if not rule:
+            return ""
+        keys, template = rule
+        values = self.calc().values
+        example = template.format(**{k: values[k].text for k in keys}).upper()
+        return (f"Ce bandeau cite ENSEMBLE {' et '.join(values[k].text for k in keys)}, jamais l'un sans l'autre "
+                f"(ex : « {example} »).")
+
+    def bandeau_lengths(self) -> str:
+        """Longueur en caractères des montants qui peuvent aller dans le bandeau (20 au plus par segment)."""
+        keys = [k for keys in self.scene_keys().values() for k in keys]
+        texts = list(dict.fromkeys(self.calc().values[k].text for k in keys))
+        return "; ".join(f"« {t} » = {len(t)} caractères" for t in texts)
+
+    def min_words(self) -> int:
+        """brain.min_narration_words : longueur minimale de la narration (voix d'environ 2,5 mots par seconde)."""
+        return int(self._brain().get("min_narration_words", 0))
+
     def storyboard_issues(self, data: dict) -> list[str]:
         """Chiffres exigés par rôle, expressions obligatoires, scène de fin sans chiffre, question sans chiffre."""
         concept, _, _ = self._pick()
@@ -567,7 +614,50 @@ class FinanceBrain(BaseBrain):
                 issues.append(f"scène {scene.get('id')} (fin) : doit rappeler que c'est un exemple simplifié")
         if numbers_in(data.get("closing_cta", "")):
             issues.append("la question finale ne contient aucun chiffre")
+        cta = str(data.get("closing_cta", ""))
+        for term in self._brain().get("cta_banned") or []:
+            if contains_term(cta, term):
+                issues.append(f"la question finale invite à agir (« {term} ») : pose une question sur le mécanisme "
+                              "(comment, pourquoi, combien), jamais une invitation à placer ou investir")
+                break
+        words = sum(count_words(s.get("text", "")) for s in scenes)
+        if self.min_words() and words < self.min_words():
+            issues.append(f"script trop court : {words} mots, il en faut au moins {self.min_words()} (vidéo de 45 s "
+                          "au moins) ; donne deux phrases courtes à chaque scène hors accroche et fin")
         return issues
+
+    def caption_issues(self, script: dict, caption: str) -> list[str]:
+        """La légende (écrite par le prompt générique) passe les contrôles du script : exagération, mots et
+        produits interdits, vouvoiement, chiffres absents de calc.py ou employés hors de leur sens."""
+        pick = script.get("pick") or {}
+        if pick.get("concept"):
+            self.last_pick = dict(pick)
+        footer = str((self.config.get("publish") or {}).get("caption_footer") or "")
+        body = "\n".join(line for line in str(caption).splitlines()
+                         if not line.strip().startswith("#") and (not footer or line.strip() != footer.strip()))
+        # sans sujet (script incomplet) : seuls les contrôles qui n'ont pas besoin des chiffres de calc.py
+        issues = self.text_issues(body, "la légende") if self.last_pick else self.hype_issues(body, "la légende")
+        if re.search(r"[\U0001F600-\U0001F64F\U0001F910-\U0001F92F]", body):       # visages (😱, 🤯...)
+            issues.append("la légende contient un émoji de visage (ton alarmiste)")
+        return issues
+
+    def safe_caption(self, script: dict, title: str, publish_cfg: dict) -> str:
+        """Légende sans LLM : titre, hypothèse, question finale, hashtags et mention fixe."""
+        from auracontent.services.publishing.caption import apply_caption_footer, apply_hashtag_rules
+
+        parts = [title, f"Hypothèse : {script.get('hypothesis', '')}".strip(" :"), script.get("closing_cta", ""),
+                 publish_cfg.get("fallback_hashtags", "")]
+        caption = "\n\n".join(p for p in parts if p)
+        return apply_hashtag_rules(apply_caption_footer(caption, publish_cfg.get("caption_footer")),
+                                   publish_cfg.get("brand_hashtag"), publish_cfg.get("banned_hashtags", ()))
+
+    def build_visuals(self, script: dict, scenes: list[dict], work_dir, video_cfg: dict) -> list:
+        """Scènes dessinées (moteur linework, sprites de la vidéo test), une par scène, à la durée de la voix ;
+        effets sonores calés sur l'action dans scene["sfx_cues"]. Mise en page refusée = vidéo non produite."""
+        from auracontent.channels.finance import visuals
+
+        cfg = dict((self.config.get("visuals") or {}).get("linework") or {})
+        return visuals.render_scenes(script, scenes, work_dir, cfg)
 
     def check_script_logic(self, topic, data):
         """Style et fond : phrases courtes, aucun terme interdit, tutoiement, aucun nombre inventé."""

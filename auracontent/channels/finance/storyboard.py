@@ -16,8 +16,10 @@ VARIANTS: dict[str, dict[str, str]] = {
                      "ecart": "deux courbes avec l'écart entre elles coloré"},
     "barres": {"barres": "deux ou trois barres verticales comparées",
                "jauge": "une barre qui se vide ou se remplit"},
-    "curseur_temps": {"frise": "une frise des années avec un curseur qui avance",
-                      "sablier": "un sablier qui s'écoule"},
+    "curseur_temps": {"frise": "une frise des années que Léa parcourt",
+                      "sablier": "un compte à rebours : l'aiguille d'une horloge tourne"},
+    "personnages": {"duo": "Léa et Hugo réagissent, une annotation au-dessus",
+                    "seul": "Léa réagit, une annotation au-dessus"},
     "carte_fin": {"logo": "carte de fin avec le logo et l'hypothèse"},
 }
 
@@ -35,13 +37,13 @@ ROLES: dict[str, str] = {
 # (rôle, gabarit) scène par scène, propre à chaque concept : 5 à 7 scènes de ~7-9 s, 45-60 s de vidéo.
 STORYBOARDS: dict[str, tuple[tuple[str, str], ...]] = {
     # deux personnages, une intuition à contredire : la suite complète
-    "interets_composes": (("hook", "deux_arbres"), ("context", "curseur_temps"), ("belief", "barres"),
+    "interets_composes": (("hook", "deux_arbres"), ("context", "curseur_temps"), ("belief", "personnages"),
                           ("mechanism", "deux_courbes"), ("reveal", "deux_arbres"), ("takeaway", "barres"),
                           ("disclaimer", "carte_fin")),
     # pas d'intuition contraire à poser : le mécanisme (les prix montent) suffit
     "inflation": (("hook", "barres"), ("context", "curseur_temps"), ("mechanism", "deux_courbes"),
                   ("reveal", "barres"), ("takeaway", "curseur_temps"), ("disclaimer", "carte_fin")),
-    "cout_du_temps": (("hook", "deux_courbes"), ("context", "curseur_temps"), ("belief", "barres"),
+    "cout_du_temps": (("hook", "deux_courbes"), ("context", "curseur_temps"), ("belief", "personnages"),
                       ("mechanism", "curseur_temps"), ("reveal", "deux_courbes"), ("takeaway", "barres"),
                       ("disclaimer", "carte_fin")),
     "frais": (("hook", "barres"), ("context", "curseur_temps"), ("mechanism", "barres"),
@@ -55,6 +57,13 @@ STORYBOARDS: dict[str, tuple[tuple[str, str], ...]] = {
 SCENE_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
     "cout_du_temps": {"reveal": ("cost", "paid_gap")},
     "regle_72": {"reveal": ("years_rule",), "example": ("years_rule_b",)},
+}
+
+# Bandeau : chiffres qui doivent y figurer ENSEMBLE (jamais l'un sans l'autre) et bandeau construit par le code
+# si le LLM ne les respecte pas. Coût du temps : le coût de l'attente seul suggère une perte sèche ; il ne
+# s'entend qu'avec les versements en plus qu'il suppose.
+BANDEAU: dict[str, tuple[tuple[str, ...], str]] = {
+    "cout_du_temps": (("paid_gap", "cost"), "+{paid_gap} VERSÉS | +{cost} AU FINAL"),
 }
 
 # Expressions que la narration doit contenir (comparaison sans casse ni accents).
@@ -72,6 +81,10 @@ def storyboard(concept: str) -> tuple[tuple[str, str], ...]:
 
 def scene_keys(concept: str, headline: str) -> dict[str, tuple[str, ...]]:
     return SCENE_KEYS.get(concept, {"reveal": (headline,)})
+
+
+def bandeau_rule(concept: str) -> tuple[tuple[str, ...], str] | None:
+    return BANDEAU.get(concept)
 
 
 def must_say(concept: str) -> tuple[str, ...]:
