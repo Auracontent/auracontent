@@ -28,7 +28,7 @@ RÈGLES :
 7. Chaque scène apporte un fait, un chiffre ou une étape du raisonnement. Aucune phrase de remplissage (« Tu cherches un moyen simple… », « Il existe une astuce… »).
 8. La dernière scène rappelle seulement que c'est un exemple simplifié : AUCUN chiffre.
 9. 'closing_cta' : une question courte (6 à 10 mots) au tutoiement, sur CE mécanisme, à laquelle on répond en commentaire, sans chiffre. Jamais « abonne-toi », jamais « like ».
-10. 'on_screen_title' : bandeau affiché pendant toute la vidéo, format « AFFIRMATION | PUNCHLINE », 2 à 4 mots et 20 caractères au plus par segment, en capitales. La punchline porte la contradiction ou un chiffre des DONNÉES D'ENTRÉE ou des RÉSULTATS (ex : « 100 € À 20 ANS | BATTENT 300 € À 40 »). Jamais de date. Compte les caractères, espaces compris : {bandeau_lengths}. Un segment avec un montant de 8 caractères ne garde que 12 caractères pour le reste (ex : « COÛTE 74 800 € »).
+10. 'on_screen_title' : bandeau affiché pendant toute la vidéo, format « AFFIRMATION | PUNCHLINE », 2 à 4 mots et 20 caractères au plus par segment, en capitales. La punchline porte la contradiction ou un chiffre des DONNÉES D'ENTRÉE ou des RÉSULTATS (ex : « 100 € À 20 ANS | BATTENT 300 € À 40 »). Jamais de date. Compte les caractères, espaces compris : {bandeau_lengths}. {bandeau_rule} Un segment avec un montant de 8 caractères ne garde que 12 caractères pour le reste (ex : « COÛTE 74 800 € »).
 
 FORMAT DE SORTIE :
 Un JSON avec les clés : title, on_screen_title, hypothesis, closing_cta, scenes.

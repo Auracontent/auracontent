@@ -342,3 +342,42 @@ def test_sentence_limit_14_and_bandeau_lengths_in_prompt():
     prompt = brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
     cost = brain.calc().values["cost"].text
     assert f"« {cost} » = {len(cost)} caractères" in prompt
+
+
+# ---------- Bandeau du coût du temps : jamais le coût de l'attente seul ----------
+COUT_5 = {"monthly": 200, "rate": 5, "delay_years": 5, "horizon_years": 40}
+
+
+def _bandeau(brain, bandeau):
+    data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
+    data["on_screen_title"] = bandeau
+    brain.validate_script_specifics(data, "t")
+    return data["on_screen_title"]
+
+
+def test_cost_alone_in_bandeau_is_replaced_by_both_figures(capsys):
+    brain = _picked("cout_du_temps", COUT_5)
+    c = brain.calc()
+    assert (c.values["paid_gap"].text, c.values["cost"].text) == ("12 000 €", "74 800 €")
+    assert _bandeau(brain, "ATTENDRE 5 ANS | COÛTE 74 800 €") == "+12 000 € VERSÉS | +74 800 € AU FINAL"
+    assert "remplacé" in capsys.readouterr().out
+
+
+def test_bandeau_with_both_figures_is_kept():
+    brain = _picked("cout_du_temps", COUT_5)
+    assert _bandeau(brain, "12 000 € DE PLUS | DONNENT 74 800 €") == "12 000 € DE PLUS | DONNENT 74 800 €"
+
+
+def test_other_concepts_bandeau_untouched():
+    brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
+    data = _script("Les frais te coûtent 5 300 €.", concept="frais")
+    data["on_screen_title"] = "2 % DE FRAIS | 5 300 € PERDUS"
+    brain.validate_script_specifics(data, "t")
+    assert data["on_screen_title"] == "2 % DE FRAIS | 5 300 € PERDUS"
+
+
+def test_prompt_states_bandeau_rule_and_meaning_check_covers_bandeau():
+    brain = _picked("cout_du_temps", COUT_5)
+    prompt = brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
+    assert "cite ENSEMBLE 12 000 € et 74 800 €" in prompt
+    assert "BANDEAU et le TITRE" in brain.read_sections("meaning.md")["user"]

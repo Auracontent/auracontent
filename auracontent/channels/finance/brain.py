@@ -429,7 +429,7 @@ class FinanceBrain(BaseBrain):
             chosen_hook=(chosen_hook or {}).get("text", ""), scene_count=scene_count,
             max_sentence_words=cfg["max_sentence_words"], storyboard=fstory.describe(concept),
             min_words=self.min_words(), target_words=self.min_words() + 25,   # le LLM vise toujours un peu court
-            bandeau_lengths=self.bandeau_lengths(),
+            bandeau_lengths=self.bandeau_lengths(), bandeau_rule=self.bandeau_rule_text(),
             scene_results="\n".join(
                 f"- scène « {fstory.ROLES[role]} » : " + " ; ".join(
                     f"{self.calc().values[k].label} = {self.calc().values[k].text}" for k in keys)
@@ -469,7 +469,7 @@ class FinanceBrain(BaseBrain):
         too_long = [p for p in parts if len(p) > 20]
         if too_long:
             raise ValueError(f"segment du bandeau de plus de 20 caractères : « {too_long[0]} ».")
-        data["on_screen_title"] = " | ".join(parts)
+        data["on_screen_title"] = self.checked_bandeau(" | ".join(parts))
         data["hypothesis"] = self.hypothesis(concept, params)          # jamais reformulée par le LLM
         data["calc"] = self.calc().to_dict()                           # chiffres et courbes des gabarits
         if not str(data.get("closing_cta", "")).strip():
@@ -548,6 +548,37 @@ class FinanceBrain(BaseBrain):
             return ["vérification du sens des chiffres : réponse négative sans motif"]
         return [f"sens des chiffres, {p.get('ou') or p.get('scene') or '?'} : {p.get('motif') or p.get('reason')}"
                 for p in problems]
+
+    def checked_bandeau(self, bandeau: str) -> str:
+        """Bandeau qui ne présente jamais un chiffre seul quand le concept en exige plusieurs (coût du temps :
+        versements en plus ET résultat en plus) ; sinon bandeau construit par le code d'après calc.py."""
+        concept, _, _ = self._pick()
+        rule = fstory.bandeau_rule(concept)
+        if not rule:
+            return bandeau
+        keys, template = rule
+        values = self.calc().values
+        said = set(numbers_in(bandeau))
+        if all(values[k].value in said for k in keys):
+            return bandeau
+        built = template.format(**{k: values[k].text for k in keys}).upper()
+        too_long = [part for part in built.split(" | ") if len(part.strip()) > 20]
+        if too_long:
+            raise ValueError(f"bandeau : il doit citer ensemble {', '.join(values[k].text for k in keys)} "
+                             "en 20 caractères au plus par segment.")
+        print(f"   🧩 Bandeau « {bandeau} » remplacé par « {built} » (les deux chiffres ensemble).")
+        return built
+
+    def bandeau_rule_text(self) -> str:
+        concept, _, _ = self._pick()
+        rule = fstory.bandeau_rule(concept)
+        if not rule:
+            return ""
+        keys, template = rule
+        values = self.calc().values
+        example = template.format(**{k: values[k].text for k in keys}).upper()
+        return (f"Ce bandeau cite ENSEMBLE {' et '.join(values[k].text for k in keys)}, jamais l'un sans l'autre "
+                f"(ex : « {example} »).")
 
     def bandeau_lengths(self) -> str:
         """Longueur en caractères des montants qui peuvent aller dans le bandeau (20 au plus par segment)."""

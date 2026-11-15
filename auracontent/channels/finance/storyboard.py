@@ -59,6 +59,13 @@ SCENE_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
     "regle_72": {"reveal": ("years_rule",), "example": ("years_rule_b",)},
 }
 
+# Bandeau : chiffres qui doivent y figurer ENSEMBLE (jamais l'un sans l'autre) et bandeau construit par le code
+# si le LLM ne les respecte pas. Coût du temps : le coût de l'attente seul suggère une perte sèche ; il ne
+# s'entend qu'avec les versements en plus qu'il suppose.
+BANDEAU: dict[str, tuple[tuple[str, ...], str]] = {
+    "cout_du_temps": (("paid_gap", "cost"), "+{paid_gap} VERSÉS | +{cost} AU FINAL"),
+}
+
 # Expressions que la narration doit contenir (comparaison sans casse ni accents).
 MUST_SAY: dict[str, tuple[str, ...]] = {
     "regle_72": ("règle des 72",),
@@ -74,6 +81,10 @@ def storyboard(concept: str) -> tuple[tuple[str, str], ...]:
 
 def scene_keys(concept: str, headline: str) -> dict[str, tuple[str, ...]]:
     return SCENE_KEYS.get(concept, {"reveal": (headline,)})
+
+
+def bandeau_rule(concept: str) -> tuple[tuple[str, ...], str] | None:
+    return BANDEAU.get(concept)
 
 
 def must_say(concept: str) -> tuple[str, ...]:
