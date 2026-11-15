@@ -12,6 +12,7 @@ def _picked(concept, params, llm=None):
     brain = BaseChannel("finance", FinanceBrain, llm).brain
     resolved = brain.resolve_params(concept, params)
     brain.last_pick = {"concept": concept, "params": resolved, "topic_key": brain.topic_key(concept, resolved)}
+    brain.config["brain"]["min_narration_words"] = 0          # scripts factices courts : règle testée à part
     return brain
 
 
@@ -310,3 +311,24 @@ def test_regle_72_years_saved_is_an_allowed_number():
     brain = _picked("regle_72", {"rate": 2, "rate_b": 3})
     assert brain.calc()["years_saved"] == 12
     assert brain.hook_issues("Passer de 2 % à 3 % te fait gagner 12 ans.", "sujet") == []
+
+
+# ---------- Run du 14/11 : vidéo de 29,5 s, narration trop courte ----------
+def test_short_narration_is_regenerated():
+    brain = _picked("cout_du_temps", COUT)
+    brain.config["brain"]["min_narration_words"] = 95
+    short = _script("Verser 6 000 € de plus rapporte 23 800 € de plus.")          # 39 mots
+    assert any("script trop court" in i and "95" in i for i in brain.check_script_logic("t", short))
+    long_text = ("Le temps travaille pour toi chaque mois sans effort. "
+                 "Les intérêts produisent à leur tour de nouveaux intérêts chaque année.")
+    for scene in short["scenes"][1:-1]:
+        if scene["role"] != "reveal":
+            scene["text"] = long_text
+    assert not [i for i in brain.check_script_logic("t", short) if "trop court" in i]
+
+
+def test_yaml_minimum_narration_and_prompt():
+    brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
+    assert BaseChannel("finance", FinanceBrain, None).brain.min_words() == 105
+    brain.config["brain"]["min_narration_words"] = 105
+    assert "105 mots au moins" in brain.build_script_prompt("t", 6, {"text": "h"})[1]["content"]

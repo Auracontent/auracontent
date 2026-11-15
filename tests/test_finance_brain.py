@@ -187,6 +187,7 @@ def test_run_channel_script_only_regenerates_and_saves(finance_state, monkeypatc
     gb.output_dir = finance_state / "scripts"
     brain = gb.channels["finance"].brain
     brain.config["brain"]["concepts"] = {"interets_composes": brain.config["brain"]["concepts"]["interets_composes"]}
+    brain.config["brain"]["min_narration_words"] = 0          # scripts factices courts : règle testée à part
     brain.combinations = lambda concept: [brain.resolve_params(concept, {
         "early_age": 20, "late_age": 40, "early_amount": 100, "late_amount_factor": 3, "rate": 7, "end_age": 65})]
 

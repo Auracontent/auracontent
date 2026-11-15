@@ -428,6 +428,7 @@ class FinanceBrain(BaseBrain):
             main_result=f"{self.calc().main.label} : {self.calc().main.text}",
             chosen_hook=(chosen_hook or {}).get("text", ""), scene_count=scene_count,
             max_sentence_words=cfg["max_sentence_words"], storyboard=fstory.describe(concept),
+            min_words=self.min_words(),
             scene_results="\n".join(
                 f"- scène « {fstory.ROLES[role]} » : " + " ; ".join(
                     f"{self.calc().values[k].label} = {self.calc().values[k].text}" for k in keys)
@@ -545,6 +546,10 @@ class FinanceBrain(BaseBrain):
         return [f"sens des chiffres, {p.get('ou') or p.get('scene') or '?'} : {p.get('motif') or p.get('reason')}"
                 for p in problems]
 
+    def min_words(self) -> int:
+        """brain.min_narration_words : longueur minimale de la narration (voix d'environ 2,5 mots par seconde)."""
+        return int(self._brain().get("min_narration_words", 0))
+
     def storyboard_issues(self, data: dict) -> list[str]:
         """Chiffres exigés par rôle, expressions obligatoires, scène de fin sans chiffre, question sans chiffre."""
         concept, _, _ = self._pick()
@@ -569,7 +574,36 @@ class FinanceBrain(BaseBrain):
                 issues.append(f"scène {scene.get('id')} (fin) : doit rappeler que c'est un exemple simplifié")
         if numbers_in(data.get("closing_cta", "")):
             issues.append("la question finale ne contient aucun chiffre")
+        words = sum(count_words(s.get("text", "")) for s in scenes)
+        if self.min_words() and words < self.min_words():
+            issues.append(f"script trop court : {words} mots, il en faut au moins {self.min_words()} (vidéo de 45 s "
+                          "au moins) ; donne deux phrases courtes à chaque scène hors accroche et fin")
         return issues
+
+    def caption_issues(self, script: dict, caption: str) -> list[str]:
+        """La légende (écrite par le prompt générique) passe les contrôles du script : exagération, mots et
+        produits interdits, vouvoiement, chiffres absents de calc.py ou employés hors de leur sens."""
+        pick = script.get("pick") or {}
+        if pick.get("concept"):
+            self.last_pick = dict(pick)
+        footer = str((self.config.get("publish") or {}).get("caption_footer") or "")
+        body = "\n".join(line for line in str(caption).splitlines()
+                         if not line.strip().startswith("#") and (not footer or line.strip() != footer.strip()))
+        # sans sujet (script incomplet) : seuls les contrôles qui n'ont pas besoin des chiffres de calc.py
+        issues = self.text_issues(body, "la légende") if self.last_pick else self.hype_issues(body, "la légende")
+        if re.search(r"[\U0001F600-\U0001F64F\U0001F910-\U0001F92F]", body):       # visages (😱, 🤯...)
+            issues.append("la légende contient un émoji de visage (ton alarmiste)")
+        return issues
+
+    def safe_caption(self, script: dict, title: str, publish_cfg: dict) -> str:
+        """Légende sans LLM : titre, hypothèse, question finale, hashtags et mention fixe."""
+        from auracontent.services.publishing.caption import apply_caption_footer, apply_hashtag_rules
+
+        parts = [title, f"Hypothèse : {script.get('hypothesis', '')}".strip(" :"), script.get("closing_cta", ""),
+                 publish_cfg.get("fallback_hashtags", "")]
+        caption = "\n\n".join(p for p in parts if p)
+        return apply_hashtag_rules(apply_caption_footer(caption, publish_cfg.get("caption_footer")),
+                                   publish_cfg.get("brand_hashtag"), publish_cfg.get("banned_hashtags", ()))
 
     def build_visuals(self, script: dict, scenes: list[dict], work_dir, video_cfg: dict) -> list:
         """Scènes dessinées (moteur linework, sprites de la vidéo test), une par scène, à la durée de la voix ;

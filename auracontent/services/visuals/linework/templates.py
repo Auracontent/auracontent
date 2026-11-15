@@ -258,20 +258,21 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
 
     layers.append({"type": "path", "role": "decor", "id": "axes", "x": x0 * k, "y": bottom * k, "lineWidth": 5,
                    "points": [(0, (top - bottom) * k), (0, 0), ((x1 - x0) * k, 0)], "color": INK,
-                   "keys": [{"t": 0.1, "progress": 0}, {"t": 0.6, "progress": 1}], "sfx": _sfx(0.1, "paper.wav", 0.3)})
-    layers.append(text("x-debut", x_labels[0], x0 - 20, bottom + 8, 50, f, color=GRAY, start=0.5, w_px=300))
-    layers.append(text("x-fin", x_labels[1], x1 - 170, bottom + 8, 50, f, color=GRAY, start=0.5, w_px=190))
-    curves = [("a", a, 0.32 * D)] + ([("b", b, 0.22 * D)] if b is not None else [])
+                   "keys": [{"t": 0.0, "progress": 0}, {"t": 0.3, "progress": 1}], "sfx": _sfx(0.0, "paper.wav", 0.3)})
+    layers.append(text("x-debut", x_labels[0], x0 - 20, bottom + 8, 50, f, color=GRAY, start=0.15, w_px=300))
+    layers.append(text("x-fin", x_labels[1], x1 - 170, bottom + 8, 50, f, color=GRAY, start=0.15, w_px=190))
+    draw = min(1.8, 0.45 * D)                                      # tracé : jamais plus long que 1,8 s
+    curves = [("a", a, 0.45)] + ([("b", b, 0.2)] if b is not None else [])
     for key, item, t0 in curves:
         data = series.get(key) or []
         pts = [pt(i, v) for i, v in enumerate(data) if v is not None]
         layers.append({"type": "path", "role": "prop", "id": f"courbe-{key}", "x": x0 * k, "y": bottom * k,
                        "points": pts, "color": item.color, "lineWidth": 8, "sfx": _sfx(t0, "draw.wav", 0.3),
-                       "keys": [{"t": t0, "progress": 0}, {"t": t0 + 0.4 * D, "progress": 1}],
+                       "keys": [{"t": t0, "progress": 0}, {"t": t0 + draw, "progress": 1}],
                        "motion": f"la courbe « {item.label} » se trace jusqu'à {item.text}"})
     row = bottom + 62
     for key, item, t0 in sorted(curves, key=lambda c: c[2]):
-        end = t0 + 0.4 * D
+        end = t0 + draw
         layers.append({"type": "path", "role": "decor", "id": f"legende-trait-{key}", "x": f.left * k,
                        "y": (row + 30) * k, "points": [(0, 0), (60 * k, 0)], "color": item.color, "lineWidth": 8,
                        "from": end})
@@ -283,7 +284,7 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
         row += 58
     if variant == "ecart" and gap is not None and b is not None:
         ya, yb = pt(len(series["a"]) - 1, series["a"][-1])[1], pt(len(series["b"]) - 1, series["b"][-1])[1]
-        t_gap = 0.32 * D + 0.4 * D + 0.2
+        t_gap = 0.45 + draw + 0.2
         layers.append({"type": "path", "role": "decor", "id": "accolade", "x": (x1 + 8) * k, "y": bottom * k,
                        "points": [(0, ya), (12 * k, ya), (12 * k, yb), (0, yb)], "color": GOLD, "lineWidth": 7,
                        "from": t_gap, "keys": [{"t": t_gap, "progress": 0}, {"t": t_gap + 0.4, "progress": 1}],
@@ -309,21 +310,21 @@ def bars(items: list[Item], *, title: str = "", subtitle: str = "", duration: fl
     if variant == "jauge" and share is not None:
         bar_y, bar_h = top + 210, 110
         x0, width = f.left + 10, f.right - f.left - 30
-        t0 = 0.3 * D
+        t0, fill = 0.3, min(1.5, 0.4 * D)
         layers.append({"type": "box", "role": "prop", "id": "jauge-cadre", "x": x0 * k, "y": bar_y * k,
                        "w": width * k, "h": bar_h * k, "fill": "#FFFFFF", "fillOpacity": 0.55, "lineWidth": 5,
                        "keys": _fade(0.1)})
         layers.append({"type": "box", "role": "prop", "id": "jauge-part", "x": x0 * k, "y": bar_y * k, "h": bar_h * k,
                        "fill": GOLD, "outline": "", "w": 0, "sfx": _sfx(t0, "fill.wav", 0.3),
-                       "keys": [{"t": t0, "w": 0}, {"t": t0 + 0.4 * D, "w": width * k * share.value / 100}],
+                       "keys": [{"t": t0, "w": 0}, {"t": t0 + fill, "w": width * k * share.value / 100}],
                        "motion": f"la jauge se remplit jusqu'à {share.text}"})
         layers.append(text("jauge-valeur", shown(share), x0, top + 30, 140, f, role="value",
-                           start=t0, w_px=width, count=counter(share, t0, 0.4 * D, step=1),
+                           start=t0, w_px=width, count=counter(share, t0, fill, step=1),
                            sfx=_sfx(t0, "tick.wav", 0.25)))
         layers.append(text("jauge-100", "100 %", x0 + width - 130, bar_y + bar_h + 12, 50, f, color=GRAY,
                            start=0.3, w_px=140))
         if share_caption:
-            layers.append(text("jauge-legende", share_caption, x0, bar_y + bar_h + 70, 56, f, start=t0 + 0.4 * D,
+            layers.append(text("jauge-legende", share_caption, x0, bar_y + bar_h + 70, 56, f, start=t0 + fill,
                                w_px=width - 160))
         return layers
 
@@ -339,7 +340,7 @@ def bars(items: list[Item], *, title: str = "", subtitle: str = "", duration: fl
         cx = f.left + col * (i + 0.5)
         bw = min(170, col * 0.55)
         h = max(18, max_h * item.value / vmax)
-        t0 = 0.25 * D + i * 0.18 * D
+        t0 = 0.2 + i * min(0.5, 0.15 * D)                            # barres l'une après l'autre, dès le début
         layers.append({"type": "box", "role": "prop", "id": f"barre-{i}", "x": (cx - bw / 2) * k, "w": bw * k,
                        "fill": item.color, "lineWidth": 5, "sfx": _sfx(t0, "grow.wav", 0.28),
                        "keys": [{"t": t0, "y": base * k, "h": 0}, {"t": t0 + 0.7, "y": (base - h) * k, "h": h * k}],
@@ -357,7 +358,7 @@ def bars(items: list[Item], *, title: str = "", subtitle: str = "", duration: fl
                            "sfx": _sfx(t1, "chime.wav", 0.2)})
     layers.append({"type": "path", "role": "decor", "id": "ligne-de-base", "x": f.left * k, "y": base * k,
                    "points": [(0, 0), ((f.right - f.left) * k, 0)], "lineWidth": 5,
-                   "keys": [{"t": 0.05, "progress": 0}, {"t": 0.4, "progress": 1}]})
+                   "keys": [{"t": 0.0, "progress": 0}, {"t": 0.3, "progress": 1}]})
     return layers
 
 
@@ -381,7 +382,7 @@ def timeline(steps: list[Item], *, resolve: Resolver, title: str = "", subtitle:
         hand = size / 2                                       # aiguille : moitié du cadran (vidéo test)
         pivot = 4 * hand / 110
         up = -3 * math.pi / 4
-        t0, t1 = 0.25 * D, 0.8 * D
+        t0, t1 = 0.2, max(1.2, min(0.8 * D, 3.0))                   # l'aiguille tourne dès le début
         layers.append({"type": "image", "role": "prop", "id": "aiguille", "path": "clock-hand.png",
                        "x": (cx - pivot) * k, "y": (cy - pivot) * k, "w": hand * k, "h": hand * k,
                        "pivotX": pivot * k, "pivotY": pivot * k, "sfx": _sfx(t0, "clock.wav", 0.3),
@@ -404,8 +405,8 @@ def timeline(steps: list[Item], *, resolve: Resolver, title: str = "", subtitle:
     pos = {i: x0 + (x1 - x0) * (s.value - lo) / max(hi - lo, 1e-9) for i, s in enumerate(steps)}
     layers.append({"type": "path", "role": "decor", "id": "sol", "x": f.left * k, "y": surface * k, "lineWidth": 6,
                    "points": [(0, 0), ((f.right - f.left) * k, 0)],
-                   "keys": [{"t": 0.05, "progress": 0}, {"t": 0.5, "progress": 1}], "surface": 0})
-    t_walk0, t_walk1 = 0.2 * D, 0.85 * D
+                   "keys": [{"t": 0.0, "progress": 0}, {"t": 0.3, "progress": 1}], "surface": 0})
+    t_walk0, t_walk1 = 0.1, max(1.5, 0.8 * D)
     # libellés répartis sans se chevaucher : deux étapes proches (0 et 5 ans sur 40) gardent un écart minimal
     label_w, gap = 225, 10
     anchors = [min(max(pos[i] - 80, f.left), f.right - label_w) for i in range(len(steps))]

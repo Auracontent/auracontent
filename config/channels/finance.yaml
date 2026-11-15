@@ -16,6 +16,9 @@ brain:
   target_duration: 50       # secondes (surchargé par VIDEO_DURATION dans le workflow) ; cible 45-60 s
   seconds_per_scene: 7      # 50 s -> 7 scènes
   scene_count_tolerance: 0   # storyboard fixé par concept : nombre de scènes exact
+  # Narration de 105 mots au moins : environ 42 s de voix (2,5 mots/s mesurés), 45 s et plus avec la question
+  # finale ; la vidéo test du 14/11 (75 mots) ne durait que 29,5 s
+  min_narration_words: 105
   script_max_retries: 4      # contrôles stricts (chiffres, sens, exagération) : jusqu'à 5 essais
   resume_max_attempts: 3
   resume_max_days: 7
@@ -156,6 +159,7 @@ video_composer:
   # dessinée garde la bande 470-1235 (visuals.linework.layout)
   subtitle_style: "FontName=Poppins,FontSize=13,Bold=1,PrimaryColour=&H001A1A1A,OutlineColour=&H00EAF3F7,BorderStyle=1,Outline=1.2,Shadow=0,Alignment=2,MarginL=30,MarginR=60,MarginV=72"
   subtitle_uppercase: false
+  subtitle_keep_numbers: true   # « 74 800 € » jamais coupé entre deux légendes
   subtitle_highlight_color: "#E0A526"
 
 visuals:
