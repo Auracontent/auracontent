@@ -6,9 +6,31 @@ from auracontent.channels.base_channel import channel_enabled
 from auracontent.cli import generate, publish
 
 
-def test_mystery_enabled_finance_disabled():
+@pytest.fixture(autouse=True)
+def finance_disabled(monkeypatch):
+    """Le verrou est testé sur une finance désactivée, quelle que soit la valeur du YAML de la branche."""
+    from auracontent.channels import base_channel
+
+    real = base_channel.load_channel_config
+
+    def load(name):
+        cfg = dict(real(name))
+        if name == "finance":
+            cfg["enabled"] = False
+        return cfg
+
+    monkeypatch.setattr(base_channel, "load_channel_config", load)
+
+
+def test_disabled_flag_and_mystery_default():
     assert channel_enabled("mystery") is True          # pas de clé `enabled` : comportement inchangé
-    assert channel_enabled("finance") is False
+    assert channel_enabled("finance") is False         # (YAML simulé à enabled: false)
+
+
+def test_mystery_has_no_enabled_key():
+    from auracontent.channels.base_channel import load_channel_config
+
+    assert "enabled" not in load_channel_config("mystery")
 
 
 class _Recorder:
