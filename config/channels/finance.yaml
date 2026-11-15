@@ -49,6 +49,9 @@ brain:
                     "\\bincroyable\\w*", "\\bdramatique\\w*", "\\bgrignote tout\\b"]
     banned_words: ["rendement garanti", "gain garanti", "sans risque", "investis", "achète", "conseil",
                    "placement sûr", "valeur sûre", "devenir riche", "millionnaire"]
+  # Question finale : une question sur le mécanisme, jamais une invitation à agir (placer, investir...)
+  cta_banned: ["placement", "placements", "placer", "places", "commencer à placer", "investir", "investis",
+               "investissement", "investissements", "épargner"]
   # Produits, banques et marques : jamais cités
   banned_names: ["livret A", "PEL", "LDDS", "assurance-vie", "PEA", "ETF", "bourse", "crypto", "bitcoin",
                  "SCPI", "banque"]

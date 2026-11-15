@@ -614,6 +614,12 @@ class FinanceBrain(BaseBrain):
                 issues.append(f"scène {scene.get('id')} (fin) : doit rappeler que c'est un exemple simplifié")
         if numbers_in(data.get("closing_cta", "")):
             issues.append("la question finale ne contient aucun chiffre")
+        cta = str(data.get("closing_cta", ""))
+        for term in self._brain().get("cta_banned") or []:
+            if contains_term(cta, term):
+                issues.append(f"la question finale invite à agir (« {term} ») : pose une question sur le mécanisme "
+                              "(comment, pourquoi, combien), jamais une invitation à placer ou investir")
+                break
         words = sum(count_words(s.get("text", "")) for s in scenes)
         if self.min_words() and words < self.min_words():
             issues.append(f"script trop court : {words} mots, il en faut au moins {self.min_words()} (vidéo de 45 s "

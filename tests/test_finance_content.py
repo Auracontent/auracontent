@@ -381,3 +381,21 @@ def test_prompt_states_bandeau_rule_and_meaning_check_covers_bandeau():
     prompt = brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
     assert "cite ENSEMBLE 12 000 € et 74 800 €" in prompt
     assert "BANDEAU et le TITRE" in brain.read_sections("meaning.md")["user"]
+
+
+# ---------- Question finale : jamais une invitation à placer ou investir ----------
+@pytest.mark.parametrize("cta", ["Quand as-tu prévu de commencer ton premier placement ?",
+                                 "Tu vas commencer à placer quand ?", "Prêt à investir dès ce mois-ci ?",
+                                 "Combien vas-tu placer chaque mois ?"])
+def test_incentive_closing_question_is_rejected(cta):
+    brain = _picked("cout_du_temps", COUT_5)
+    data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
+    data["closing_cta"] = cta
+    assert any("invite à agir" in i for i in brain.check_script_logic("t", data))
+
+
+def test_mechanism_question_passes():
+    brain = _picked("cout_du_temps", COUT_5)
+    data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
+    data["closing_cta"] = "Pourquoi les premières années comptent-elles autant ?"
+    assert not [i for i in brain.check_script_logic("t", data) if "question finale" in i]
