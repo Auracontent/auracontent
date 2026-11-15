@@ -23,7 +23,7 @@ class _Recorder:
     def create_default(cls):
         return cls()
 
-    def run_channel(self, name):
+    def run_channel(self, name, finalize=True):
         _Recorder.ran.append(name)
         return "script.json"
 

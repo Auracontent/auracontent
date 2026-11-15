@@ -21,6 +21,9 @@ brain:
   min_narration_words: 100
   script_max_retries: 4      # contrôles stricts (chiffres, sens, exagération) : jusqu'à 5 essais
   resume_max_attempts: 3
+  # Sujet inscrit à l'historique seulement une fois la vidéo produite : si elle échoue (voix Edge
+  # indisponible...), le sujet reste en attente
+  history_after_video: true
   resume_max_days: 7
   veracity_topic_rounds: 2
 
@@ -111,16 +114,11 @@ brain:
         rate: [2, 3, 4, 6, 8]
         rate_b: [3, 4, 6, 8]     # second exemple, toujours plus élevé que le premier
 
-# Audio : mêmes services que mystery. Voix native (méthode B1 : aucune direction de jeu ajoutée,
-# vitesse naturelle).
+# Audio : Edge TTS seul (gratuit, sans quota), même voix à chaque vidéo. Aucun autre moteur : si Edge échoue,
+# la vidéo échoue et le sujet reste en attente (brain.history_after_video), jamais une autre voix.
 audio:
-  engines: [gemini, edge]
+  engines: [edge]
   role_directions: false     # voix native : aucune consigne de jeu ajoutée selon le rôle de la scène
-  batch_tts: true
-  gemini:
-    narrator:
-      voice: "Charon"
-      style: ""
   edge:
     narrator: {voice: "fr-FR-RemyMultilingualNeural", rate: "+0%", pitch: "+0Hz"}
 

@@ -41,8 +41,9 @@ class GlobalBrain:
     # MÉTHODES D'ORCHESTRATION
     # ==========================================
 
-    def run_channel(self, channel_name: str, previous_stats_list=None) -> Path:
-        """Sujet -> hooks -> script pour une chaîne. Retourne le chemin du script JSON sauvegardé."""
+    def run_channel(self, channel_name: str, previous_stats_list=None, finalize: bool = True) -> Path:
+        """Sujet -> hooks -> script pour une chaîne. Retourne le chemin du script JSON sauvegardé.
+        `finalize=False` : ni historique ni sujet en attente retiré (voir finalize_channel, après la vidéo)."""
         if channel_name not in self.channels:
             raise ValueError(f"Chaîne inconnue : {channel_name}. Vérifiez channels/registry.py.")
         channel = self.channels[channel_name]
@@ -94,11 +95,18 @@ class GlobalBrain:
 
         # 4. Sauvegarde du script puis de l'historique (seulement si tout a réussi)
         path = self._save_script(channel_name, script)
-        save_global_history(topic, channel_name, script_path=str(path), **pick)
-        if resumable:
-            clear_pending(channel_name)
         print(f"✅ Script sauvegardé : {path}")
+        if finalize:
+            self.finalize_channel(channel_name, path)
         return path
+
+    def finalize_channel(self, channel_name: str, script_path: Path) -> None:
+        """Sujet traité : inscrit à l'historique, retiré de l'attente (après le script, ou après la vidéo)."""
+        script = json.loads(Path(script_path).read_text(encoding="utf-8"))
+        brain = self.channels[channel_name].brain
+        save_global_history(script["topic"], channel_name, script_path=str(script_path), **dict(script.get("pick") or {}))
+        if hasattr(brain, "export_state") and hasattr(brain, "restore_state"):
+            clear_pending(channel_name)
 
     def _topic_and_hook(self, channel_name, channel, brain, b, resumable, previous_stats_list, resume=True):
         """(sujet, accroches, accroche choisie) : reprise d'un sujet validé, sinon nouveau sujet."""
