@@ -65,6 +65,18 @@ def note_script_attempt(channel: str) -> int:
     return data[channel]["script_attempts"]
 
 
+def attach_script(channel: str, script: dict) -> int:
+    """La vidéo a échoué APRÈS la validation du script : le script validé est gardé avec le sujet en attente,
+    pour être réutilisé tel quel à la reprise ; l'échec compte pour l'abandon. Renvoie le nombre d'échecs."""
+    data = _load(channel)
+    if channel not in data:
+        return 0
+    data[channel]["script"] = script
+    data[channel]["script_attempts"] = int(data[channel].get("script_attempts", 0)) + 1
+    _write(data, channel)
+    return data[channel]["script_attempts"]
+
+
 def load_pending(channel: str, max_attempts: int = 3, max_age_days: float = 7) -> dict | None:
     """État à reprendre, ou None (aucun, trop vieux, ou trop de tentatives : il est alors abandonné)."""
     entry = _load(channel).get(channel)

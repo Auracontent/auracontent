@@ -87,9 +87,12 @@ def test_history_only_after_video(monkeypatch, tmp_path, video_ok):
     monkeypatch.setattr(generate, "GlobalBrain", lambda llm_client: gb)
     monkeypatch.setattr(generate, "produce_video", video)
     monkeypatch.setattr(generate, "channel_enabled", lambda n: True)
+    attached = []
+    monkeypatch.setattr(generate, "attach_script", lambda name, script: attached.append((name, script)))
     code = generate.main(["finance"])
     assert gb.finalize_arg is False                                   # pas d'historique avant la vidéo
     assert (_GB.finalized == ["finance"]) is video_ok and code == (0 if video_ok else 1)
+    assert attached == ([] if video_ok else [("finance", {"topic": "t"})])      # script validé gardé
 
 
 def test_finance_yaml_defers_history_mystery_does_not():
@@ -172,3 +175,42 @@ def test_without_retries_option_single_try(tmp_path, monkeypatch):
         asyncio.run(engine.generate("Bonjour.", "s1"))
     assert len(calls) == 1 and sleeps == []
     assert "retries" not in load_channel_config("mystery")["audio"]
+
+
+# ---------- Script validé conservé quand la vidéo échoue ----------
+def test_validated_script_is_reused_after_video_failure(tmp_path, monkeypatch):
+    from auracontent.core.brain import global_brain as gbm
+    from auracontent.services.publishing import state_sync
+    from auracontent.utils import pending_topic as pt
+
+    monkeypatch.setattr(state_sync, "STATE_DIR", tmp_path)
+    monkeypatch.setattr(pt, "PENDING_PATH", tmp_path / "pending_topics.json")
+    state_sync.is_isolated.cache_clear()
+    params = {"amount": 5000, "rate": 6, "fees": 2, "years": 20}
+    pick = {"concept": "frais", "params": params, "topic_key": "frais:x"}
+    pt.save_pending("finance", {"topic": "Frais", "hooks": [], "chosen_hook": {"text": "h"},
+                                "brain": {"last_pick": pick}})
+    script = {"topic": "Frais", "title": "Les frais", "scenes": [{"id": 1, "text": "x"}], "pick": pick}
+    assert pt.attach_script("finance", script) == 1
+
+    gb = gbm.GlobalBrain(llm_client=None)
+    gb.output_dir = tmp_path / "scripts"
+    brain = gb.channels["finance"].brain
+
+    def forbidden(*a, **k):
+        raise AssertionError("aucun nouveau script : le script validé est repris")
+
+    monkeypatch.setattr(brain, "generate_script", forbidden)
+    monkeypatch.setattr(brain, "generate_hook_variants", forbidden)
+    monkeypatch.setattr(gbm.GlobalBrain, "_fetch_stats", staticmethod(lambda cfg: None))
+    path = gb.run_channel("finance", finalize=False)
+    assert json.loads(path.read_text(encoding="utf-8"))["title"] == "Les frais"
+    assert pt.load_pending("finance")["script"]["title"] == "Les frais"       # gardé jusqu'à la vidéo réussie
+
+
+def test_mystery_pending_never_carries_a_script(tmp_path, monkeypatch):
+    from auracontent.utils import pending_topic as pt
+
+    monkeypatch.setattr(pt, "PENDING_PATH", tmp_path / "pending.json")
+    pt.save_pending("mystery", {"topic": "t", "hooks": [], "chosen_hook": {}, "brain": {}})
+    assert "script" not in pt.load_pending("mystery")

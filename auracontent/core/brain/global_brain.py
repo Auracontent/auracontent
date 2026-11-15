@@ -56,6 +56,13 @@ class GlobalBrain:
 
         b = channel.section("brain") or {}
         resumable = hasattr(brain, "export_state") and hasattr(brain, "restore_state")
+        saved = self._validated_script(channel_name, brain, b) if resumable else None
+        if saved is not None:
+            path = self._save_script(channel_name, saved)
+            print(f"♻️ Script validé repris tel quel (vidéo précédente en échec) : {saved.get('topic')}")
+            if finalize:
+                self.finalize_channel(channel_name, path)
+            return path
         rounds = max(1, int(b.get("veracity_topic_rounds", 3)))
         for round_ in range(1, rounds + 1):
             topic, hooks, chosen_hook = self._topic_and_hook(channel_name, channel, brain, b, resumable,
@@ -99,6 +106,21 @@ class GlobalBrain:
         if finalize:
             self.finalize_channel(channel_name, path)
         return path
+
+    @staticmethod
+    def _validated_script(channel_name: str, brain, b: dict) -> dict | None:
+        """Script validé gardé avec le sujet en attente (pending_topic.attach_script), ou None."""
+        pending = load_pending(channel_name, max_attempts=int(b.get("resume_max_attempts", 3)),
+                               max_age_days=float(b.get("resume_max_days", 7)))
+        if not pending or not isinstance(pending.get("script"), dict):
+            return None
+        try:
+            brain.restore_state(pending["brain"])
+        except (ValueError, KeyError) as e:
+            print(f"🗑️ Sujet en attente abandonné ({e}) : {pending.get('topic')}")
+            clear_pending(channel_name)
+            return None
+        return pending["script"]
 
     def finalize_channel(self, channel_name: str, script_path: Path) -> None:
         """Sujet traité : inscrit à l'historique, retiré de l'attente (après le script, ou après la vidéo)."""
