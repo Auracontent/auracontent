@@ -133,6 +133,9 @@ video_composer:
   fonts_dir: "finance/fonts"
   sfx_dir: "finance/sfx"
   require_all_scenes: true   # une scène en échec = vidéo refusée (jamais de vidéo tronquée)
+  # Question finale : déjà écrite à la main sur la carte de fin, donc sans sous-titres ; pas de filigrane sur
+  # les cartes de fin (le grand logo suffit)
+  cta_scene: {subtitles: false, hide_watermark: true}
   source_credit_enabled: false
 
   watermark_filename: "capital_simple_watermark.png"

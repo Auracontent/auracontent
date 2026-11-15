@@ -781,7 +781,8 @@ class Composer:
             return False
 
     # Habillage final : watermark + bandeau-titre, en un seul encodage
-    def add_watermark(self, input_video_path: str, output_video_path: str, headline: str | None = None) -> bool:
+    def add_watermark(self, input_video_path: str, output_video_path: str, headline: str | None = None,
+                      watermark_until: float | None = None) -> bool:
         has_logo = bool(self.watermark_path and os.path.exists(self.watermark_path))
         if not has_logo and not headline:
             return False
@@ -808,6 +809,8 @@ class Composer:
                     y=self.watermark_y,
                     eof_action="repeat",
                     shortest=1,
+                    # watermark_until : masqué ensuite (cartes de fin au grand logo) ; None = toute la vidéo
+                    **({"enable": f"lt(t,{watermark_until:.3f})"} if watermark_until is not None else {}),
                 )
             if headline:
                 stream = self._add_headline(stream, headline)
@@ -829,7 +832,8 @@ class Composer:
 
     # Pipeline final
     def concatenate_with_transitions(
-        self, video_paths: list[str], output_filename: str = "final_video.mp4", headline: str | None = None
+        self, video_paths: list[str], output_filename: str = "final_video.mp4", headline: str | None = None,
+        watermark_until: float | None = None,
     ) -> str | None:
         raw_final_path = os.path.join(self.temp_dir, "raw_final_stitched.mp4")
         output_path = os.path.join(self.final_dir, output_filename)
@@ -853,7 +857,7 @@ class Composer:
         if not music_mixed:
             self._normalize_or_copy(stitched_path, raw_final_path)
 
-        if not self.add_watermark(raw_final_path, output_path, headline=headline):
+        if not self.add_watermark(raw_final_path, output_path, headline=headline, watermark_until=watermark_until):
             shutil.copy2(raw_final_path, output_path)
 
         _safe_remove(raw_final_path)

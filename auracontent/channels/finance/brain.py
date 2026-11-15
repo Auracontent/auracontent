@@ -480,6 +480,8 @@ class FinanceBrain(BaseBrain):
         for note in fstory.apply(concept, data["scenes"]):           # rôles et gabarits fixés par le code
             print(f"   🧩 Storyboard : {note}")
         for scene in data["scenes"]:
+            if scene["template"] == "carte_fin":
+                scene["hide_watermark"] = True                       # le grand logo de la carte suffit
             # texte affiché (chiffres « 10 000 € ») et texte parlé (nombres en lettres), produits par le code
             scene["text"] = display_text(clean_text(scene["text"]))
             try:

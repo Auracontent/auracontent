@@ -190,3 +190,67 @@ def test_incomplete_video_is_refused(monkeypatch, tmp_path):
 
 async def _coro(value):
     return value
+
+
+# ---------- Carte de fin : ni sous-titres sur la question, ni filigrane ----------
+def test_cta_scene_takes_yaml_settings_and_skips_subtitles(tmp_path):
+    from auracontent.core import pipeline
+
+    vp = pipeline.VideoPipeline(BaseChannel("finance", FinanceBrain, None), None)
+    vp.work_dir = tmp_path
+    scenes = [{"id": 1, "text": "Une phrase.", "role": "hook", "duration": 2.0}]
+    vp._enrich_for_audience({"closing_cta": "Et toi, tu attends ?"}, scenes, "t")
+    assert scenes[-1]["role"] == "cta" and scenes[-1]["subtitles"] is False and scenes[-1]["hide_watermark"] is True
+    scenes[-1]["duration"] = 2.0
+    vp._subtitles(scenes)
+    assert scenes[0]["srt_path"] and scenes[-1]["srt_path"] is None
+
+
+def test_mystery_cta_scene_unchanged():
+    from auracontent.channels.mystery.brain import MysteryBrain
+    from auracontent.core import pipeline
+
+    vp = pipeline.VideoPipeline(BaseChannel("mystery", MysteryBrain, None), None)
+    scenes = [{"id": 1, "text": "Une phrase.", "role": "hook"}]
+    vp._enrich_for_audience({"closing_cta": "Et toi ?"}, scenes, "t")
+    assert "subtitles" not in scenes[-1] and "hide_watermark" not in scenes[-1]
+
+
+def test_watermark_until_start_of_end_cards(monkeypatch):
+    from auracontent.core import pipeline
+    from auracontent.services.video import composer as comp
+
+    monkeypatch.setattr(comp, "get_duration", lambda p: 5.0)
+
+    class C:
+        transition_duration = 0.2
+
+    scenes = [{"id": 1}, {"id": 2}, {"id": 3, "hide_watermark": True}, {"id": 4, "hide_watermark": True}]
+    assert pipeline.VideoPipeline._watermark_until(scenes, ["a", "b", "c", "d"], C()) == pytest.approx(9.6)
+    assert pipeline.VideoPipeline._watermark_until([{"id": 1}], ["a"], C()) is None
+
+
+@pytest.mark.skipif(not __import__("shutil").which("ffmpeg"), reason="ffmpeg absent")
+def test_watermark_hidden_after_given_time(tmp_path):
+    import subprocess
+
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.services.video.composer import Composer
+    from PIL import Image
+
+    src, out = tmp_path / "src.mp4", tmp_path / "out.mp4"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=0xF7F3EA:s=1080x1920:d=4:r=30", "-f", "lavfi",
+                    "-i", "anullsrc=r=48000:cl=stereo", "-shortest", "-c:v", "libx264", "-pix_fmt", "yuv420p", "-c:a",
+                    "aac", str(src)], check=True)
+    composer = Composer(load_channel_config("finance")["video_composer"], channel_name="finance")
+    assert composer.add_watermark(str(src), str(out), watermark_until=2.0)
+
+    def pixel(t):
+        png = tmp_path / f"{t}.png"
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-ss", str(t), "-i", str(out), "-frames:v", "1", str(png)], check=True)
+        img = Image.open(png).convert("RGB").crop((composer.watermark_x, composer.watermark_y,
+                                                   composer.watermark_x + composer.watermark_width,
+                                                   composer.watermark_y + composer.watermark_width))
+        return min(sum(px) for px in img.getdata())          # pixel le plus sombre : l'encre du logo
+
+    assert pixel(1.0) < 200 and pixel(3.0) > 600              # logo avant 2 s, papier seul après
