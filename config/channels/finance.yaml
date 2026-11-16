@@ -1,8 +1,7 @@
 channel_name: "finance"
-# Branche feat/finance-video seulement : finance activée pour l'arrêt 2 lancé depuis GitHub Actions (vidéo et
-# légende déposées sur Hugging Face dans finance/, historique dans meta/finance/ ; rien publié sur TikTok ni
-# YouTube). Repasse à false avant fusion dans main tant que les secrets de publication ne sont pas en place.
-enabled: true
+# Désactivée sur main : les générations planifiées ne la produisent pas. Les tests passent par
+# workflow_dispatch sur la branche feat/finance-video (où elle est activée).
+enabled: false
 description: "Capital Simple : les chiffres, sans jargon. Épargne, intérêts composés, inflation : un mécanisme, des chiffres calculés, en moins d'une minute."
 
 # Historiques propres à la chaîne (assets/shared/state/finance/, meta/finance/ sur Hugging Face) :
