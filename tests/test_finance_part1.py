@@ -295,3 +295,35 @@ def test_generate_gives_finance_its_own_client(monkeypatch, tmp_path):
     assert generate.main(["finance"]) == 0
     assert brain.llm.keys["gemini"] == "valeur-test-finance" and used == ["valeur-test-finance"]
     assert common.keys["gemini"] == "valeur-test-commune"
+
+
+# ---------- 1.9 Pic vrai du fichier final <= -1,5 dBTP ----------
+def _loud_video(path):
+    import subprocess
+
+    # bip à 0 dBFS (pic vrai au-dessus de 0) encodé comme la vidéo finale : H.264 + AAC 192k
+    subprocess.run(["ffmpeg", "-y", "-loglevel", "error", "-f", "lavfi", "-i", "color=c=white:s=108x192:d=3",
+                    "-f", "lavfi", "-i", "aevalsrc=0.99*sin(2*PI*3001*t)|0.99*sin(2*PI*3001*t):s=48000:d=3",
+                    "-c:v", "libx264", "-c:a", "aac", "-b:a", "192k", "-shortest", str(path)], check=True)
+
+
+def test_final_true_peak_is_limited(tmp_path):
+    import shutil
+
+    from auracontent.services.video.composer import Composer, measure_true_peak
+
+    if not shutil.which("ffmpeg"):
+        pytest.skip("ffmpeg absent")
+    video = tmp_path / "v.mp4"
+    _loud_video(video)
+    assert measure_true_peak(str(video)) > -1.5
+    composer = Composer({"final_true_peak": -1.5}, "finance")
+    peak = composer.limit_true_peak(str(video), -1.5)
+    assert peak <= -1.5 and measure_true_peak(str(video)) <= -1.5
+
+
+def test_true_peak_limiter_is_opt_in():
+    from auracontent.services.video.composer import Composer
+
+    assert Composer({}, "mystery").final_true_peak is None
+    assert BaseChannel("finance", FinanceBrain, None).cfg["video_composer"]["final_true_peak"] == -1.5

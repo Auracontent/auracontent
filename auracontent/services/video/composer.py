@@ -3,6 +3,7 @@ from __future__ import annotations
 import math
 import os
 import random
+import re
 import shutil
 import textwrap
 import ffmpeg
@@ -40,6 +41,23 @@ from constants import (
 # Helpers génériques
 def _run(output_node) -> None:
     output_node.run(overwrite_output=True, quiet=True)
+
+
+def measure_true_peak(path: str) -> float | None:
+    """Pic vrai (dBTP) de la piste audio, mesuré par ebur128 (suréchantillonné) ; None si illisible."""
+    import subprocess
+
+    try:
+        out = subprocess.run(["ffmpeg", "-hide_banner", "-nostats", "-i", path, "-map", "0:a:0", "-af",
+                              "ebur128=peak=true", "-f", "null", "-"], capture_output=True, text=True,
+                             timeout=300).stderr
+    except Exception:
+        return None
+    block = out.rsplit("True peak:", 1)
+    m = re.search(r"Peak:\s*(-?[\d.]+|-inf)\s*dBFS", block[1]) if len(block) == 2 else None
+    if not m:
+        return None
+    return float("-inf") if m.group(1) == "-inf" else float(m.group(1))
 
 
 def _to_stereo_48k(audio):
@@ -97,6 +115,9 @@ class Composer:
         self.music_gain = config.get("music_gain", 0.085)
         self.music_fade_duration = config.get("music_fade_duration", 2.5)
         self.transition_duration = config.get("transition_duration", 0.38)
+        # final_true_peak (dBTP, opt-in) : pic vrai maximal du fichier FINAL (le dernier encodage AAC peut
+        # dépasser la cible de loudnorm) ; absent = aucun contrôle (comportement inchangé)
+        self.final_true_peak = config.get("final_true_peak")
 
         # Effets sonores
         self.sfx_role_map = config.get("sfx_role_map", {})
@@ -830,6 +851,31 @@ class Composer:
             print(f"⚠️ Habillage final échoué : {e}")
             return False
 
+    def limit_true_peak(self, path: str, target: float, attempts: int = 3) -> float | None:
+        """Mesure le pic vrai du fichier final ; au-dessus de la cible, baisse le gain de la piste audio (vidéo
+        copiée telle quelle) et remesure, jusqu'à `attempts` fois. Retourne le pic final."""
+        peak = measure_true_peak(path)
+        for _ in range(attempts):
+            if peak is None or peak <= target:
+                break
+            gain = target - peak - 0.2                               # marge : le réencodage AAC bouge un peu
+            tmp = f"{path}.peak.mp4"
+            try:
+                source = ffmpeg.input(path)
+                _run(ffmpeg.output(source.video, source.audio.filter("volume", f"{gain:.2f}dB"), tmp,
+                                   vcodec="copy", acodec="aac", audio_bitrate=H264_AAC["audio_bitrate"],
+                                   ar=48000, movflags="faststart"))
+                os.replace(tmp, path)
+            except Exception as e:
+                print(f"⚠️ Limiteur de pic final échoué : {e}")
+                _safe_remove(tmp)
+                break
+            peak = measure_true_peak(path)
+        if peak is not None:
+            status = "✔️" if peak <= target else "⚠️"
+            print(f"🔊 {status} Pic final : {peak:.1f} dBTP (maximum {target:.1f})".replace(".", ","))
+        return peak
+
     # Pipeline final
     def concatenate_with_transitions(
         self, video_paths: list[str], output_filename: str = "final_video.mp4", headline: str | None = None,
@@ -859,6 +905,8 @@ class Composer:
 
         if not self.add_watermark(raw_final_path, output_path, headline=headline, watermark_until=watermark_until):
             shutil.copy2(raw_final_path, output_path)
+        if self.final_true_peak is not None:
+            self.limit_true_peak(output_path, float(self.final_true_peak))
 
         _safe_remove(raw_final_path)
 
