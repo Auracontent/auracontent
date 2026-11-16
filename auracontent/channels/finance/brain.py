@@ -99,9 +99,23 @@ def _fold(text: str) -> str:
     return comparable(text)
 
 
+def _apos(text: str) -> str:
+    return str(text).replace("\u2019", "'")
+
+
+def _letter_tail(term: str) -> str | None:
+    """Dernière lettre isolée d'un nom (« Livret A ») : elle se compare SANS ignorer l'accent, sinon « un livret
+    à 3 % » serait pris pour le produit."""
+    words = term.split()
+    return words[-1] if len(words) > 1 and len(words[-1]) == 1 and words[-1].isalpha() else None
+
+
 def contains_term(text: str, term: str) -> bool:
-    """Terme interdit présent (mots entiers, sans casse ni accents)."""
-    return re.search(rf"(?<![\w]){re.escape(_fold(term))}(?![\w])", _fold(text)) is not None
+    """Terme interdit présent (mots entiers, sans casse ni accents ; lettre finale isolée : accent compris)."""
+    text, term = _apos(text), _apos(term)
+    if re.search(rf"(?<![\w]){re.escape(_fold(term))}(?![\w])", _fold(text)) is None:
+        return False
+    return _letter_tail(term) is None or _accent_insensitive(term).search(text) is not None
 
 
 class LengthIssue(str):
@@ -150,8 +164,11 @@ _ACCENTS = {"a": "aàâä", "e": "eéèêë", "i": "iîï", "o": "oôö", "u": "
 
 def _accent_insensitive(term: str) -> re.Pattern:
     """Motif d'un terme en mots entiers, sans casse ni accents (« épargner » trouve « Epargner »)."""
-    body = "".join(f"[{_ACCENTS[ch]}{_ACCENTS[ch].upper()}]" if ch in _ACCENTS else re.escape(ch)
-                   for ch in unicodedata.normalize("NFD", term.lower()) if unicodedata.category(ch) != "Mn")
+    chars = [ch for ch in unicodedata.normalize("NFD", _apos(term).lower()) if unicodedata.category(ch) != "Mn"]
+    tail = len(chars) - 1 if _letter_tail(term) else -1             # « Livret A » : le « A » sans accent
+    body = "".join("['\u2019]" if ch == "'" else
+                   f"[{_ACCENTS[ch]}{_ACCENTS[ch].upper()}]" if ch in _ACCENTS and i != tail else re.escape(ch)
+                   for i, ch in enumerate(chars))
     return re.compile(rf"(?<![\w]){body}(?![\w])", re.IGNORECASE)
 
 
@@ -213,11 +230,24 @@ class FinanceBrain(BaseBrain):
 
     def mask_forbidden(self, text: str) -> str:
         """Correction renvoyée au LLM : chaque mot interdit ou terme exagéré devient « [terme interdit] »."""
-        out = str(text)
+        out, kept = str(text), []
+        for ctx in self.allowed_contexts():                           # « bourse d'études » reste lisible
+            out = _accent_insensitive(ctx).sub(lambda m: kept.append(m.group()) or f"\x00{len(kept) - 1}\x00", out)
         for term in sorted(self.all_forbidden(), key=len, reverse=True):
             out = _accent_insensitive(term).sub("[terme interdit]", out)
         for pattern in self.style_cfg().get("hype_patterns") or []:
             out = _folded_sub(pattern, "[terme exagéré]", out)
+        return re.sub(r"\x00(\d+)\x00", lambda m: kept[int(m.group(1))], out)
+
+    def allowed_contexts(self) -> list[str]:
+        """Expressions courantes qui contiennent un mot interdit sans en avoir le sens (brain.style.
+        allowed_contexts : « bourse d'études », « conseil de classe »)."""
+        return sorted(self.style_cfg().get("allowed_contexts") or [], key=len, reverse=True)
+
+    def without_allowed_contexts(self, text: str) -> str:
+        out = str(text)
+        for ctx in self.allowed_contexts():
+            out = _accent_insensitive(ctx).sub(" ", out)
         return out
 
     def mask_orders(self, text: str) -> str:
@@ -712,12 +742,15 @@ class FinanceBrain(BaseBrain):
     def text_issues(self, text: str, what: str) -> list[str]:
         """Contrôles de fond communs aux accroches, au bandeau et à la narration."""
         issues = []
+        checked = self.without_allowed_contexts(text)
         for term, reason in self.forbidden_terms().items():
-            if contains_term(text, term):
+            if contains_term(checked, term):
                 issues.append(f"{what} contient un terme interdit ({reason}) : « {self.mask_forbidden(text)} »")
                 break
+        nouns = [_fold_keep(n) for n in self._brain().get("style", {}).get("imperative_exceptions") or []]
         for word in self._brain().get("style", {}).get("imperatives") or []:
-            if any(_fold_keep(s).startswith(_fold_keep(word) + " ") for s in sentences(text) or [text]):
+            if any(_fold_keep(s).startswith(_fold_keep(word) + " ") and not any(_fold_keep(s).startswith(n) for n in nouns)
+                   for s in sentences(text) or [text]):
                 issues.append(f"{what} donne un ordre au spectateur : décris le mécanisme, ne dis jamais quoi faire")
                 break
         if re.search(r"\b(vous|votre|vos)\b", _fold(text)):

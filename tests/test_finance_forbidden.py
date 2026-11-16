@@ -122,5 +122,54 @@ def test_acheter_allowed_orders_forbidden(text, ok):
 def test_forbidden_list_has_a_reason_for_each_term():
     brain = _brain("frais")
     reasons = {**brain.forbidden_terms(), **brain.cta_terms()}
-    assert "achète" not in reasons and "banque" in reasons and "conseil" in reasons
+    assert "achète" not in reasons and "banque" not in reasons and "conseil" in reasons
+    assert "Crédit Agricole" in reasons and "livret A" in reasons
     assert all(reason.strip() for reason in reasons.values())
+
+
+# ---------- « banque » générique accepté, établissements précis refusés ; exemples de la partie 3 ----------
+@pytest.mark.parametrize("text", [
+    "Les frais de ta banque te coûtent cher.",
+    "Ton compte en banque affiche un découvert.",
+    "Le découvert coûte des agios chaque jour.",
+    "Les frais de carte bancaire reviennent chaque année.",
+    "Ton livret rapporte moins que l'inflation.",
+    "Un livret à 3 % ne suit pas les prix.",
+    "Ta bourse d'études tombe chaque mois.",
+    "Le conseil de classe a lieu en juin.",
+    "Épargne de précaution : une somme qui dort.",
+    "La place de parking coûte cher.",
+    "Le paiement en 4 fois a un coût.",
+    "Un crédit voiture sur 5 ans coûte des intérêts.",
+    "Le leasing ressemble à un loyer.",
+    "La carte de fidélité rend 10 % en bons d'achat.",
+])
+def test_everyday_money_words_are_accepted(text):
+    brain = _brain("frais")
+    issues = [i for i in brain.text_issues(text, "s") if "nombre non autorisé" not in i]
+    assert issues == [], issues
+
+
+@pytest.mark.parametrize("text", [
+    "Le Crédit Agricole prend des frais.",
+    "Le Credit Agricole prend des frais.",                       # sans accent
+    "La Caisse d\u2019Épargne prend des frais.",                   # apostrophe typographique
+    "Ta carte Revolut coûte moins.",
+    "Le paiement Klarna a un coût.",
+    "Ton Livret A rapporte peu.",
+    "TON LIVRET A RAPPORTE PEU.",
+    "Ton argent en bourse monte.",
+    "Un conseil : regarde les frais.",
+    "Épargne chaque mois sans y penser.",
+])
+def test_establishments_products_and_orders_are_refused(text):
+    brain = _brain("frais")
+    issues = [i for i in brain.text_issues(text, "s") if "nombre non autorisé" not in i]
+    assert issues, text
+    assert all(_offending(brain, i) == [] for i in issues)        # le message ne répète pas le nom
+
+
+def test_mask_keeps_allowed_contexts():
+    brain = _brain("frais")
+    out = brain.mask_forbidden("Ta bourse d'études et ton argent en bourse chez Revolut.")
+    assert out == "Ta bourse d'études et ton argent en [terme interdit] chez [terme interdit]."

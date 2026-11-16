@@ -79,6 +79,13 @@ brain:
       conseil: recommandation personnalisée (la vidéo explique, elle ne recommande pas)
     # Ordre donné au spectateur, en début de phrase : la vidéo ne dit jamais quoi faire de son argent
     imperatives: ["achète", "investis", "place", "épargne", "souscris", "ouvre", "vends", "emprunte"]
+    # Noms qui commencent comme un ordre (« Épargne de précaution : ... », « Place de parking ») : acceptés
+    imperative_exceptions: ["épargne de précaution", "épargne :", "place de parking", "place de stationnement",
+                            "place de cinéma", "place de concert"]
+    # Expressions courantes qui contiennent un mot interdit sans en avoir le sens (domaines études, famille...)
+    allowed_contexts: ["bourse d'études", "bourses d'études", "bourse étudiante", "bourses étudiantes",
+                       "bourse sur critères sociaux", "bourse du Crous", "bourse au mérite", "conseil de classe",
+                       "conseil municipal", "conseil d'administration", "conseil de discipline"]
     # Verbes sans complément d'objet : « Dormir 1 000 € » n'a pas de sujet correct (on LAISSE dormir
     # 1 000 €, ou les 1 000 € dorment). Refusés quand un montant ou « ton argent » les suit directement.
     intransitive_verbs: ["dormir", "dors", "dort", "dorment", "grandir", "grandit", "grandissent", "fondre",
@@ -108,7 +115,38 @@ brain:
     bourse: marché financier (la vidéo ne parle d'aucun produit)
     crypto: actif financier (la vidéo ne parle d'aucun produit)
     bitcoin: actif financier (la vidéo ne parle d'aucun produit)
-    banque: établissement (aucun établissement n'est cité)
+    # Noms d'établissements précis (banques, crédit, paiement fractionné) : le mot générique « banque » est
+    # accepté (« les frais de ta banque », « compte en banque »), aucun établissement n'est cité
+    BNP Paribas: nom d'établissement
+    Crédit Agricole: nom d'établissement
+    Société Générale: nom d'établissement
+    LCL: nom d'établissement
+    Crédit Lyonnais: nom d'établissement
+    Caisse d'Épargne: nom d'établissement
+    Banque Populaire: nom d'établissement
+    Crédit Mutuel: nom d'établissement
+    CIC: nom d'établissement
+    Banque Postale: nom d'établissement
+    BoursoBank: nom d'établissement
+    Boursorama: nom d'établissement
+    Fortuneo: nom d'établissement
+    Hello bank: nom d'établissement
+    Monabanq: nom d'établissement
+    ING: nom d'établissement
+    HSBC: nom d'établissement
+    Revolut: nom d'établissement
+    N26: nom d'établissement
+    Orange Bank: nom d'établissement
+    Qonto: nom d'établissement
+    Lydia: nom d'établissement
+    PayPal: nom d'établissement
+    Klarna: nom d'établissement
+    Cofidis: nom d'établissement
+    Cetelem: nom d'établissement
+    Sofinco: nom d'établissement
+    Oney: nom d'établissement
+    Floa: nom d'établissement
+    Younited: nom d'établissement
   # Scène de fin : texte FIXE (jamais écrit par le LLM), exclu du contrôle des mots interdits
   disclaimer_text: "C'est un exemple simplifié et théorique, pas un conseil : chaque situation est différente."
 
