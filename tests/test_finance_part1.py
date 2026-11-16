@@ -242,3 +242,56 @@ def test_subject_must_be_coherent(text, ok):
 def test_meaning_prompt_checks_the_subject():
     brain = _brain("inflation", INFL_1000)
     assert "Dormir 1 000 € pendant 30 ans" in brain.read_sections("meaning.md")["user"]
+
+
+# ---------- 1.8 Clé Gemini de la chaîne : nom du secret journalisé, jamais sa valeur ----------
+def test_finance_uses_its_own_gemini_secret(monkeypatch, capsys):
+    from auracontent.core.brain.llm_client import LLMClient
+
+    monkeypatch.setenv("GEMINI_API_KEY_FINANCE", "valeur-test-finance")
+    common = LLMClient(keys={"gemini": "valeur-test-commune", "groq": "g"})
+    assert _brain("frais", FRAIS).config["brain"]["gemini_key_env"] == "GEMINI_API_KEY_FINANCE"
+    client = common.with_gemini_key_env("GEMINI_API_KEY_FINANCE")
+    assert client.keys == {"gemini": "valeur-test-finance", "groq": "g"}
+    assert common.keys["gemini"] == "valeur-test-commune" and client.usage is common.usage
+    out = capsys.readouterr().out
+    assert "GEMINI_API_KEY_FINANCE" in out and "valeur-test" not in out
+
+
+def test_missing_finance_secret_never_falls_back(monkeypatch):
+    from auracontent.core.brain.llm_client import LLMClient
+
+    monkeypatch.delenv("GEMINI_API_KEY_FINANCE", raising=False)
+    common = LLMClient(keys={"gemini": "valeur-test-commune"})
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY_FINANCE absent") as err:
+        common.with_gemini_key_env("GEMINI_API_KEY_FINANCE")
+    assert "valeur-test" not in str(err.value)
+    assert common.with_gemini_key_env(None) is common                 # autres chaînes : client inchangé
+
+
+def test_mystery_has_no_channel_key():
+    from auracontent.channels.mystery.brain import MysteryBrain
+
+    assert "gemini_key_env" not in (BaseChannel("mystery", MysteryBrain, None).cfg.get("brain") or {})
+
+
+def test_generate_gives_finance_its_own_client(monkeypatch, tmp_path):
+    from auracontent.cli import generate
+    from auracontent.core.brain.llm_client import LLMClient
+
+    monkeypatch.setenv("GEMINI_API_KEY_FINANCE", "valeur-test-finance")
+    common = LLMClient(keys={"gemini": "valeur-test-commune"})
+    script = tmp_path / "s.json"
+    script.write_text('{"topic": "t"}', encoding="utf-8")
+    brain = type("B", (), {"llm": common})()
+    channel = type("C", (), {"brain": brain, "section": lambda s, k: {"gemini_key_env": "GEMINI_API_KEY_FINANCE"}
+                             if k == "brain" else {}})()
+    gb = type("G", (), {"channels": {"finance": channel}, "run_channel": lambda s, n, finalize=True: script})()
+    used = []
+    monkeypatch.setattr(generate.LLMClient, "create_default", classmethod(lambda cls: common))
+    monkeypatch.setattr(generate, "GlobalBrain", lambda llm_client: gb)
+    monkeypatch.setattr(generate, "produce_video", lambda ch, llm, *a, **k: used.append(llm.keys["gemini"]))
+    monkeypatch.setattr(generate, "channel_enabled", lambda n: True)
+    assert generate.main(["finance"]) == 0
+    assert brain.llm.keys["gemini"] == "valeur-test-finance" and used == ["valeur-test-finance"]
+    assert common.keys["gemini"] == "valeur-test-commune"

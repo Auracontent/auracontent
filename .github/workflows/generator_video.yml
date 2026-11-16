@@ -94,7 +94,7 @@ jobs:
               exit 1
             fi
             echo "GEMINI_API_KEY=$GEMINI_API_KEY_FINANCE" >> "$GITHUB_ENV"
-            echo "Clé Gemini : GEMINI_API_KEY_FINANCE"
+            echo "Clé Gemini : secret GEMINI_API_KEY_FINANCE (nom seul, jamais la valeur)"
           else
             echo "Clé Gemini : GEMINI_API_KEY"
           fi

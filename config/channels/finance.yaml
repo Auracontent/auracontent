@@ -24,6 +24,9 @@ brain:
   cta_seconds: 3
   hook_words: 10
   end_words: 8
+  # Clé Gemini propre à la chaîne (son propre quota) : secret GEMINI_API_KEY_FINANCE, jamais la clé de
+  # mystery ; secret absent = chaîne arrêtée. Seul le nom du secret est journalisé.
+  gemini_key_env: GEMINI_API_KEY_FINANCE
   script_max_retries: 4      # contrôles stricts (chiffres, sens, exagération) : jusqu'à 5 essais
   # Meilleur script gardé (le moins d'avertissements) ; si 3 scènes au plus posent problème, seules
   # elles sont réécrites (un appel court) au lieu de tout régénérer

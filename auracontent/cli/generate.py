@@ -58,12 +58,18 @@ def main(argv: list[str]) -> int:
             # brain.history_after_video (YAML) : le sujet n'est inscrit qu'une fois la vidéo produite ; si la vidéo
             # échoue (voix indisponible...), il reste en attente pour l'exécution suivante. Absent : dès le script.
             channel = brain.channels.get(name)
+            # brain.gemini_key_env (YAML, opt-in) : clé Gemini propre à la chaîne (finance) ; absent : client commun
+            channel_llm = llm
+            key_env = channel and (channel.section("brain") or {}).get("gemini_key_env")
+            if key_env:
+                channel_llm = llm.with_gemini_key_env(key_env)
+                channel.brain.llm = channel_llm
             deferred = bool(channel and (channel.section("brain") or {}).get("history_after_video"))
             deferred = deferred and not args.script_only
             script_path = brain.run_channel(name, finalize=not deferred)
             if not args.script_only:
                 try:
-                    produce_video(brain.channels[name], llm, script_path, upload=args.upload)
+                    produce_video(brain.channels[name], channel_llm, script_path, upload=args.upload)
                 except Exception:
                     if deferred:
                         # script validé gardé : la reprise le réutilise tel quel (aucun appel LLM pour le refaire)
