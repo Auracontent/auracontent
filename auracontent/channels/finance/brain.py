@@ -21,7 +21,12 @@ from auracontent.channels.finance import calc as fcalc
 from auracontent.channels.finance import storyboard as fstory
 from auracontent.channels.finance.spoken import SpokenError, display_text, spoken_text
 from auracontent.core.brain.base_brain import BaseBrain, VeracityIssue
-from auracontent.utils.topic_tracker import load_global_history, load_last_categories, load_used_values
+from auracontent.utils.topic_tracker import (
+    load_global_history,
+    load_history_entries,
+    load_used_values,
+    save_global_history,
+)
 
 TEMPLATES = tuple(fstory.VARIANTS)
 PARAM_LABELS = {
@@ -362,31 +367,92 @@ class FinanceBrain(BaseBrain):
         print(f"   ↻ Concept épuisé : toutes les combinaisons de « {concept} » sont déjà traitées.")
         return None
 
+    ABANDONED = "abandonné"
+
+    @staticmethod
+    def subject_key(entry: dict) -> str:
+        """Identité d'un sujet pour l'anti-répétition : le CONCEPT. Même concept avec d'autres chiffres
+        (montant, durée, taux) = même sujet."""
+        return str(entry.get("concept") or entry.get("category") or "")
+
+    def anti_repetition_window(self) -> int:
+        """brain.anti_repetition_window : nombre de dernières vidéos dont les concepts sont exclus (défaut 10)."""
+        return max(0, int(self._brain().get("anti_repetition_window", 10)))
+
+    def recent_subjects(self) -> dict[str, tuple[int, str]]:
+        """Concepts exclus -> (il y a combien de vidéos, statut) : les N dernières vidéos produites, plus les
+        sujets abandonnés depuis la plus ancienne de ces N vidéos (ils comptent dans la même fenêtre)."""
+        n = self.anti_repetition_window()
+        entries = [e for e in load_history_entries(self.channel_name) if self.subject_key(e)]
+        if n == 0 or not entries:
+            return {}
+        videos = [i for i, e in enumerate(entries) if e.get("status") != self.ABANDONED]
+        start = videos[-n] if len(videos) >= n else 0
+        recent: dict[str, tuple[int, str]] = {}
+        for i in range(len(entries) - 1, start - 1, -1):
+            entry = entries[i]
+            ago = sum(1 for v in videos if v >= i) or 1              # 1 = la dernière vidéo
+            recent.setdefault(self.subject_key(entry), (ago, entry.get("status") or "publié"))
+        return recent
+
     def topic_candidates(self) -> list[tuple[str, dict]]:
-        """Concepts absents des dernières vidéos, chacun avec une combinaison jamais traitée (ordre aléatoire).
-        Si tous ces concepts sont épuisés, les concepts récents servent de réserve."""
+        """Un candidat par concept hors de la fenêtre anti-répétition, avec une combinaison jamais traitée.
+        Chaque concept écarté est journalisé avec sa raison. Si la fenêtre exclut tous les concepts, celui qui
+        a été traité il y a le plus longtemps est repris (journalisé)."""
         b = self._brain()
         concepts = list(b.get("concepts") or {})
         if not concepts:
             raise RuntimeError("brain.concepts vide dans config/channels/finance.yaml")
         used = load_used_values("topic_key", channel=self.channel_name)
         used_titles = {comparable(t) for t in load_global_history(self.channel_name)}
-        recent = set(load_last_categories(int(b.get("recent_concepts_window", 2)), channel=self.channel_name))
+        recent = self.recent_subjects()
         random.shuffle(concepts)
-        fresh = [c for c in concepts if c not in recent]
+        window = self.anti_repetition_window()
+        print(f"🧾 Sujets candidats (fenêtre anti-répétition : {window} dernières vidéos) :")
+        found, held = [], []
         for concept in concepts:
-            if concept in recent and fresh:
-                print(f"   ↻ Concept écarté : « {concept} » traité dans les {len(recent)} dernières vidéos.")
-        for group in (fresh, [c for c in concepts if c in recent]):
-            found = [(c, p) for c in group if (p := self._first_unused(c, used, used_titles)) is not None]
-            if found:
-                return found
+            if concept in recent:
+                ago, status = recent[concept]
+                what = "abandonné" if status == self.ABANDONED else "traité"
+                print(f"   ✖ {concept} : écarté, {what} il y a {ago} vidéo(s) (même concept, chiffres différents "
+                      f"= même sujet)")
+                held.append(concept)
+                continue
+            params = self._first_unused(concept, used, used_titles)
+            if params is None:
+                print(f"   ✖ {concept} : écarté, toutes ses combinaisons sont déjà traitées")
+                continue
+            print(f"   ✔ {concept} : candidat, {self.describe(concept, params)}")
+            found.append((concept, params))
+        if found:
+            return found
+        # fenêtre plus large que le nombre de concepts : le concept le moins récent revient
+        for concept in sorted(held, key=lambda c: -recent[c][0]):
+            if recent[concept][1] == self.ABANDONED:
+                continue
+            params = self._first_unused(concept, used, used_titles)
+            if params is not None:
+                print(f"   ↩ Tous les concepts sont dans la fenêtre : « {concept} », traité il y a "
+                      f"{recent[concept][0]} vidéo(s), est le moins récent et revient.")
+                return [(concept, params)]
         return []
+
+    def on_topic_abandoned(self, topic: str, reason: str, pick: dict) -> None:
+        """Sujet abandonné (3 échecs, véracité, attente expirée) : inscrit à l'historique avec le statut
+        « abandonné » ; son concept est exclu pendant la fenêtre, ses chiffres ne reviennent jamais."""
+        pick = dict(pick or self.last_pick or {})
+        if not pick.get("concept"):
+            return
+        save_global_history(topic or self.describe(pick["concept"], pick.get("params") or {}), self.channel_name,
+                            status=self.ABANDONED, reason=str(reason)[:300], **pick)
+        print(f"📒 Sujet inscrit à l'historique comme « {self.ABANDONED} » : {pick['concept']} ({reason[:120]})")
 
     def choose_candidate(self, candidates: list[tuple[str, dict]]) -> tuple[str, dict]:
         """Le LLM choisit le sujet le plus parlant (il ne renvoie qu'un numéro, jamais un chiffre) ; au moindre
         problème, ou avec brain.concept_selection: random, le premier candidat (déjà tiré au hasard)."""
         if self._brain().get("concept_selection", "random") != "llm" or self.llm is None or len(candidates) == 1:
+            print(f"🧭 Sujet retenu : {candidates[0][0]} (" +
+                  ("seul candidat" if len(candidates) == 1 else "tirage au hasard") + ")")
             return candidates[0]
         concepts = self._brain()["concepts"]
         lines = []
@@ -403,7 +469,8 @@ class FinanceBrain(BaseBrain):
                 temperature=0.4, max_completion_tokens=800, **self.simple_routing())
             index = int(str(data.get("choice", "")).strip()) - 1
             if 0 <= index < len(candidates):
-                print(f"🧭 Sujet choisi par le LLM parmi {len(candidates)} : {data.get('reason', '')}".rstrip(" :"))
+                print(f"🧭 Sujet retenu par le LLM parmi {len(candidates)} : {candidates[index][0]}, "
+                      f"{data.get('reason', '')}".rstrip(" ,"))
                 return candidates[index]
             print(f"⚠️ Choix du LLM hors liste ({data.get('choice')!r}) : tirage au hasard.")
         except Exception as e:                    # le choix est un confort : jamais bloquant

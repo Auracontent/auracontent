@@ -23,6 +23,22 @@ from auracontent.utils.topic_tracker import save_global_history
 from config import settings
 
 
+
+def _notify_abandon(brain, topic: str, reason: str, pick: dict) -> None:
+    """Opt-in : une chaîne qui définit on_topic_abandoned(topic, reason, pick) inscrit le sujet abandonné
+    (finance : à l'historique, statut « abandonné »). Les autres chaînes : aucun effet."""
+    hook = getattr(brain, "on_topic_abandoned", None)
+    if callable(hook):
+        hook(topic, reason, dict(pick or {}))
+
+
+def _pending_abandon_hook(brain):
+    """Rappel pour load_pending (sujet en attente abandonné), ou None si la chaîne n'en définit pas."""
+    if not callable(getattr(brain, "on_topic_abandoned", None)):
+        return None
+    return lambda entry, reason: _notify_abandon(
+        brain, entry.get("topic", ""), reason, ((entry.get("brain") or {}).get("last_pick") or {}))
+
 @dataclass
 class GlobalBrain:
     llm_client: LLMClient
@@ -78,6 +94,7 @@ class GlobalBrain:
                 if resumable:
                     clear_pending(channel_name)
                 note_rejected(channel_name, pick.get("source_title"), pick.get("anecdote_id"), str(e))
+                _notify_abandon(brain, topic, f"contrôle de véracité : {e}", pick)
                 if round_ == rounds:
                     raise RuntimeError(f"{rounds} sujet(s) abandonné(s) par le contrôle de véracité.") from e
                 print(f"↪️ Sujet suivant ({round_ + 1}/{rounds}).")
@@ -92,6 +109,7 @@ class GlobalBrain:
                         clear_pending(channel_name)
                         note_rejected(channel_name, pick.get("source_title"), pick.get("anecdote_id"),
                                       f"{failures} échec(s) du script : {e}")
+                        _notify_abandon(brain, topic, f"{failures} échec(s) du script : {e}", pick)
                     else:
                         print(f"💾 Sujet, titre et accroche gardés ({failures}/{limit} échec(s)) : la prochaine "
                               "exécution reprendra ce sujet.")
@@ -111,7 +129,8 @@ class GlobalBrain:
     def _validated_script(channel_name: str, brain, b: dict) -> dict | None:
         """Script validé gardé avec le sujet en attente (pending_topic.attach_script), ou None."""
         pending = load_pending(channel_name, max_attempts=int(b.get("resume_max_attempts", 3)),
-                               max_age_days=float(b.get("resume_max_days", 7)))
+                               max_age_days=float(b.get("resume_max_days", 7)),
+                               on_abandon=_pending_abandon_hook(brain))
         if not pending or not isinstance(pending.get("script"), dict):
             return None
         try:
@@ -140,7 +159,8 @@ class GlobalBrain:
     def _topic_and_hook(self, channel_name, channel, brain, b, resumable, previous_stats_list, resume=True):
         """(sujet, accroches, accroche choisie) : reprise d'un sujet validé, sinon nouveau sujet."""
         pending = load_pending(channel_name, max_attempts=int(b.get("resume_max_attempts", 3)),
-                               max_age_days=float(b.get("resume_max_days", 7))) if resumable and resume else None
+                               max_age_days=float(b.get("resume_max_days", 7)),
+                               on_abandon=_pending_abandon_hook(brain)) if resumable and resume else None
         if pending:
             # Une chaîne peut refuser un sujet en attente devenu invalide (concept retiré du YAML, paramètres
             # hors limites) en levant ValueError/KeyError : il est abandonné et un nouveau sujet est choisi.

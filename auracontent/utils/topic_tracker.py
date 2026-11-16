@@ -39,6 +39,11 @@ def load_global_history(channel: str | None = None) -> list[str]:
     return [e["topic"] for e in _filter(_load_entries(channel), channel)]
 
 
+def load_history_entries(channel: str | None = None) -> list[dict]:
+    """Entrées complètes de l'historique (du plus ancien au plus récent), métadonnées comprises."""
+    return _filter(_load_entries(channel), channel)
+
+
 def load_topic_history(channel: str | None = None) -> list[str]:
     """Alias conservé pour asset_manager."""
     return load_global_history(channel)
