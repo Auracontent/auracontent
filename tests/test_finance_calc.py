@@ -235,5 +235,6 @@ def test_random_selection_never_calls_llm(finance_state):
     llm = _ChoiceLLM({"choice": 2})
     brain = _brain(llm)
     brain.config["brain"]["concept_selection"] = "random"
+    brain.config["brain"]["free_topics"]["enabled"] = False          # chemin des concepts du YAML
     brain.pick_topic()
     assert llm.prompts == [] and brain.last_pick["topic_key"].startswith(brain.last_pick["concept"])

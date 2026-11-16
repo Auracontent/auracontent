@@ -152,9 +152,53 @@ brain:
 
   # Concepts permanents. Le sujet = concept + paramètres ; la déduplication porte sur les deux.
   # Les valeurs autorisées sont les seules que le script peut citer en entrée (les résultats viennent de calc.py).
-  # Anti-répétition au niveau du CONCEPT : un concept traité (ou abandonné) dans les 10 dernières vidéos
-  # est écarté, même avec d'autres chiffres. Si tous le sont, le moins récent revient.
-  anti_repetition_window: 10
+  # Anti-répétition. Identité d'un sujet = concept + situation du quotidien :
+  # - concept_window : un même concept (calcul) ne revient pas dans les 3 dernières vidéos, même avec d'autres
+  #   chiffres ou une autre situation ;
+  # - situation_window : un même couple concept + situation ne revient pas dans les 30 dernières vidéos.
+  # Les sujets abandonnés comptent dans ces fenêtres. Sans sujet libre possible, le concept le moins récent revient.
+  concept_window: 3
+  situation_window: 30
+
+  # Génération libre de sujets ancrés dans le quotidien (partie 3). Le concept imposé par le workflow
+  # (option « concept » -> FINANCE_CONCEPT) reste prioritaire. Échec de la génération = repli sur les
+  # combinaisons des concepts ci-dessous.
+  free_topics:
+    enabled: true
+    candidates: 8                # candidats NOUVEAUX demandés à chaque run
+    domains_per_run: 2           # domaines tirés au hasard ; au moins la moitié des candidats y sont demandés
+    examples_shown: 3            # exemples montrés au LLM (format seulement, jamais un catalogue)
+    max_from_examples: 1         # candidats qui reprennent une situation des exemples, au plus
+    domains: ["logement", "transport", "alimentation", "travail et salaire", "études", "famille",
+              "loisirs et vacances", "santé", "numérique et abonnements", "banque et paiements",
+              "administration et impôts", "consommation et soldes"]
+    # Comparaison de deux situations : mots-clés normalisés (accents, pluriels, mots vides, synonymes) ;
+    # part commune >= same : même situation ; < different : différentes ; entre les deux : le LLM tranche.
+    similarity: {same: 0.75, different: 0.4}
+    synonyms:
+      cafe: ["café", "cafés", "expresso", "expressos", "cappuccino", "petit noir", "boisson chaude"]
+      travail: ["bureau", "boulot", "job", "taf", "entreprise"]
+      jour: ["matin", "matins", "jours", "quotidien", "quotidienne", "journée", "chaque jour", "tous les jours"]
+      abonnement: ["abonnements", "streaming", "plateforme", "plateformes", "forfait mensuel"]
+      telephone: ["téléphone", "smartphone", "portable", "mobile"]
+      voiture: ["auto", "véhicule", "automobile"]
+      soldes: ["solde", "promo", "promos", "promotion", "promotions", "remise", "remises", "réduction"]
+      decouvert: ["découvert", "agios", "rouge", "négatif"]
+      salaire: ["paie", "paye", "rémunération", "augmentation"]
+    # Exemples : UNIQUEMENT le format attendu (3 tirés au hasard par run). « calcul » : un calcul de calc.py.
+    examples:
+      - {situation: "Léa prend un café à 2 € chaque matin avant d'aller au travail", calcul: {type: depenses_repetees, params: {amount: 2, per_week: 5, years: 10}}, question_spectateur: "Combien coûte vraiment ce café sur 1 an et sur 10 ans ?"}
+      - {situation: "Hugo paie sa console 400 € en 4 fois et oublie une échéance", calcul: {type: paiement_fractionne, params: {price: 400, installments: 4, fee_pct: 2.2, late_fee: 15}}, question_spectateur: "Combien coûte vraiment un paiement en 4 fois ?"}
+      - {situation: "Léa découvre trois abonnements qu'elle n'utilise plus sur son relevé", calcul: {type: abonnements, params: {sub_1: 13.49, sub_2: 9.99, sub_3: 5.99, years: 5}}, question_spectateur: "Combien coûtent des abonnements oubliés sur un an ?"}
+      - {situation: "Hugo achète une voiture à crédit sur 5 ans", calcul: {type: credit_amortissable, params: {amount: 15000, rate: 6, years: 5}}, question_spectateur: "Combien coûtent les intérêts d'un crédit voiture ?"}
+      - {situation: "Léa voit un pull à -30 % puis -20 % en caisse pendant les soldes", calcul: {type: remises_successives, params: {price: 100, first: 30, second: 20}}, question_spectateur: "Pourquoi -30 % puis -20 % ne font pas -50 % ?"}
+      - {situation: "Hugo garde son argent sur un livret qui rapporte 3 % quand les prix montent de 2 %", calcul: {type: taux_reel, params: {nominal: 3, inflation: 2, amount: 1000}}, question_spectateur: "Que rapporte vraiment un livret une fois l'inflation retirée ?"}
+      - {situation: "Léa obtient 3 % d'augmentation l'année où les prix montent de 3 %", calcul: {type: salaire_vs_prix, params: {salary: 2000, raise_pct: 3, inflation: 3}}, question_spectateur: "Une augmentation de 3 % rend-elle plus riche ?"}
+      - {situation: "Hugo reste à découvert de 500 € pendant 10 jours en fin de mois", calcul: {type: decouvert_agios, params: {overdraft: 500, days: 10, rate: 16}}, question_spectateur: "Combien coûtent quelques jours de découvert ?"}
+      - {situation: "Léa met de côté 50 € par mois dès 20 ans, Hugo dès 35 ans", calcul: {type: epargne_age, params: {monthly: 50, rate: 5, age_a: 20, age_b: 35, end_age: 65}}, question_spectateur: "Pourquoi commencer 15 ans plus tôt change tout ?"}
+      - {situation: "Hugo prend un téléphone à 1 € avec un forfait à 45 € par mois pendant 24 mois", calcul: {type: forfait_appareil, params: {phone_price: 600, upfront: 1, monthly_with: 45, monthly_without: 15, months: 24}}, question_spectateur: "Combien coûte vraiment un téléphone à 1 € ?"}
+      - {situation: "Léa reçoit 10 % offerts en bon d'achat avec sa carte de fidélité", calcul: {type: carte_fidelite, params: {spend: 100, pct: 10}}, question_spectateur: "10 % offerts, est-ce vraiment 10 % de réduction ?"}
+      - {situation: "Hugo roule en voiture en leasing à 300 € par mois quand Léa met la même somme de côté", calcul: {type: leasing_epargne, params: {monthly: 300, years: 4, rate: 3}}, question_spectateur: "Avoir l'air riche ou l'être vraiment : que reste-t-il après 4 ans ?"}
   # Le LLM choisit parmi un candidat inédit par concept (résultats déjà calculés par calc.py) ; « random » :
   # tirage au hasard. En cas d'échec du LLM, tirage au hasard.
   concept_selection: "llm"

@@ -8,6 +8,8 @@ de STORYBOARDS ; SCENE_KEYS dit quels résultats de calc.py chaque rôle doit ci
 """
 from __future__ import annotations
 
+from auracontent.channels.finance import calc as fcalc
+
 # Variantes dessinables de chaque gabarit (nom -> description donnée au LLM). La première est le défaut.
 VARIANTS: dict[str, dict[str, str]] = {
     "deux_arbres": {"arbres": "deux arbres de tailles différentes, Léa et Hugo à côté",
@@ -54,6 +56,10 @@ STORYBOARDS: dict[str, tuple[tuple[str, str], ...]] = {
                  ("example", "barres"), ("takeaway", "deux_courbes"), ("disclaimer", "carte_fin")),
 }
 
+# Concepts du quotidien (calculs de calc.py sans storyboard propre) : une suite générique de 6 scènes
+DAILY: tuple[tuple[str, str], ...] = (("hook", "barres"), ("context", "personnages"), ("mechanism", "deux_courbes"),
+                                      ("reveal", "deux_arbres"), ("takeaway", "barres"), ("disclaimer", "carte_fin"))
+
 # Résultats (clés de calc.py) que chaque rôle doit citer ; absent = {"reveal": (résultat principal,)}.
 SCENE_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
     "cout_du_temps": {"reveal": ("cost", "paid_gap")},
@@ -74,10 +80,11 @@ MUST_SAY: dict[str, tuple[str, ...]] = {
 
 
 def storyboard(concept: str) -> tuple[tuple[str, str], ...]:
-    try:
+    if concept in STORYBOARDS:
         return STORYBOARDS[concept]
-    except KeyError:
-        raise KeyError(f"Concept sans storyboard : {concept}") from None
+    if concept in fcalc.CONCEPTS:
+        return DAILY
+    raise KeyError(f"Concept sans storyboard : {concept}")
 
 
 def scene_keys(concept: str, headline: str) -> dict[str, tuple[str, ...]]:

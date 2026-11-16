@@ -23,7 +23,7 @@ def _brain(window=None):
     brain = BaseChannel("finance", FinanceBrain, None).brain
     brain.config["brain"]["concept_selection"] = "random"
     if window is not None:
-        brain.config["brain"]["anti_repetition_window"] = window
+        brain.config["brain"]["concept_window"] = window
     return brain
 
 
@@ -39,8 +39,9 @@ def _concepts(brain):
     return sorted(c for c, _ in brain.topic_candidates())
 
 
-def test_default_window_is_ten_videos(state):
-    assert _brain().anti_repetition_window() == 10
+def test_default_windows(state):
+    brain = _brain()
+    assert brain.concept_window() == 3 and brain.situation_window() == 30
 
 
 def test_window_is_respected(state):
@@ -104,7 +105,7 @@ def test_abandoned_numbers_never_come_back(state):
 
 
 def test_all_concepts_in_window_least_recent_comes_back(state, capsys):
-    brain = _brain()
+    brain = _brain(window=10)
     for concept in ALL:
         _done(brain, concept)
     _done(brain, "interets_composes", status="abandonné")
@@ -117,7 +118,7 @@ def test_logs_list_candidates_rejections_and_choice(state, capsys):
     _done(brain, "frais")
     brain.pick_topic()
     out = capsys.readouterr().out
-    assert "🧾 Sujets candidats (fenêtre anti-répétition : 10 dernières vidéos)" in out
+    assert "🧾 Sujets candidats (fenêtre anti-répétition : 3 dernières vidéos)" in out
     assert "✖ frais : écarté" in out and out.count("✔ ") == 4 and "🧭 Sujet retenu : " in out
 
 

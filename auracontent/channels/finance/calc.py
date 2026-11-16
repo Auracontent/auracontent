@@ -509,7 +509,9 @@ SPECS: dict[str, dict] = {
     "remises_successives": {"label": "remises successives", "params": {
         "price": ("prix de départ", "€", 10, 2_000), "first": ("première remise", "%", 5, 70),
         "second": ("seconde remise", "%", 5, 50)}},
-    "paiement_fractionne": {"label": "paiement en plusieurs fois", "params": {
+    "paiement_fractionne": {"label": "paiement en plusieurs fois",
+                            "note": "Dis d'abord le coût en euros ; le taux annuel équivalent n'apparaît que s'il est "
+                                    "expliqué (« comme un crédit à X % par an », avec le taux calculé).", "params": {
         "price": ("prix", "€", 30, 3_000), "installments": ("nombre de paiements", "", 2, 12),
         "fee_pct": ("frais du service", "%", 0, 6), "late_fee": ("frais de retard", "€", 0, 50)}},
     "credit_amortissable": {"label": "crédit à mensualités fixes", "params": {

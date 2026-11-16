@@ -20,6 +20,7 @@ from pathlib import Path
 from auracontent.channels.finance import calc as fcalc
 from auracontent.channels.finance import storyboard as fstory
 from auracontent.channels.finance.spoken import SpokenError, display_text, spoken_text
+from auracontent.channels.finance.topics import FreeTopics
 from auracontent.core.brain.base_brain import BaseBrain, VeracityIssue
 from auracontent.utils.topic_tracker import (
     load_global_history,
@@ -38,6 +39,8 @@ PARAM_LABELS = {
     "late_amount_factor": "Hugo met ce nombre de fois plus que Léa",
     "rate_b": "second taux d'exemple (% par an)",
 }
+# Paramètres mensuels des concepts du quotidien : « par mois » obligatoire quand ils sont cités
+MONTHLY_PARAMS = {"sub_1", "sub_2", "sub_3", "sub_4", "monthly_with", "monthly_without", "monthly", "salary"}
 RATE_KEYS = ("rate", "rate_b")                     # plafonnés par brain.max_rate
 # Nature de chaque donnée d'entrée : « âge » et « ans » s'écrivent tous deux « ... ans » ; « €/mois » exige
 # « par mois » dans la phrase.
@@ -204,7 +207,7 @@ def spoken_text_safe(text: str) -> str:
 
 
 # ---------- Brain ----------
-class FinanceBrain(BaseBrain):
+class FinanceBrain(FreeTopics, BaseBrain):
     last_pick: dict | None = None
 
     @property
@@ -309,8 +312,12 @@ class FinanceBrain(BaseBrain):
         return combos
 
     @staticmethod
-    def describe(concept: str, p: dict) -> str:
-        """Sujet lisible (sert de titre interne et d'entrée aux prompts)."""
+    def describe(concept: str, p: dict, situation: str = "") -> str:
+        """Sujet lisible (sert de titre interne et d'entrée aux prompts) ; sujet libre : concept et situation."""
+        if situation:
+            return f"{fcalc.SPECS[concept]['label'].capitalize()} : {situation}"
+        if concept in fcalc.HYPOTHESES:
+            return f"{fcalc.SPECS[concept]['label'].capitalize()} ({fcalc.hypothesis_text(concept, p)})"
         if concept == "interets_composes":
             return (f"Intérêts composés : {p['early_amount']} € mis de côté à {p['early_age']} ans contre "
                     f"{p['late_amount']} € à {p['late_age']} ans, {_fmt(p['rate'])} %/an, jusqu'à {p['end_age']} ans")
@@ -331,6 +338,8 @@ class FinanceBrain(BaseBrain):
     @staticmethod
     def hypothesis(concept: str, p: dict) -> str:
         """Hypothèse affichée à l'écran (« 7 %/an · versement unique », « avant inflation »...)."""
+        if concept in fcalc.HYPOTHESES:
+            return fcalc.hypothesis_text(concept, p)
         if concept == "interets_composes":
             return f"{_fmt(p['rate'])} %/an · versement unique · avant inflation"
         if concept == "inflation":
@@ -343,9 +352,38 @@ class FinanceBrain(BaseBrain):
             return f"{_fmt(p['rate'])} % et {_fmt(p['rate_b'])} %/an · gains réinvestis · approximation"
         raise KeyError(concept)
 
+    def forced_concept(self) -> str | None:
+        """Concept imposé par le workflow (option « concept » -> FINANCE_CONCEPT) : prioritaire."""
+        forced = (os.getenv("FINANCE_CONCEPT") or "").strip()
+        if not forced:
+            return None
+        if forced not in fcalc.CONCEPTS:
+            raise RuntimeError(f"Concept imposé inconnu : « {forced} » (calculs : {', '.join(fcalc.CONCEPTS)})")
+        return forced
+
     def pick_topic(self) -> str:
-        """Un candidat inédit par concept (hors concepts récents), puis le choix du LLM parmi eux."""
-        candidates = self.topic_candidates()
+        """Concept imposé, sinon génération libre de sujets du quotidien ; à défaut, un candidat inédit par
+        concept du YAML (hors fenêtre) puis le choix du LLM parmi eux."""
+        forced = self.forced_concept()
+        if forced:
+            print(f"📌 Concept imposé par le workflow : {forced}")
+        if self.free_enabled():
+            pick = self.free_pick(forced)
+            if pick is not None:
+                self.last_pick = pick
+                return self.describe(pick["concept"], pick["params"], pick["situation"])
+            print("↪️ Aucun sujet libre utilisable : repli sur les concepts du YAML.")
+        if forced and forced not in (self._brain().get("concepts") or {}):
+            example = next((e for e in self.free_cfg().get("examples") or [] if e["calcul"]["type"] == forced), None)
+            if example is None:
+                raise RuntimeError(f"Concept imposé « {forced} » : aucun sujet libre ni exemple utilisable.")
+            pick, why = self.check_candidate(example, forced)
+            if pick is None:
+                raise RuntimeError(f"Concept imposé « {forced} » : exemple inutilisable ({why}).")
+            print(f"↪️ Concept imposé : sujet de l'exemple du YAML ({example['situation']}).")
+            self.last_pick = {**pick, "from_example": True}
+            return self.describe(forced, pick["params"], pick["situation"])
+        candidates = self.topic_candidates(only=forced)
         if not candidates:
             raise RuntimeError("Aucune combinaison concept + paramètres inédite.")
         concept, params = self.choose_candidate(candidates)
@@ -375,39 +413,48 @@ class FinanceBrain(BaseBrain):
         (montant, durée, taux) = même sujet."""
         return str(entry.get("concept") or entry.get("category") or "")
 
-    def anti_repetition_window(self) -> int:
-        """brain.anti_repetition_window : nombre de dernières vidéos dont les concepts sont exclus (défaut 10)."""
-        return max(0, int(self._brain().get("anti_repetition_window", 10)))
+    def concept_window(self) -> int:
+        """brain.concept_window : un même concept ne revient pas dans ces N dernières vidéos (défaut 3)."""
+        return max(0, int(self._brain().get("concept_window", 3)))
 
-    def recent_subjects(self) -> dict[str, tuple[int, str]]:
-        """Concepts exclus -> (il y a combien de vidéos, statut) : les N dernières vidéos produites, plus les
-        sujets abandonnés depuis la plus ancienne de ces N vidéos (ils comptent dans la même fenêtre)."""
-        n = self.anti_repetition_window()
+    def situation_window(self) -> int:
+        """brain.situation_window : un même couple concept + situation ne revient pas dans ces N vidéos (30)."""
+        return max(0, int(self._brain().get("situation_window", 30)))
+
+    def history_window(self, n: int) -> list[dict]:
+        """Entrées des N dernières vidéos produites, plus les sujets abandonnés depuis la plus ancienne d'entre
+        elles (ils comptent dans la même fenêtre), de la plus récente à la plus ancienne ; « ago » = il y a
+        combien de vidéos (1 = la dernière)."""
         entries = [e for e in load_history_entries(self.channel_name) if self.subject_key(e)]
         if n == 0 or not entries:
-            return {}
+            return []
         videos = [i for i, e in enumerate(entries) if e.get("status") != self.ABANDONED]
         start = videos[-n] if len(videos) >= n else 0
-        recent: dict[str, tuple[int, str]] = {}
+        out = []
         for i in range(len(entries) - 1, start - 1, -1):
-            entry = entries[i]
-            ago = sum(1 for v in videos if v >= i) or 1              # 1 = la dernière vidéo
-            recent.setdefault(self.subject_key(entry), (ago, entry.get("status") or "publié"))
+            out.append({**entries[i], "ago": sum(1 for v in videos if v >= i) or 1})
+        return out
+
+    def recent_subjects(self, window: int | None = None) -> dict[str, tuple[int, str]]:
+        """Concepts exclus -> (il y a combien de vidéos, statut), sur la fenêtre des concepts."""
+        recent: dict[str, tuple[int, str]] = {}
+        for entry in self.history_window(self.concept_window() if window is None else window):
+            recent.setdefault(self.subject_key(entry), (entry["ago"], entry.get("status") or "publié"))
         return recent
 
-    def topic_candidates(self) -> list[tuple[str, dict]]:
+    def topic_candidates(self, only: str | None = None) -> list[tuple[str, dict]]:
         """Un candidat par concept hors de la fenêtre anti-répétition, avec une combinaison jamais traitée.
         Chaque concept écarté est journalisé avec sa raison. Si la fenêtre exclut tous les concepts, celui qui
         a été traité il y a le plus longtemps est repris (journalisé)."""
         b = self._brain()
-        concepts = list(b.get("concepts") or {})
+        concepts = [c for c in (b.get("concepts") or {}) if only is None or c == only]
         if not concepts:
             raise RuntimeError("brain.concepts vide dans config/channels/finance.yaml")
         used = load_used_values("topic_key", channel=self.channel_name)
         used_titles = {comparable(t) for t in load_global_history(self.channel_name)}
-        recent = self.recent_subjects()
+        recent = {} if only else self.recent_subjects()           # concept imposé : la fenêtre ne s'applique pas
         random.shuffle(concepts)
-        window = self.anti_repetition_window()
+        window = self.concept_window()
         print(f"🧾 Sujets candidats (fenêtre anti-répétition : {window} dernières vidéos) :")
         found, held = [], []
         for concept in concepts:
@@ -485,6 +532,13 @@ class FinanceBrain(BaseBrain):
         retiré, taux au-dessus du plafond...) : le pipeline l'abandonne et choisit un nouveau sujet."""
         pick = dict((state or {}).get("last_pick") or {})
         concept, params = pick.get("concept"), pick.get("params")
+        if pick.get("source") == "libre" or self.is_daily(str(concept)):
+            checked, why = fcalc.check_params(str(concept), {k: v for k, v in (params or {}).items()
+                                                            if k != "late_amount"})
+            if checked is None:
+                raise ValueError(f"sujet libre plus calculable : {why}")
+            self.last_pick = pick
+            return
         if concept not in (self._brain().get("concepts") or {}):
             raise ValueError(f"concept « {concept} » absent de la configuration")
         if params not in self.combinations(concept):
@@ -495,7 +549,34 @@ class FinanceBrain(BaseBrain):
         if not self.last_pick:
             raise RuntimeError("Aucun concept choisi (pick_topic d'abord).")
         concept = self.last_pick["concept"]
-        return concept, self.last_pick["params"], self._brain()["concepts"][concept]
+        spec = (self._brain().get("concepts") or {}).get(concept)
+        if spec is None:                      # concept du quotidien : libellé de calc.py, idée = question du sujet
+            spec = {"label": fcalc.SPECS[concept]["label"],
+                    "idea": " ".join(x for x in (self.last_pick.get("question"), fcalc.SPECS[concept].get("note")) if x)}
+        return concept, self.last_pick["params"], spec
+
+    def is_daily(self, concept: str) -> bool:
+        """Calcul de calc.py sans entrée dans brain.concepts (concept du quotidien)."""
+        return concept in fcalc.SPECS and concept not in (self._brain().get("concepts") or {})
+
+    def param_label(self, key: str) -> str:
+        concept = (self.last_pick or {}).get("concept")
+        if concept and self.is_daily(concept) and key in fcalc.SPECS[concept]["params"]:
+            label, unit, _, _ = fcalc.SPECS[concept]["params"][key]
+            return f"{label} ({unit})" if unit else label
+        return PARAM_LABELS.get(key, key)
+
+    def param_unit(self, key: str) -> str:
+        """Nature d'une donnée d'entrée (« € », « €/mois », « % », « ans », « âge »)."""
+        concept = (self.last_pick or {}).get("concept")
+        if concept and self.is_daily(concept) and key in fcalc.SPECS[concept]["params"]:
+            unit = fcalc.SPECS[concept]["params"][key][1]
+            if unit == "€" and key in MONTHLY_PARAMS:
+                return "€/mois"
+            if unit == "ans" and (key.startswith("age") or key.endswith("_age")):
+                return "âge"
+            return unit if unit in ("€", "%", "ans") else ""
+        return PARAM_UNITS.get(key, "")
 
     def calc(self) -> fcalc.Calc:
         concept, params, _ = self._pick()
@@ -510,7 +591,7 @@ class FinanceBrain(BaseBrain):
         """(valeur, nature, libellé) de chaque chiffre citable : entrées, constantes, résultats de calc.py."""
         _, params, spec = self._pick()
         result = self.calc()
-        table = [(float(v), PARAM_UNITS.get(k, ""), PARAM_LABELS.get(k, k)) for k, v in params.items()]
+        table = [(float(v), self.param_unit(k), self.param_label(k)) for k, v in params.items()]
         table += [(float(c), "", "constante du concept") for c in [*(spec.get("constants") or []),
                                                                     *result.extra_numbers]]
         table += [(v.value, v.unit, v.label) for v in result.values.values()]
@@ -554,7 +635,7 @@ class FinanceBrain(BaseBrain):
     def numbers_block(self) -> str:
         """Liste lisible des chiffres autorisés, avec ce qu'ils désignent (entrées puis résultats)."""
         _, params, _ = self._pick()
-        lines = [f"- {PARAM_LABELS.get(k, k)} : {_fmt(v)}" for k, v in params.items()]
+        lines = [f"- {self.param_label(k)} : {_fmt(v)}" for k, v in params.items()]
         lines += [f"- {v.label} : {v.text}" for v in self.calc().values.values()]
         return "\n".join(lines)
 
@@ -571,7 +652,7 @@ class FinanceBrain(BaseBrain):
         _, params, _ = self._pick()
         texts = {k: v.text for k, v in self.calc().values.items()}
         for key, value in params.items():
-            unit = PARAM_UNITS.get(key, "")
+            unit = self.param_unit(key)
             texts.setdefault(key, f"{fcalc.fmt_number(value)} {unit if unit in ('€', '%') else ''}".strip())
         return texts
 
@@ -697,7 +778,7 @@ class FinanceBrain(BaseBrain):
             topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""),
             wording=self.wording(),
             hypothesis=self.hypothesis(concept, params),
-            params_block="\n".join(f"- {PARAM_LABELS.get(k, k)} : {_fmt(v)}" for k, v in params.items()),
+            params_block="\n".join(f"- {self.param_label(k)} : {_fmt(v)}" for k, v in params.items()),
             results_block="\n".join(f"- {v.label} : {v.text}" for v in self.calc().values.values()),
             main_result=f"{self.calc().main.label} : {self.calc().main.text}",
             chosen_hook=(chosen_hook or {}).get("text", ""), scene_count=scene_count,
@@ -833,7 +914,25 @@ class FinanceBrain(BaseBrain):
             issues.append(f"{what} : « {m.group()} » ; écris « multipliée par N », sans « fois »")
         issues += self.meaning_issues(text, what)
         issues += self.subject_issues(text, what)
+        issues += self.explain_issues(text, what)
         return issues
+
+    def explain_issues(self, text: str, what: str) -> list[str]:
+        """Résultats qui ne se citent qu'expliqués (calc.EXPLAIN : taux annuel équivalent du paiement
+        fractionné) : la phrase qui les cite doit dire ce qu'ils sont, sinon le coût en euros est préféré."""
+        concept = (self.last_pick or {}).get("concept") or ""
+        rules = fcalc.EXPLAIN.get(concept, {})
+        if not rules:
+            return []
+        values = self.calc().values
+        for key, phrases in rules.items():
+            value = values.get(key)
+            for sentence in sentences(text) or [text]:
+                if value and value.value in numbers_in(sentence) and \
+                        not any(_fold_keep(p) in _fold_keep(sentence) for p in phrases):
+                    return [f"{what} cite « {value.text} » ({value.label}) sans l'expliquer : dis d'abord le coût en "
+                            f"euros, ou écris « comme un crédit à {value.text} par an »"]
+        return []
 
     def subject_issues(self, text: str, what: str) -> list[str]:
         """Sujet grammatical cohérent : un verbe sans complément d'objet (brain.style.intransitive_verbs) ne
