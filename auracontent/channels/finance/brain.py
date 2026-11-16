@@ -152,6 +152,14 @@ def _folded_sub(pattern: str, repl: str, text: str) -> str:
     return text
 
 
+def number_allowed(n: float, allowed: set[float]) -> bool:
+    """Valeur exacte, ou arrondi d'une valeur décimale autorisée (2,4 ou 2 pour 2,43 ; 41 pour 41,2).
+    Les montants de calc.py sont déjà arrondis à la forme dite : aucune autre tolérance."""
+    if n in allowed:
+        return True
+    return any(not float(v).is_integer() and n in (round(v, 1), round(v)) for v in allowed)
+
+
 def spoken_text_safe(text: str) -> str:
     try:
         return spoken_text(display_text(text))
@@ -660,7 +668,7 @@ class FinanceBrain(BaseBrain):
         if re.search(r"\b(vous|votre|vos)\b", _fold(text)):
             issues.append(f"{what} vouvoie (tutoiement obligatoire)")
         allowed = self.allowed_numbers()
-        extra = sorted({n for n in numbers_in(text) if n not in allowed})
+        extra = sorted({n for n in numbers_in(text) if not number_allowed(n, allowed)})
         if extra:
             issues.append(f"{what} cite un nombre non autorisé : {', '.join(_fmt(n) for n in extra)}")
         issues += self.hype_issues(text, what)

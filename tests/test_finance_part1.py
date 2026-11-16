@@ -35,3 +35,25 @@ def test_prompt_lists_forbidden_and_allowed_wording_from_first_call():
     brain = _brain("inflation", INFL_1000)
     prompt = brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
     assert "INTERDIT" in prompt and "AUTORISÉ" in prompt and "valeur réelle de 552 €" in prompt
+
+
+# ---------- 1.3 Valeurs dérivées autorisées ----------
+def test_complement_and_cumulative_multiplier_accepted():
+    brain = _brain("inflation", INFL_10000)
+    assert brain.text_issues("Il ne reste que 41 % du pouvoir d'achat.", "s") == []
+    assert brain.text_issues("Les prix sont multipliés par 2,43 en 30 ans.", "s") == []
+    assert brain.text_issues("Les prix sont multipliés par 2,4 en 30 ans.", "s") == []          # arrondi accepté
+    assert brain.text_issues("Il faudrait 24 300 € pour acheter autant.", "s") == []
+
+
+def test_derived_values_of_the_other_subject():
+    brain = _brain("inflation", INFL_1000)
+    assert brain.text_issues("Il ne reste que 55 % du pouvoir d'achat.", "s") == []
+    assert brain.text_issues("Les prix sont multipliés par 1,81.", "s") == []
+    assert any("non autorisé" in i for i in brain.text_issues("Les prix sont multipliés par 2,43.", "s"))
+    assert any("non autorisé" in i for i in brain.text_issues("Il ne reste que 41 % du pouvoir d'achat.", "s"))
+
+
+def test_money_has_no_extra_tolerance():
+    brain = _brain("inflation", INFL_1000)
+    assert any("non autorisé" in i for i in brain.text_issues("Il reste 550 €.", "s"))               # 552 € exact

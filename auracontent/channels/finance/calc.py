@@ -213,9 +213,36 @@ CONCEPTS = {"interets_composes": interets_composes, "inflation": inflation, "cou
             "frais": frais, "regle_72": regle_72}
 
 
+def round_2(x: float) -> float:
+    return float(round(x, 2))
+
+
+def derived(concept: str, p: dict, calc: Calc) -> list[Value]:
+    """Valeurs dérivées qu'un script peut citer à bon droit : complément à 100 de chaque pourcentage (41 % =
+    100 % - 59 %), multiplicateur cumulé (1 + taux)^n à 2 décimales (2,43), montant équivalent."""
+    out = [_v(f"{v.key}_complement", f"100 % moins « {v.label} »", 100 - v.value, "%")
+           for v in calc.values.values() if v.unit == "%" and 0 < v.value < 100]
+    if concept == "inflation":
+        factor = (1 + p["inflation"] / 100) ** p["years"]
+        out += [_v("price_factor", f"les prix sont multipliés par, en {p['years']} ans", round_2(factor), ""),
+                _v("same_power", f"somme nécessaire dans {p['years']} ans pour acheter autant qu'avec "
+                   f"{fmt_number(p['amount'])} € aujourd'hui", round_money(p["amount"] * factor), "€")]
+    if concept == "frais":
+        out += [_v("growth_without", "le capital sans frais est multiplié par", round_2(grow(1, p["rate"], p["years"])), ""),
+                _v("growth_with", "le capital avec frais est multiplié par",
+                   round_2(((1 + p["rate"] / 100) * (1 - p["fees"] / 100)) ** p["years"]), "")]
+    if concept == "cout_du_temps":
+        out.append(_v("growth_now", "chaque euro versé au départ est multiplié par",
+                      round_2(grow(1, p["rate"], p["horizon_years"])), ""))
+    return [v for v in out if v.key not in calc.values]
+
+
 def compute(concept: str, params: dict) -> Calc:
     try:
         fn = CONCEPTS[concept]
     except KeyError:
         raise KeyError(f"Concept sans calcul : {concept}") from None
-    return fn(params)
+    calc = fn(params)
+    for value in derived(concept, params, calc):
+        calc.values[value.key] = value
+    return calc
