@@ -57,3 +57,47 @@ def test_derived_values_of_the_other_subject():
 def test_money_has_no_extra_tolerance():
     brain = _brain("inflation", INFL_1000)
     assert any("non autorisé" in i for i in brain.text_issues("Il reste 550 €.", "s"))               # 552 € exact
+
+
+# ---------- 1.4 Structure corrigée sans relancer le LLM ----------
+from auracontent.channels.finance import storyboard  # noqa: E402
+
+FRAIS = {"amount": 5000, "rate": 6, "fees": 2, "years": 20}
+
+
+def _frais_data(first: str, bandeau="2 % DE FRAIS | 5 300 € PERDUS"):
+    board = storyboard.storyboard("frais")
+    scenes = [{"id": i, "text": "Les frais grignotent ton argent chaque année.", "visual": ""}
+              for i in range(1, len(board) + 1)]
+    scenes[0]["text"] = first
+    scenes[[r for r, _ in board].index("reveal")]["text"] = "Les frais te coûtent 5 300 €."
+    return {"title": "Les frais", "on_screen_title": bandeau, "closing_cta": "Pourquoi ?", "scenes": scenes}
+
+
+def test_hook_is_prefixed_to_scene_one(capsys):
+    brain = _brain("frais", FRAIS)
+    brain.chosen_hook_text = "2 % de frais te coûtent 5 300 €."
+    data = _frais_data("Imagine 5000 € pendant 20 ans. 2 % de frais te coûtent 5300 € !")
+    brain.validate_script_specifics(data, "t")
+    assert data["scenes"][0]["text"] == "2 % de frais te coûtent 5 300 €. Imagine 5 000 € pendant 20 ans."
+    assert "cinq mille trois cents euros" in data["scenes"][0]["spoken"]         # texte parlé recalculé
+    assert "Accroche ajoutée" in capsys.readouterr().out
+
+
+@pytest.mark.parametrize("raw, expected", [
+    ({"affirmation": "2 % DE FRAIS", "punchline": "5 300 € PERDUS"}, "2 % DE FRAIS | 5 300 € PERDUS"),
+    (["2 % DE FRAIS", "5 300 € PERDUS"], "2 % DE FRAIS | 5 300 € PERDUS"),
+    ("2 % de frais \u2013 5 300 € perdus", "2 % DE FRAIS | 5 300 € PERDUS"),
+    ("2 % DE FRAIS : 5 300 € PERDUS", "2 % DE FRAIS | 5 300 € PERDUS"),
+])
+def test_malformed_bandeau_is_rebuilt(raw, expected):
+    brain = _brain("frais", FRAIS)
+    data = _frais_data("Les frais grignotent ton argent.", bandeau=raw)
+    brain.validate_script_specifics(data, "t")
+    assert data["on_screen_title"] == expected
+
+
+def test_bandeau_impossible_to_rebuild_asks_the_llm():
+    brain = _brain("frais", FRAIS)
+    with pytest.raises(ValueError, match=r"AFFIRMATION \| PUNCHLINE"):
+        brain.validate_script_specifics(_frais_data("x", bandeau="FRAIS"), "t")

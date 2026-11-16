@@ -8,6 +8,7 @@ d'entrée ou des résultats de calc.py ; le résultat principal doit être dit d
 """
 from __future__ import annotations
 
+import difflib
 import itertools
 import os
 import random
@@ -613,9 +614,10 @@ class FinanceBrain(BaseBrain):
     def _validate_structure(self, data):
         """Structure : bandeau en deux segments, hypothèse exacte, accroche en tête, storyboard imposé."""
         concept, params, _ = self._pick()
-        title = clean_text(data.get("on_screen_title", ""))
-        parts = [p.strip() for p in title.split("|")]
-        if len(parts) != 2 or not all(parts):
+        parts = self.bandeau_parts(data.get("on_screen_title", ""))
+        if parts is None and fstory.bandeau_rule(concept):
+            parts = self.checked_bandeau("").split(" | ")             # bandeau du concept construit par le code
+        if parts is None:
             raise ValueError("on_screen_title doit avoir la forme « AFFIRMATION | PUNCHLINE ».")
         too_long = [p for p in parts if len(p) > 20]
         if too_long:
@@ -630,6 +632,7 @@ class FinanceBrain(BaseBrain):
             raise ValueError(f"il faut exactement {expected} scènes, dans l'ordre du storyboard.")
         for note in fstory.apply(concept, data["scenes"]):           # rôles et gabarits fixés par le code
             print(f"   🧩 Storyboard : {note}")
+        self.ensure_hook_first(data["scenes"][0])                      # avant le texte parlé de la scène 1
         for scene in data["scenes"]:
             if scene["role"] == "disclaimer" and self.disclaimer_text():
                 scene["text"], scene["fixed_text"] = self.disclaimer_text(), True    # jamais écrit par le LLM
@@ -642,11 +645,38 @@ class FinanceBrain(BaseBrain):
             except SpokenError as e:
                 raise ValueError(f"scène {scene['id']} : {e} ; écris les chiffres sans autre symbole.") from e
             scene.setdefault("voice_type", "narrator")
-        # l'accroche passe par le même formatage des nombres que la narration (« 1500 € » -> « 1 500 € ») :
-        # sinon la comparaison échoue dès qu'un montant dépasse 999
+
+    def ensure_hook_first(self, scene: dict) -> None:
+        """La scène 1 commence par l'accroche : sinon le code la met en tête (sans relancer le LLM) et retire une
+        phrase de la scène qui la répète. L'accroche est formatée comme la narration (« 1500 € » -> « 1 500 € »)."""
         hook = display_text(clean_text(self.chosen_hook_text or "")).strip()
-        if hook and not comparable(data["scenes"][0]["text"]).startswith(comparable(hook)):
-            raise ValueError("la scène 1 doit commencer mot pour mot par l'accroche obligatoire.")
+        text = display_text(clean_text(scene.get("text", "")))
+        if not hook or comparable(text).startswith(comparable(hook)):
+            return
+        parts = [s for s in re.split(r"(?<=[.!?…])\s+", text) if s.strip()]   # coupe aussi avant un chiffre
+        rest = [s for s in parts if difflib.SequenceMatcher(None, comparable(s), comparable(hook)).ratio() < 0.8]
+        scene["text"] = " ".join([hook, *rest]).strip()
+        print("   🧩 Accroche ajoutée en tête de la scène 1 (elle n'y était pas mot pour mot).")
+
+    @staticmethod
+    def bandeau_parts(raw) -> list[str] | None:
+        """Bandeau « AFFIRMATION | PUNCHLINE » reconstruit depuis ce que le LLM a rendu : objet
+        {affirmation, punchline}, liste, ou autre séparateur (tirets, « : », « / », retour à la ligne).
+        None s'il n'y a pas deux segments : le LLM est alors relancé."""
+        if isinstance(raw, dict):
+            pick = [raw.get(k) for k in ("affirmation", "punchline")]
+            if not all(pick):
+                pick = list(raw.values())[:2]
+            raw = " | ".join(str(p) for p in pick if p)
+        elif isinstance(raw, (list, tuple)):
+            raw = " | ".join(str(p) for p in raw)
+        title = clean_text(raw)
+        for sep in ("|", " \u2013 ", " \u2014 ", " - ", "\n", " : ", " / "):
+            parts = [p.strip(" .") for p in str(raw if sep == "\n" else title).split(sep)]
+            parts = [clean_text(p).upper() if sep != "|" else clean_text(p) for p in parts if clean_text(p)]
+            if len(parts) == 2:
+                return parts
+        return None
 
     chosen_hook_text: str | None = None
 
