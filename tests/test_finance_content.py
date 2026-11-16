@@ -319,7 +319,8 @@ def test_word_targets_follow_duration_voice_rate_and_scene_count(monkeypatch):
     brain = _picked("cout_du_temps", COUT)
     brain.config["brain"]["voice_words_per_second"] = 2.6
     targets = brain.scene_word_targets()
-    assert len(targets) == 7 and targets[0] == 10 and targets[-1] == 8
+    assert len(targets) == 7 and targets[0] == 10
+    assert targets[-1] == FinanceBrain.spoken_words({"text": brain.disclaimer_text()})   # texte fixe de la fin
     assert sum(targets) == pytest.approx((45 - 3) * 2.6, abs=3)                # 109 mots prononcés
     prompt = brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
     assert f"scène 2 : environ {targets[1]} mots" in prompt

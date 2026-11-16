@@ -104,8 +104,8 @@ def interets_composes(p: dict) -> Calc:
     lea, hugo = grow(p["early_amount"], p["rate"], lea_years), grow(p["late_amount"], p["rate"], hugo_years)
     lea_r, hugo_r = round_money(lea), round_money(hugo)
     values = [
-        _v("lea_years", "durée de placement de Léa", lea_years, "ans"),
-        _v("hugo_years", "durée de placement de Hugo", hugo_years, "ans"),
+        _v("lea_years", "années de croissance de l'argent de Léa", lea_years, "ans"),
+        _v("hugo_years", "années de croissance de l'argent de Hugo", hugo_years, "ans"),
         _v("lea_final", f"Léa à {p['end_age']} ans", lea_r, "€"),
         _v("hugo_final", f"Hugo à {p['end_age']} ans", hugo_r, "€"),
         _v("gap", "écart en faveur de Léa", lea_r - hugo_r, "€"),

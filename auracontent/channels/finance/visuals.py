@@ -125,7 +125,7 @@ def _time(concept, p, c, role):
     if concept == "interets_composes":
         steps = [_p(p["early_age"], "ans", f"Léa : {fmt(p['early_amount'])} €", T),
                  _p(p["late_age"], "ans", f"Hugo : {fmt(p['late_amount'])} €", K), _p(p["end_age"], "ans", "arrivée", G)]
-        return steps, _item(c, "lea_years", "de placement pour Léa", T), "lea-neutral.png"
+        return steps, _item(c, "lea_years", "de croissance pour Léa", T), "lea-neutral.png"
     if concept == "cout_du_temps":
         steps = [_p(0, "", "début", T), _p(p["delay_years"], "ans", "on attend", K),
                  _p(p["horizon_years"], "ans", "fin", G)]

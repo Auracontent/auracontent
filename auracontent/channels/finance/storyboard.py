@@ -31,7 +31,7 @@ ROLES: dict[str, str] = {
     "reveal": "le résultat chiffré",
     "example": "un deuxième exemple chiffré, avec l'autre taux",
     "takeaway": "ce qu'il faut retenir",
-    "disclaimer": "rappel : exemple simplifié",
+    "disclaimer": "rappel de fin : texte fixe ajouté par le code, écris simplement « Fin. »",
 }
 
 # (rôle, gabarit) scène par scène, propre à chaque concept : 5 à 7 scènes de ~7-9 s, 45-60 s de vidéo.

@@ -55,14 +55,48 @@ brain:
                     "\\benorm\\w*", "\\bmagiques?\\b", "\\bspectaculaire\\w*", "\\babsolument\\b",
                     "\\bcatastroph\\w*", "\\bdesastr\\w*", "\\bexplos\\w*", "\\bsecrets?\\b",
                     "\\bincroyable\\w*", "\\bdramatique\\w*", "\\bgrignote tout\\b"]
-    banned_words: ["rendement garanti", "gain garanti", "sans risque", "investis", "achète", "conseil",
-                   "placement sûr", "valeur sûre", "devenir riche", "millionnaire"]
+    # Mots interdits (terme : raison). JAMAIS écrits dans une consigne, un exemple ou une correction envoyés au
+    # LLM (masqués en « [terme interdit] »). « achète » n'y est plus : « ce que ton argent peut acheter » décrit
+    # le pouvoir d'achat ; seul l'ordre donné au spectateur est interdit (imperatives, en début de phrase).
+    banned_words:
+      rendement garanti: promesse de résultat
+      gain garanti: promesse de résultat
+      sans risque: promesse de sécurité
+      placement sûr: promesse de sécurité
+      valeur sûre: promesse de sécurité
+      devenir riche: promesse d'enrichissement
+      millionnaire: promesse d'enrichissement
+      investis: ordre donné au spectateur
+      conseil: recommandation personnalisée (la vidéo explique, elle ne recommande pas)
+    # Ordre donné au spectateur, en début de phrase : la vidéo ne dit jamais quoi faire de son argent
+    imperatives: ["achète", "investis", "place", "épargne", "souscris", "ouvre", "vends", "emprunte"]
   # Question finale : une question sur le mécanisme, jamais une invitation à agir (placer, investir...)
-  cta_banned: ["placement", "placements", "placer", "places", "commencer à placer", "investir", "investis",
-               "investissement", "investissements", "épargner"]
+  cta_banned:
+    placement: invitation à agir
+    placements: invitation à agir
+    placer: invitation à agir
+    places: invitation à agir
+    commencer à placer: invitation à agir
+    investir: invitation à agir
+    investis: invitation à agir
+    investissement: invitation à agir
+    investissements: invitation à agir
+    épargner: invitation à agir
   # Produits, banques et marques : jamais cités
-  banned_names: ["livret A", "PEL", "LDDS", "assurance-vie", "PEA", "ETF", "bourse", "crypto", "bitcoin",
-                 "SCPI", "banque"]
+  banned_names:
+    livret A: nom de produit financier
+    PEL: nom de produit financier
+    LDDS: nom de produit financier
+    assurance-vie: nom de produit financier
+    PEA: nom de produit financier
+    ETF: nom de produit financier
+    SCPI: nom de produit financier
+    bourse: marché financier (la vidéo ne parle d'aucun produit)
+    crypto: actif financier (la vidéo ne parle d'aucun produit)
+    bitcoin: actif financier (la vidéo ne parle d'aucun produit)
+    banque: établissement (aucun établissement n'est cité)
+  # Scène de fin : texte FIXE (jamais écrit par le LLM), exclu du contrôle des mots interdits
+  disclaimer_text: "C'est un exemple simplifié et théorique, pas un conseil : chaque situation est différente."
 
   # Concepts permanents. Le sujet = concept + paramètres ; la déduplication porte sur les deux.
   # Les valeurs autorisées sont les seules que le script peut citer en entrée (les résultats viennent de calc.py).

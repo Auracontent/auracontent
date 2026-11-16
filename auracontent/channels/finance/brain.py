@@ -124,6 +124,34 @@ def _fold_keep(text: str) -> str:
     return "".join(c for c in text if unicodedata.category(c) != "Mn")
 
 
+def _as_reasons(value, default: str) -> dict[str, str]:
+    """Liste de termes (ancien format) ou dictionnaire terme -> raison."""
+    if isinstance(value, dict):
+        return {str(k): str(v) for k, v in value.items()}
+    return {str(t): default for t in value or []}
+
+
+_ACCENTS = {"a": "aàâä", "e": "eéèêë", "i": "iîï", "o": "oôö", "u": "uùûü", "c": "cç", "y": "yÿ"}
+
+
+def _accent_insensitive(term: str) -> re.Pattern:
+    """Motif d'un terme en mots entiers, sans casse ni accents (« épargner » trouve « Epargner »)."""
+    body = "".join(f"[{_ACCENTS[ch]}{_ACCENTS[ch].upper()}]" if ch in _ACCENTS else re.escape(ch)
+                   for ch in unicodedata.normalize("NFD", term.lower()) if unicodedata.category(ch) != "Mn")
+    return re.compile(rf"(?<![\w]){body}(?![\w])", re.IGNORECASE)
+
+
+def _folded_sub(pattern: str, repl: str, text: str) -> str:
+    """Remplace les correspondances d'un motif écrit pour le texte sans accents, dans le texte d'origine."""
+    folded = "".join(c for c in unicodedata.normalize("NFD", text) if unicodedata.category(c) != "Mn")
+    if len(folded) != len(text):                    # caractères composés : motif appliqué mot par mot
+        return " ".join(repl if re.search(pattern, _fold_keep(w)) else w for w in text.split(" "))
+    spans = [m.span() for m in re.finditer(pattern, folded.lower())]
+    for start, end in reversed(spans):
+        text = text[:start] + repl + text[end:]
+    return text
+
+
 def spoken_text_safe(text: str) -> str:
     try:
         return spoken_text(display_text(text))
@@ -146,8 +174,32 @@ class FinanceBrain(BaseBrain):
         cfg = dict(self._brain().get("style") or {})
         cfg.setdefault("max_sentence_words", 12)
         cfg.setdefault("max_hook_words", 12)
-        cfg.setdefault("banned_words", [])
+        cfg["banned_words"] = _as_reasons(cfg.get("banned_words"), "terme interdit")
         return cfg
+
+    def forbidden_terms(self) -> dict[str, str]:
+        """Mots interdits du texte (terme -> raison) : style.banned_words et banned_names."""
+        return {**self.style_cfg()["banned_words"],
+                **_as_reasons(self._brain().get("banned_names"), "nom de produit ou d'établissement")}
+
+    def cta_terms(self) -> dict[str, str]:
+        return _as_reasons(self._brain().get("cta_banned"), "invitation à agir")
+
+    def all_forbidden(self) -> list[str]:
+        """Tout ce qui ne doit JAMAIS apparaître dans une consigne ou une correction envoyée au LLM."""
+        return [*self.forbidden_terms(), *self.cta_terms()]
+
+    def mask_forbidden(self, text: str) -> str:
+        """Correction renvoyée au LLM : chaque mot interdit ou terme exagéré devient « [terme interdit] »."""
+        out = str(text)
+        for term in sorted(self.all_forbidden(), key=len, reverse=True):
+            out = _accent_insensitive(term).sub("[terme interdit]", out)
+        for pattern in self.style_cfg().get("hype_patterns") or []:
+            out = _folded_sub(pattern, "[terme exagéré]", out)
+        return out
+
+    def disclaimer_text(self) -> str:
+        return clean_text(self._brain().get("disclaimer_text") or "")
 
     # ---------- Concepts et paramètres ----------
     @staticmethod
@@ -191,7 +243,7 @@ class FinanceBrain(BaseBrain):
     def describe(concept: str, p: dict) -> str:
         """Sujet lisible (sert de titre interne et d'entrée aux prompts)."""
         if concept == "interets_composes":
-            return (f"Intérêts composés : {p['early_amount']} € placés à {p['early_age']} ans contre "
+            return (f"Intérêts composés : {p['early_amount']} € mis de côté à {p['early_age']} ans contre "
                     f"{p['late_amount']} € à {p['late_age']} ans, {_fmt(p['rate'])} %/an, jusqu'à {p['end_age']} ans")
         if concept == "inflation":
             return (f"Inflation : {p['amount']} € qui dorment pendant {p['years']} ans "
@@ -213,7 +265,7 @@ class FinanceBrain(BaseBrain):
         if concept == "interets_composes":
             return f"{_fmt(p['rate'])} %/an · versement unique · avant inflation"
         if concept == "inflation":
-            return f"inflation de {_fmt(p['inflation'])} %/an · argent non placé"
+            return f"inflation de {_fmt(p['inflation'])} %/an · argent qui dort"
         if concept == "cout_du_temps":
             return f"{_fmt(p['rate'])} %/an · versements mensuels · avant inflation"
         if concept == "frais":
@@ -365,7 +417,7 @@ class FinanceBrain(BaseBrain):
         for pattern in self.style_cfg().get("hype_patterns") or []:
             m = re.search(pattern, folded)
             if m:
-                found.append(f"{what} exagère (« {m.group()} ») : reste factuel et mesuré")
+                found.append(f"{what} exagère (terme absolu ou alarmiste) : reste factuel et mesuré")
         return found
 
     def numbers_block(self) -> str:
@@ -504,7 +556,7 @@ class FinanceBrain(BaseBrain):
         )
         user = self.fill(sections["user"], **values)
         if correction_feedback:
-            user += f"\n\n{correction_feedback}"
+            user += f"\n\n{self.mask_forbidden(correction_feedback)}"     # jamais un mot interdit vers le LLM
         return [{"role": "system", "content": self.fill(sections["system"], **values)},
                 {"role": "user", "content": user}]
 
@@ -546,6 +598,8 @@ class FinanceBrain(BaseBrain):
         for note in fstory.apply(concept, data["scenes"]):           # rôles et gabarits fixés par le code
             print(f"   🧩 Storyboard : {note}")
         for scene in data["scenes"]:
+            if scene["role"] == "disclaimer" and self.disclaimer_text():
+                scene["text"], scene["fixed_text"] = self.disclaimer_text(), True    # jamais écrit par le LLM
             if scene["template"] == "carte_fin":
                 scene["hide_watermark"] = True                       # le grand logo de la carte suffit
             # texte affiché (chiffres « 10 000 € ») et texte parlé (nombres en lettres), produits par le code
@@ -569,10 +623,15 @@ class FinanceBrain(BaseBrain):
 
     def text_issues(self, text: str, what: str) -> list[str]:
         """Contrôles de fond communs aux accroches, au bandeau et à la narration."""
-        b, cfg, issues = self._brain(), self.style_cfg(), []
-        for term in [*cfg["banned_words"], *(b.get("banned_names") or [])]:
+        issues = []
+        for term, reason in self.forbidden_terms().items():
             if contains_term(text, term):
-                issues.append(f"{what} contient « {term} » (interdit)")
+                issues.append(f"{what} contient un terme interdit ({reason}) : « {self.mask_forbidden(text)} »")
+                break
+        for word in self._brain().get("style", {}).get("imperatives") or []:
+            if any(_fold_keep(s).startswith(_fold_keep(word) + " ") for s in sentences(text) or [text]):
+                issues.append(f"{what} donne un ordre au spectateur : décris le mécanisme, ne dis jamais quoi faire")
+                break
         if re.search(r"\b(vous|votre|vos)\b", _fold(text)):
             issues.append(f"{what} vouvoie (tutoiement obligatoire)")
         allowed = self.allowed_numbers()
@@ -593,7 +652,8 @@ class FinanceBrain(BaseBrain):
         if self._brain().get("meaning_check") != "llm" or self.llm is None:
             return []
         concept, params, _ = self._pick()
-        lines = [f"Scène {s.get('id')} : {s.get('text', '')}" for s in data.get("scenes", [])]
+        # le rappel de fin (texte fixe du YAML) n'est pas envoyé : validé par construction
+        lines = [f"Scène {s.get('id')} : {s.get('text', '')}" for s in data.get("scenes", []) if not s.get("fixed_text")]
         lines += [f"Bandeau : {data.get('on_screen_title', '')}", f"Titre : {data.get('title', '')}",
                   f"Question finale : {data.get('closing_cta', '')}"]
         table = [f"- {label} : {fcalc.fmt_number(v)} {unit}".rstrip() for v, unit, label in self.number_table()]
@@ -678,7 +738,8 @@ class FinanceBrain(BaseBrain):
         concept, _, _ = self._pick()
         n = len(fstory.storyboard(concept))
         total = round((self.duration_target() - float(b.get("cta_seconds", 3))) * wps)
-        hook, end = int(b.get("hook_words", 10)), int(b.get("end_words", 8))
+        hook = int(b.get("hook_words", 10))
+        end = count_words(spoken_text_safe(self.disclaimer_text())) if self.disclaimer_text() else int(b.get("end_words", 8))
         middle = max(8, round((total - hook - end) / max(n - 2, 1)))
         return [hook] + [middle] * (n - 2) + [end]
 
@@ -703,7 +764,7 @@ class FinanceBrain(BaseBrain):
             if comparable(phrase) not in narration:
                 issues.append(f"la narration doit nommer « {phrase} »")
         for scene in scenes:
-            if scene.get("role") != "disclaimer":
+            if scene.get("role") != "disclaimer" or scene.get("fixed_text"):
                 continue
             if numbers_in(scene.get("text", "")):
                 issues.append(f"scène {scene.get('id')} (fin) : aucun nouveau chiffre, seulement le rappel")
@@ -712,11 +773,9 @@ class FinanceBrain(BaseBrain):
         if numbers_in(data.get("closing_cta", "")):
             issues.append("la question finale ne contient aucun chiffre")
         cta = str(data.get("closing_cta", ""))
-        for term in self._brain().get("cta_banned") or []:
-            if contains_term(cta, term):
-                issues.append(f"la question finale invite à agir (« {term} ») : pose une question sur le mécanisme "
-                              "(comment, pourquoi, combien), jamais une invitation à placer ou investir")
-                break
+        if any(contains_term(cta, term) for term in self.cta_terms()):
+            issues.append("la question finale invite à agir : pose une question sur le mécanisme (comment, pourquoi, "
+                          "combien), jamais sur ce que le spectateur devrait faire de son argent")
         targets = self.scene_word_targets()
         if targets and len(targets) == len(scenes):
             said = [self.spoken_words(s) for s in scenes]
@@ -767,6 +826,8 @@ class FinanceBrain(BaseBrain):
         cfg, issues = self.style_cfg(), []
         limit = int(cfg["max_sentence_words"])
         for scene in data.get("scenes", []):
+            if scene.get("fixed_text"):                  # avertissement de fin : texte fixe du YAML
+                continue
             for sentence in sentences(scene.get("text", "")):
                 if count_words(sentence) > limit:
                     issues.append(f"scène {scene.get('id')} : phrase de {count_words(sentence)} mots "
