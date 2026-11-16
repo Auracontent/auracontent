@@ -76,6 +76,11 @@ brain:
       conseil: recommandation personnalisée (la vidéo explique, elle ne recommande pas)
     # Ordre donné au spectateur, en début de phrase : la vidéo ne dit jamais quoi faire de son argent
     imperatives: ["achète", "investis", "place", "épargne", "souscris", "ouvre", "vends", "emprunte"]
+    # Verbes sans complément d'objet : « Dormir 1 000 € » n'a pas de sujet correct (on LAISSE dormir
+    # 1 000 €, ou les 1 000 € dorment). Refusés quand un montant ou « ton argent » les suit directement.
+    intransitive_verbs: ["dormir", "dors", "dort", "dorment", "grandir", "grandit", "grandissent", "fondre",
+                         "fond", "fondent", "vieillir", "vieillit", "croitre", "croit", "gonfler", "gonfle",
+                         "rouiller", "rouille", "stagner", "stagne"]
   # Question finale : une question sur le mécanisme, jamais une invitation à agir (placer, investir...)
   cta_banned:
     placement: invitation à agir

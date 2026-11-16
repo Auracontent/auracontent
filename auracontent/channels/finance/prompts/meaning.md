@@ -16,6 +16,7 @@ Pour chaque phrase qui contient un chiffre, vérifie :
 3. l'affirmation qui l'entoure est vraie d'après la TABLE et l'HYPOTHÈSE (pas de « tu perds tout », pas de comparaison inversée, pas de promesse).
 Les phrases sans chiffre ne sont rejetées que si elles affirment quelque chose de faux d'après la TABLE.
 3bis. Le BANDEAU et le TITRE aussi : un chiffre présenté seul ne doit pas donner une idée fausse (un coût de l'attente sans les versements en plus qu'il suppose, un gain sans son hypothèse, une comparaison inversée).
+3ter. Chaque phrase est du français correct et son sujet fait réellement l'action : « Dormir 1 000 € pendant 30 ans » est faux (on laisse dormir 1 000 €, ou les 1 000 € dorment) ; un montant ne « décide » rien, l'inflation ne « paie » rien. Rejette une phrase sans sujet logique.
 4. Chaque scène apporte un fait, un chiffre ou une étape du raisonnement ; rejette une scène de remplissage qui n'apporte rien (« Tu cherches un moyen simple… »). La dernière scène, un simple rappel que c'est un exemple simplifié, est acceptée.
 
 RETOURNE :

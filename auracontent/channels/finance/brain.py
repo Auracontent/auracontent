@@ -732,7 +732,29 @@ class FinanceBrain(BaseBrain):
         if m:
             issues.append(f"{what} : « {m.group()} » ; écris « multipliée par N », sans « fois »")
         issues += self.meaning_issues(text, what)
+        issues += self.subject_issues(text, what)
         return issues
+
+    def subject_issues(self, text: str, what: str) -> list[str]:
+        """Sujet grammatical cohérent : un verbe sans complément d'objet (brain.style.intransitive_verbs) ne
+        s'applique pas directement à un montant ou à « ton argent » (« Dormir 1000 € pendant 30 ans ») ;
+        « laisser dormir 1 000 € », « tes 1 000 € dorment » sont corrects."""
+        verbs = [_fold_keep(v) for v in self._brain().get("style", {}).get("intransitive_verbs") or []]
+        if not verbs:
+            return []
+        pattern = re.compile(
+            r"\b(" + "|".join(map(re.escape, verbs)) + r")\s+(?:(?:ton|ta|tes|son|sa|ses|le|la|les|l'|cet|cette|"
+            r"ces|un|une|des|ce)\s*)?(?:\d[\d\s.,]*\s?(?:€|euros?\b)|argent\b|epargne\b|somme\b|economies\b)")
+        for sentence in sentences(text) or [text]:
+            folded = _fold_keep(sentence)
+            for m in pattern.finditer(folded):
+                before = folded[:m.start()].split()
+                if before and before[-1] in ("laisser", "laisse", "laisses", "laissent", "faire", "fait", "fais"):
+                    continue
+                return [f"{what} : « {self.mask_forbidden(sentence)} » n'a pas de sujet correct (« {m.group(1)} » "
+                        f"ne prend pas de complément) ; fais du montant le sujet, comme « ton argent dort », ou écris "
+                        f"« laisser dormir ton argent »"]
+        return []
 
     def llm_meaning_issues(self, data: dict) -> list[str]:
         """brain.meaning_check: llm -> un appel reçoit la table des calculs et le script, répond oui/non avec

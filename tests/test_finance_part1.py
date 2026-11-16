@@ -220,3 +220,25 @@ def test_too_short_script_is_regenerated_not_accepted():
     assert brain._checked("t", copy.deepcopy(script))[0].ratio < 0.9
     brain.llm = _Queue(script)
     assert "trop court" in _run(brain)["unresolved_issues"][0]
+
+
+# ---------- 1.7 Sujet grammatical cohérent ----------
+@pytest.mark.parametrize("text, ok", [
+    ("Dormir 1000 € pendant 30 ans.", False),
+    ("Dormir ton argent pendant 30 ans ?", False),
+    ("Laisser dormir 1 000 € pendant 30 ans.", True),
+    ("Tes 1 000 € dorment pendant 30 ans.", True),
+    ("Ton argent dort 30 ans.", True),
+])
+def test_subject_must_be_coherent(text, ok):
+    brain = _brain("inflation", INFL_1000)
+    issues = brain.text_issues(text, "la scène 2")
+    assert (issues == []) is ok, issues
+    if not ok:
+        assert "sujet correct" in issues[0] and f"« {text} »" in issues[0]
+        assert "ton argent dort" in issues[0]                         # correction proposée
+
+
+def test_meaning_prompt_checks_the_subject():
+    brain = _brain("inflation", INFL_1000)
+    assert "Dormir 1 000 € pendant 30 ans" in brain.read_sections("meaning.md")["user"]
