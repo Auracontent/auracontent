@@ -435,20 +435,45 @@ class FinanceBrain(BaseBrain):
             return "Mettre moins d'argent… et finir avec plus."
         return example.format_map({k: v.text for k, v in self.calc().values.items()})
 
+    def _calc_texts(self) -> dict[str, str]:
+        """Textes de calc.py (« 5 540 € », « 45 % ») et paramètres formatés (« amount » -> « 10 000 € »)."""
+        _, params, _ = self._pick()
+        texts = {k: v.text for k, v in self.calc().values.items()}
+        for key, value in params.items():
+            unit = PARAM_UNITS.get(key, "")
+            texts.setdefault(key, f"{fcalc.fmt_number(value)} {unit if unit in ('€', '%') else ''}".strip())
+        return texts
+
+    def wording(self) -> str:
+        """Formulations interdites et autorisées du concept, avec ses vrais chiffres (prompt, premier appel)."""
+        _, _, spec = self._pick()
+        template = str(spec.get("wording") or "")
+        try:
+            return template.format_map(self._calc_texts())
+        except (KeyError, IndexError, ValueError):
+            return template
+
     def loss_issues(self, text: str, what: str) -> list[str]:
-        """concepts.<c>.loss_needs (inflation : « pouvoir d'achat ») : une perte n'est vraie qu'avec ces mots."""
+        """concepts.<c>.loss_needs (inflation) : une perte n'est vraie qu'avec « pouvoir d'achat », « valeur
+        réelle » ou « ce que ton argent peut acheter ». Le motif cite la phrase et propose des reformulations."""
         _, _, spec = self._pick()
         needed = spec.get("loss_needs")
         if not needed:
             return []
-        issues = []
+        needed = [needed] if isinstance(needed, str) else list(needed)
         for sentence in sentences(text) or [text]:
             folded = _fold_keep(sentence)
-            if re.search(r"\b(perd\w*|pert\w*)\b", folded) and _fold_keep(needed) not in folded:
-                issues.append(f"{what} : « perdre » sans « {needed} » est faux (l'argent reste sur le compte, "
-                              f"c'est le {needed} qui baisse)")
-                break
-        return issues
+            if re.search(r"\b(perd\w*|pert\w*)\b", folded) and not any(_fold_keep(n) in folded for n in needed):
+                fixes = []
+                for fix in spec.get("loss_fixes") or []:
+                    try:
+                        fixes.append(f"« {fix.format_map(self._calc_texts())} »")
+                    except (KeyError, IndexError, ValueError):
+                        continue
+                hint = f" ; écris par exemple {' ou '.join(fixes)}" if fixes else ""
+                return [f"{what} : « {sentence} » dit que l'argent se perd, or il reste sur le compte : seul le "
+                        f"pouvoir d'achat baisse{hint}"]
+        return []
 
     def pending_hook_issues(self, text: str, topic: str) -> list[str]:
         """Accroche d'un sujet en attente, recontrôlée à la reprise (règles actuelles du code, puis LLM)."""
@@ -463,11 +488,11 @@ class FinanceBrain(BaseBrain):
         commence par l'accroche, passe ensuite le contrôle de sens du script)."""
         if not hooks or self._brain().get("meaning_check") != "llm" or self.llm is None:
             return hooks
-        concept, params, spec = self._pick()
+        concept, params, _ = self._pick()
         table = [f"- {label} : {fcalc.fmt_number(v)} {unit}".rstrip() for v, unit, label in self.number_table()]
         sections = self.read_sections("hook_check.md")
         values = {"hypothesis": self.hypothesis(concept, params), "table": "\n".join(table),
-                  "wording": spec.get("wording", ""),
+                  "wording": self.wording(),
                   "hooks": "\n".join(f"{i}. {h['text']}" for i, h in enumerate(hooks, 1))}
         try:
             data = self.llm.call_json_with_retry(
@@ -509,7 +534,7 @@ class FinanceBrain(BaseBrain):
         sections = self.read_sections("hook.md")
         cfg = self.style_cfg()
         values = dict(topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""), n=n,
-                      wording=spec.get("wording", ""), max_hook_words=cfg["max_hook_words"],
+                      wording=self.wording(), max_hook_words=cfg["max_hook_words"],
                       numbers_block=self.numbers_block(), hook_example=self.hook_example())
         valid = []
         for attempt in range(2):
@@ -539,7 +564,7 @@ class FinanceBrain(BaseBrain):
         sections = self.read_sections("script.md")
         values = dict(
             topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""),
-            wording=spec.get("wording", ""),
+            wording=self.wording(),
             hypothesis=self.hypothesis(concept, params),
             params_block="\n".join(f"- {PARAM_LABELS.get(k, k)} : {_fmt(v)}" for k, v in params.items()),
             results_block="\n".join(f"- {v.label} : {v.text}" for v in self.calc().values.values()),

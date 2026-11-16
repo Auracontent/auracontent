@@ -460,4 +460,4 @@ def test_hook_check_unavailable_keeps_hooks():
 
 def test_inflation_wording_in_prompts():
     brain = _picked("inflation", INFL)
-    assert "la somme reste sur le compte" in brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
+    assert "La somme reste sur le compte" in brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
