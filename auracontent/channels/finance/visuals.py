@@ -48,6 +48,142 @@ def _p(value: float, unit: str, label: str = "", color: str = T) -> tpl.Item:
     return tpl.Item(label, value, f"{fmt(value)} {unit}".strip(), color, "{n} " + unit if unit else "{n}")
 
 
+# ---------- Concepts du quotidien (partie 3) : une table par concept, scènes génériques ----------
+# two   : (clé ou "param:nom", libellé) x 2 -> deux montants (piles de pièces), Léa et Hugo réagissent ;
+#         bad = True : le plus grand montant est la mauvaise nouvelle (Hugo sursaute devant, Léa sourit à côté)
+# bars  : jusqu'à 3 (clé, libellé, couleur) ; curve : (libellé a, clé de sa valeur finale, libellé b ou None,
+#         clé de b ou None (légende sans valeur), clé de l'écart ou None, (x début, x fin), unité de l'axe) :
+#         les valeurs écrites viennent de calc.py, jamais de la série (98 000 €, pas 97 997 €) ;
+#         cast : (pose de départ, réaction, annotation, note)
+# Les libellés sont des modèles remplis avec les paramètres du sujet ({years}, {days}...).
+GENERIC: dict[str, dict] = {
+    "depenses_repetees": {
+        "two": (("over_years", "en {years} ans"), ("per_year", "en 1 an")), "bad": True,
+        "bars": [("per_week_total", "par semaine", G), ("per_year", "par an", K), ("over_years", "en {years} ans", T)],
+        "curve": ("total dépensé", "over_years", None, None, None, ("0", "{years} ans"), "€"),
+        "cast": ("lea-neutral.png", "lea-surprise.png", "{amount_eur} \u00d7 {per_week}", "par semaine")},
+    "abonnements": {
+        "two": (("total_year", "par an"), ("total_month", "par mois")), "bad": True,
+        "bars": [("total_month", "par mois", G), ("total_year", "par an", K), ("over_years", "en {years} ans", T)],
+        "curve": ("total payé", "over_years", None, None, None, ("0", "{years} ans"), "€"),
+        "cast": ("hugo-neutral.png", "hugo-shock.png", "{count} abonnements", "{total_month_eur} par mois")},
+    "remises_successives": {
+        "two": (("final_price", "prix payé"), ("naive_price", "prix qu'on croit")), "bad": True,
+        "bars": [("naive_pct", "remise crue", K), ("total_pct", "remise réelle", T)],
+        "curve": ("prix payé", "final_price", None, None, None, ("départ", "2 remises"), "€"),
+        "cast": ("lea-neutral.png", "lea-shrug.png", "\u2212{first} % puis \u2212{second} %", "ça fait \u2212{naive_pct} % ?")},
+    "paiement_fractionne": {
+        "two": (("total_paid", "total payé"), ("param:price", "prix affiché")), "bad": True,
+        "bars": [("param:price", "prix", G), ("total_paid", "payé", K), ("extra_cost", "frais", T)],
+        "curve": ("total payé", "total_paid", None, None, None, ("1er paiement", "dernier"), "€"),
+        "cast": ("hugo-neutral.png", "hugo-smug.png", "{price_eur} en {installments} fois", "et les frais ?")},
+    "credit_amortissable": {
+        "two": (("total_paid", "remboursé"), ("param:amount", "emprunté")), "bad": True,
+        "bars": [("param:amount", "emprunté", G), ("interest", "intérêts", K), ("total_paid", "remboursé", T)],
+        "curve": ("total remboursé", "total_paid", "reste à rembourser", None, None, ("0", "{years} ans"), "€"),
+        "cast": ("hugo-neutral.png", "hugo-shock.png", "{amount_eur} sur {years} ans", "à {rate} % par an")},
+    "decouvert_agios": {
+        "two": (("agios_year", "sur 1 an"), ("agios", "en {days} jours")), "bad": True,
+        "bars": [("per_day", "par jour", G), ("agios", "{days} jours", K), ("agios_year", "sur 1 an", T)],
+        "curve": ("agios", "agios", None, None, None, ("0", "{days} jours"), "€"),
+        "cast": ("lea-neutral.png", "lea-surprise.png", "\u2212{overdraft_eur}", "pendant {days} jours")},
+    "forfait_appareil": {
+        "two": (("real_price", "via le forfait"), ("param:phone_price", "comptant")), "bad": True,
+        "bars": [("param:phone_price", "comptant", G), ("real_price", "via le forfait", K), ("overcost", "surcoût", T)],
+        "curve": ("payé pour l'appareil", "real_price", "prix comptant", "param:phone_price", "overcost", ("0", "{months} mois"), "€"),
+        "cast": ("hugo-neutral.png", "hugo-smug.png", "téléphone à {upfront_eur}", "+{extra_monthly_eur} par mois")},
+    "carte_fidelite": {
+        "two": (("param:pct", "remise immédiate"), ("effective_pct", "bon d'achat")), "bad": False,
+        "bars": [("param:pct", "remise immédiate", T), ("effective_pct", "bon d'achat", K)],
+        "curve": ("remise immédiate", "voucher", "bon d'achat", None, None, ("0 €", "{spend_eur}"), "€"),
+        "cast": ("lea-neutral.png", "lea-shrug.png", "{pct} % offerts", "en bon d'achat")},
+    "epargne_age": {
+        "two": (("final_a", "dès {age_a} ans"), ("final_b", "dès {age_b} ans")), "bad": False,
+        "bars": [("paid_a", "versé", G), ("final_a", "dès {age_a} ans", T), ("final_b", "dès {age_b} ans", K)],
+        "curve": ("dès {age_a} ans", "final_a", "dès {age_b} ans", "final_b", "gap", ("{age_a} ans", "{end_age} ans"), "€"),
+        "cast": ("lea-neutral.png", "lea-joy.png", "{monthly_eur} par mois", "dès {age_a} ou {age_b} ans ?")},
+    "salaire_vs_prix": {
+        "two": (("new_salary", "sur la fiche de paie"), ("real_salary", "ce qu'il achète")), "bad": False,
+        "bars": [("param:salary", "avant", G), ("new_salary", "après", K), ("real_salary", "ce qu'il achète", T)],
+        "curve": ("augmentation par mois", "raise_eur", "hausse des prix par mois", "basket_rise_eur", None,
+                  ("aujourd'hui", "dans 1 an"), "€"),
+        "cast": ("hugo-neutral.png", "hugo-smug.png", "+{raise_pct} % de salaire", "+{inflation} % de prix")},
+    "taux_reel": {
+        "two": (("nominal_gain", "intérêts"), ("real_gain", "gain réel")), "bad": False,
+        "bars": [("param:nominal", "taux affiché", K), ("param:inflation", "inflation", G), ("real_exact", "taux réel", T)],
+        "curve": ("intérêts", "nominal_gain", "gain réel", "real_gain", None, ("0", "12 mois"), "€"),
+        "cast": ("lea-neutral.png", "lea-shrug.png", "{nominal} % \u2212 {inflation} %", "= {real_approx} % ?")},
+    "leasing_epargne": {
+        "two": (("saving_final", "mis de côté"), ("leasing_paid", "loyers payés")), "bad": False,
+        "bars": [("leasing_paid", "loyers payés", K), ("leasing_left", "reste du leasing", G), ("saving_final", "mis de côté", T)],
+        "curve": ("mis de côté", "saving_final", "loyers payés", "leasing_paid", None, ("0", "{years} ans"), "€"),
+        "cast": ("hugo-neutral.png", "hugo-smug.png", "{monthly_eur} par mois", "pendant {years} ans")},
+}
+
+
+def _fields(p: dict, c: fcalc.Calc) -> dict:
+    """Valeurs des modèles de libellés : paramètres (« {years} », « {price_eur} » = « 400 € ») et résultats."""
+    spec = fcalc.SPECS.get(c.concept, {}).get("params", {})
+    out = {k: fmt(v) for k, v in p.items() if isinstance(v, (int, float))}
+    out.update({f"{k}_eur": fcalc.money_text(v) for k, v in p.items()
+                if isinstance(v, (int, float)) and spec.get(k, ("", ""))[1] == "€"})
+    for key, v in c.values.items():
+        out.setdefault(key, fmt(v.value))
+        out[f"{key}_eur"] = v.text
+    return out
+
+
+def _g_item(c: fcalc.Calc, p: dict, ref: str, label: str, color: str = T) -> tpl.Item:
+    """Item d'un résultat de calc.py, ou d'un paramètre (« param:price »), avec son libellé rempli."""
+    label = label.format(**_fields(p, c))
+    if ref.startswith("param:"):
+        name = ref.split(":", 1)[1]
+        unit = fcalc.SPECS[c.concept]["params"][name][1]
+        value = fcalc.Value(name, label, float(p[name]), unit)
+        return tpl.Item(label, value.value, value.text, color, ("{n} " + unit).strip() if unit else "{n}")
+    return _item(c, ref, label, color)
+
+
+def _g_two(concept, p, c):
+    g = GENERIC[concept]
+    (ka, la), (kb, lb) = g["two"]
+    a, b = _g_item(c, p, ka, la), _g_item(c, p, kb, lb)
+    big, small = (a, b) if a.value >= b.value else (b, a)
+    good_big = not g.get("bad")
+    big_side = tpl.Side(big.label, big.value, big.text, color=T if good_big else K,
+                        react="lea-joy.png" if good_big else "hugo-shock.png", count_template=big.count_template)
+    small_side = tpl.Side(small.label, small.value, small.text, color=K if good_big else T,
+                          idle="hugo-neutral.png" if good_big else "lea-neutral.png",
+                          react="hugo-shock.png" if good_big else "lea-joy.png", count_template=small.count_template)
+    return big_side, small_side, ""
+
+
+def _g_curve(concept, p, c):
+    g = GENERIC[concept]
+    la, ka, lb, kb, gap_key, (xa, xb), unit = g["curve"]
+    f = _fields(p, c)
+
+    def end(label, key, color):
+        if key is None:                                   # légende sans valeur : aucun chiffre hors de calc.py
+            return tpl.Item(label.format(**f), 0, "", color, "")
+        return _g_item(c, p, key, label, color)
+
+    a = end(la, ka, T)
+    b = end(lb, kb, K) if lb and c.series.get("b") else None
+    gap = _item(c, gap_key, c.values[gap_key].label, K) if gap_key else None
+    return a, b, gap, (xa.format(**f), xb.format(**f)), unit
+
+
+def _g_bars(concept, p, c):
+    return [_g_item(c, p, ref, label, color) for ref, label, color in GENERIC[concept]["bars"]]
+
+
+def _g_cast(concept, p, c):
+    pose, then, annotation, note = GENERIC[concept]["cast"]
+    f = _fields(p, c)
+    return [{"pose": pose, "then": then, "x": 420}], annotation.format(**f), note.format(**f)
+
+
 # ---------- Correspondance concept -> données de chaque forme ----------
 def _two(concept, p, c):
     """(gagnant, perdant) pour « deux montants »."""
@@ -168,6 +304,8 @@ def scene_layers(concept: str, params: dict, scene: dict, duration: float, *, hy
     """Calques d'une scène du script (rôle, gabarit, variante) d'après calc.py."""
     c = fcalc.compute(concept, params)
     role, template, variant = scene.get("role"), scene.get("template"), scene.get("visual")
+    if concept in GENERIC and template in ("deux_arbres", "deux_courbes", "barres", "personnages"):
+        return _generic_layers(concept, params, c, template, variant, duration, hypothesis)
     if role == "cta":
         return tpl.end_card(resolve=resolve, name=NAME, baseline=BASELINE, question=question, duration=duration)
     if template == "carte_fin":
@@ -198,6 +336,25 @@ def scene_layers(concept: str, params: dict, scene: dict, duration: float, *, hy
         cast, annotation, note = _cast(concept, params)
         return tpl.characters(cast, resolve=resolve, annotation=annotation, note=note, duration=duration)
     raise ValueError(f"gabarit inconnu : {template}")
+
+
+def _generic_layers(concept, params, c, template, variant, duration, hypothesis) -> list[dict]:
+    """Scènes génériques d'un concept du quotidien : deux montants (piles), barres et courbe avec Léa ou Hugo,
+    graduations sur l'axe vertical, personnages avec annotation."""
+    if template == "deux_arbres":
+        win, lose, _ = _g_two(concept, params, c)
+        return tpl.two_amounts(win, lose, resolve=resolve, subtitle=hypothesis, duration=duration, variant="piles")
+    if template == "deux_courbes":
+        a, b, gap, xl, unit = _g_curve(concept, params, c)
+        return tpl.curve_in_time(c.series, a, b, x_labels=xl, subtitle=hypothesis, gap=gap, duration=duration,
+                                 variant="ecart" if variant == "ecart" and gap is not None and b is not None
+                                 else "courbes", y_ticks=True, y_unit=unit, companion="hugo-point.png",
+                                 resolve=resolve)
+    if template == "barres":
+        return tpl.bars(_g_bars(concept, params, c), subtitle=hypothesis, duration=duration,
+                        companion="lea-point.png", resolve=resolve)
+    cast, annotation, note = _g_cast(concept, params, c)
+    return tpl.characters(cast, resolve=resolve, annotation=annotation, note=note, duration=duration)
 
 
 def build_scene(concept: str, params: dict, scene: dict, duration: float, cfg: dict | None = None, **kw) -> Scene:

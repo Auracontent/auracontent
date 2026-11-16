@@ -19,8 +19,45 @@ import math
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from functools import lru_cache
+from pathlib import Path
 
-from auracontent.services.visuals.linework.engine import DESIGN_WIDTH, _sprite
+from auracontent.services.visuals.linework.engine import DESIGN_WIDTH, _font, _sprite, wrap
+
+HAND_FONT = Path(__file__).resolve().parents[4] / "assets" / "finance" / "fonts" / "Caveat.ttf"
+
+
+def fmt_num(x: float, unit: str = "") -> str:
+    """« 5 200 », « 2,5 » : espace des milliers, virgule décimale (comme calc.fmt_number) ; un montant en
+    euros à centimes garde deux décimales (« 408,80 »)."""
+    if float(x).is_integer():
+        return f"{int(x):,}".replace(",", " ")
+    if unit == "€":
+        return f"{int(x):,}".replace(",", " ") + f",{round(abs(x) * 100) % 100:02d}"
+    return f"{x:g}".replace(".", ",")
+
+
+def text_width(value: str, size: float, frame_width: int = 1080) -> float:
+    if not HAND_FONT.exists():
+        return 0.3 * size * len(value)
+    return _font(str(HAND_FONT), max(1, round(size * frame_width / DESIGN_WIDTH)), True).getlength(value)
+
+
+def companion_layer(resolve: Resolver, name: str, cx_px: float, surface_px: float, height_px: float,
+                    frame: Frame, t0: float = 0.3) -> dict:
+    """Léa ou Hugo debout à côté du graphique (posé sur la ligne de base / l'axe), qui apparaît en fondu."""
+    layer = grounded(resolve, name, height_px, cx_px, surface_px, frame)
+    # à droite du graphique : miroir, il montre le graphique (les sprites « point » montrent vers la droite)
+    layer.update(id="compagnon", role="character", keys=_fade(t0), flip=True,
+                 motion="le personnage montre le graphique")
+    return layer
+
+
+def lines_of(value: str, size: float, w_px: float, frame_width: int = 1080) -> int:
+    """Nombre de lignes d'un texte Caveat (taille du plan de conception) dans w_px pixels de sortie."""
+    if not HAND_FONT.exists() or not value:
+        return 1
+    font = _font(str(HAND_FONT), max(1, round(size * frame_width / DESIGN_WIDTH)), True)
+    return len(wrap(font, value, w_px))
 
 INK, TURQUOISE, GOLD, GRAY, PAPER = "#1A1A1A", "#0E9F8E", "#E0A526", "#454950", "#F7F3EA"   # gris foncé : lisible
 Resolver = Callable[[str], object]
@@ -107,7 +144,8 @@ def shown(item: Item, prefix: str = "") -> str:
     if item.count_template and float(item.value) == int(item.value):
         return prefix + item.count_template
     if item.count_template:                  # décimal : même modèle, valeur écrite (« x 5,4 »), sans compteur
-        return prefix + item.count_template.replace("{n}", f"{item.value:g}".replace(".", ","))
+        unit = "€" if "{n} €" in item.count_template else ""
+        return prefix + item.count_template.replace("{n}", fmt_num(item.value, unit))
     return prefix + item.text
 
 
@@ -150,7 +188,7 @@ def _title(layers: list[dict], title: str, subtitle: str, f: Frame) -> float:
         y += 70
     if subtitle:
         layers.append(text("hypothese", subtitle, f.left, y, 50, f, color=GRAY, start=0.1))
-        y += 58
+        y += 50 * lines_of(subtitle, 50, f.right - f.left, f.width) + 8          # 1 ou 2 lignes
     return y
 
 
@@ -170,12 +208,14 @@ def two_amounts(left: Side, right: Side, *, resolve: Resolver, title: str = "", 
     top_free = _title(layers, title, subtitle, f)
 
     big_h = surface - top_free - 10
-    ratio = max(0.45, min(0.9, loser.value / max(winner.value, 1e-9)))
+    # piles : hauteur fidèle au rapport des montants (plancher 12 % pour rester visible), arbres : inchangé
+    ratio = max(0.12 if variant == "piles" else 0.45, min(0.9, loser.value / max(winner.value, 1e-9)))
     cols = {"win_obj": f.left + 175, "win_char": f.left + 390, "lose_obj": f.left + 560, "lose_char": f.right - 75}
     if variant == "arbres":
         big_sprite, small_sprite = "tree-lea.png", "tree-hugo.png"
     elif variant == "piles":
-        big_sprite, small_sprite = "stack-16.png", "stack-9.png"
+        # même dessin pour les deux piles, hauteur proportionnelle : la plus petite paraît toujours plus petite
+        big_sprite, small_sprite = "stack-16.png", "stack-16.png"
         big_h = min(big_h, 420)
     else:
         raise ValueError(f"variante inconnue pour two_amounts : {variant}")
@@ -239,7 +279,8 @@ def two_amounts(left: Side, right: Side, *, resolve: Resolver, title: str = "", 
 # ---------- Courbe dans le temps ----------
 def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tuple[str, str], title: str = "",
                   subtitle: str = "", gap: Item | None = None, duration: float = 6.0, variant: str = "courbes",
-                  frame: Frame | None = None) -> list[dict]:
+                  frame: Frame | None = None, y_ticks: bool = False, y_unit: str = "", companion: str = "",
+                  resolve: Resolver | None = None) -> list[dict]:
     """Une ou deux courbes qui se tracent (series de calc.py : x, a, b). Légende en dessous avec compteurs ;
     variante « ecart » : l'écart final est marqué d'une accolade et annoncé (gap)."""
     f = frame or Frame()
@@ -252,6 +293,22 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
     xs = series["x"]
     vals = [v for key in ("a", "b") for v in (series.get(key) or []) if v is not None]
     vmax = max(vals) * 1.08 if vals else 1
+    ticks: list[float] = []
+    if y_ticks and vals:                    # graduations : 0 en bas, valeur la plus haute (et de départ) au-dessus
+        top_v = float(max(vals))
+        ticks = [0.0, top_v]
+        for key in ("a", "b"):                          # valeurs de départ (paramètres du sujet)
+            start = (series.get(key) or [None])[0]
+            if start and 0.15 * top_v < start < 0.85 * top_v and start not in ticks:
+                ticks.append(float(start))
+        unit = f" {y_unit}" if y_unit else ""
+        labels = {v: fmt_num(round(v, 2), y_unit) + unit for v in ticks}
+        for item in (a, b):                             # valeur la plus haute : le texte de calc.py (98 000 €)
+            if item is not None and item.text and abs(item.value - top_v) <= 0.01 * top_v:
+                labels[top_v] = item.text
+        x0 = f.left + max(text_width(t, 40, f.width) for t in labels.values()) + 22
+    if companion and resolve is not None:
+        x1 = f.right - 230                  # place à droite pour le personnage
 
     def pt(i: int, v: float) -> tuple[float, float]:
         return ((x1 - x0) * (xs[i] - xs[0]) / max(xs[-1] - xs[0], 1e-9) * k, -(bottom - top) * v / vmax * k)
@@ -259,6 +316,14 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
     layers.append({"type": "path", "role": "decor", "id": "axes", "x": x0 * k, "y": bottom * k, "lineWidth": 5,
                    "points": [(0, (top - bottom) * k), (0, 0), ((x1 - x0) * k, 0)], "color": INK,
                    "keys": [{"t": 0.0, "progress": 0}, {"t": 0.3, "progress": 1}], "sfx": _sfx(0.0, "paper.wav", 0.3)})
+    for i, v in enumerate(ticks):
+        y = bottom - (bottom - top) * v / vmax
+        layers.append({"type": "path", "role": "decor", "id": f"graduation-{i}", "x": (x0 - 14) * k, "y": y * k,
+                       "points": [(0, 0), (14 * k, 0)], "color": INK, "lineWidth": 4, "from": 0.2})
+        layers.append(text(f"graduation-texte-{i}", labels[v], f.left, y - 26, 40, f, color=GRAY, start=0.2,
+                           w_px=x0 - f.left - 16))
+    if companion and resolve is not None:
+        layers.append(companion_layer(resolve, companion, f.right - 105, bottom, min(300, bottom - top - 40), f))
     layers.append(text("x-debut", x_labels[0], x0 - 20, bottom + 8, 50, f, color=GRAY, start=0.15, w_px=300))
     layers.append(text("x-fin", x_labels[1], x1 - 170, bottom + 8, 50, f, color=GRAY, start=0.15, w_px=190))
     draw = min(1.8, 0.45 * D)                                      # tracé : jamais plus long que 1,8 s
@@ -276,8 +341,8 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
         layers.append({"type": "path", "role": "decor", "id": f"legende-trait-{key}", "x": f.left * k,
                        "y": (row + 30) * k, "points": [(0, 0), (60 * k, 0)], "color": item.color, "lineWidth": 8,
                        "from": end})
-        label = f"{item.label} : "
-        layers.append(text(f"legende-{key}", shown(item, label), f.left + 80,
+        label = f"{item.label} : " if item.text else item.label          # légende sans valeur possible
+        layers.append(text(f"legende-{key}", shown(item, label) if item.text else label, f.left + 80,
                            row, 54, f, color=item.color if item.color != GRAY else INK, role="value", start=end,
                            w_px=f.right - f.left - 80, count=counter(item, end, 0.8, prefix=label),
                            sfx=_sfx(end, "tick.wav", 0.25)))
@@ -300,7 +365,8 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
 
 # ---------- Barres comparées / part d'un tout ----------
 def bars(items: list[Item], *, title: str = "", subtitle: str = "", duration: float = 6.0, variant: str = "barres",
-         share: Item | None = None, share_caption: str = "", frame: Frame | None = None) -> list[dict]:
+         share: Item | None = None, share_caption: str = "", frame: Frame | None = None, companion: str = "",
+         resolve: Resolver | None = None) -> list[dict]:
     """« barres » : 1 à 3 barres qui montent l'une après l'autre, valeur au-dessus (compteur), libellé dessous ;
     la plus grande est soulignée à l'or. « jauge » : part d'un tout (share, en %) qui se remplit."""
     f = frame or Frame()
@@ -333,7 +399,11 @@ def bars(items: list[Item], *, title: str = "", subtitle: str = "", duration: fl
         raise ValueError("bars : 1 à 3 barres")
     base = f.bottom - 120                                       # bas des barres ; libellés dessous
     max_h = base - top - 120                                    # place pour la valeur au-dessus
-    col = (f.right - f.left) / n
+    right = f.right
+    if companion and resolve is not None:                       # personnage à droite, sur la ligne de base
+        right = f.right - 230
+        layers.append(companion_layer(resolve, companion, f.right - 105, base, min(320, base - top - 40), f))
+    col = (right - f.left) / n
     vmax = max(i.value for i in items) or 1
     best = max(range(n), key=lambda i: items[i].value)
     for i, item in enumerate(items):

@@ -292,8 +292,13 @@ def _monthly_irr(price: float, payments: list[float]) -> float:
 
 
 def paiement_fractionne(p: dict) -> Calc:
-    """Achat de `price` € en `installments` fois (un paiement par mois, le premier tout de suite), frais du
-    service de `fee_pct` % du prix et `late_fee` € de frais pour un retard (0 = aucun retard)."""
+    """Achat de `price` € en `installments` fois, frais du service de `fee_pct` % du prix et `late_fee` € de frais
+    pour un retard (0 = aucun retard), ajoutés au dernier paiement.
+
+    Convention du taux annuel équivalent (fixée) : le bien vaut `price` le jour de l'achat ; le 1er paiement
+    est fait ce jour-là (mois 0), les suivants tous les mois (mois 1, 2...). Le taux mensuel r égalise la valeur
+    actuelle des paiements et le prix ; le taux annuel est COMPOSÉ : (1 + r)^12 - 1 (comme un TAEG). Le script
+    cite d'abord le coût en euros ; le taux n'apparaît que s'il est expliqué (EXPLAIN)."""
     total = p["price"] * (1 + p["fee_pct"] / 100) + p["late_fee"]
     base = p["price"] * (1 + p["fee_pct"] / 100) / p["installments"]
     payments = [base] * p["installments"]
@@ -377,7 +382,10 @@ def carte_fidelite(p: dict) -> Calc:
         _v("gap_pct", "écart avec une remise immédiate", round_1(p["pct"] - effective), "%"),
         _v("immediate_price", "prix avec une remise immédiate", round_price(p["spend"] * (1 - p["pct"] / 100)), "€"),
     ]
-    series = {"x": [0, 1], "x_label": "", "a": [p["pct"], round(effective, 1)], "a_label": "remise"}
+    steps = [round(p["spend"] * i / 10, 2) for i in range(11)]                  # économie selon la dépense
+    series = {"x": steps, "x_label": "€ dépensés", "a": [round(x * p["pct"] / 100, 2) for x in steps],
+              "a_label": "remise immédiate", "b": [round(x * effective / 100, 2) for x in steps],
+              "b_label": "bon d'achat"}
     return Calc("carte_fidelite", {v.key: v for v in values}, "effective_pct", series, extra_numbers=(100,),
                 compare=("effective_pct", "gap_pct"))
 
@@ -415,9 +423,12 @@ def salaire_vs_prix(p: dict) -> Calc:
         _v("real_salary", "nouveau salaire en euros d'aujourd'hui (ce qu'il achète)", real, "€"),
         _v("real_change_pct", "variation réelle du pouvoir d'achat", round_1((ratio - 1) * 100), "%"),
         _v("real_change_eur", "variation du pouvoir d'achat par mois", real - p["salary"], "€"),
+        _v("raise_eur", "augmentation par mois", new - p["salary"], "€"),
+        _v("basket_rise_eur", "hausse du coût, par mois, de ce que le salaire achetait",
+           round_money(p["salary"] * p["inflation"] / 100), "€"),
     ]
-    series = {"x": [0, 1], "x_label": "années", "a": [p["salary"], new], "a_label": "salaire",
-              "b": [p["salary"], real], "b_label": "ce qu'il achète"}
+    series = {"x": [0, 1], "x_label": "années", "a": [0, new - p["salary"]], "a_label": "augmentation",
+              "b": [0, round_money(p["salary"] * p["inflation"] / 100)], "b_label": "hausse des prix"}
     return Calc("salaire_vs_prix", {v.key: v for v in values}, "real_change_pct", series,
                 compare=("new_salary", "real_salary"))
 
@@ -432,11 +443,33 @@ def taux_reel(p: dict) -> Calc:
         _v("nominal_gain", f"intérêts gagnés en un an sur {fmt_number(p['amount'])} €",
            round_price(p["amount"] * p["nominal"] / 100), "€"),
         _v("real_gain", "gain réel en pouvoir d'achat", round_price(p["amount"] * exact / 100), "€"),
+        _v("final_nominal", "sur le compte après un an", round_price(p["amount"] * (1 + p["nominal"] / 100)), "€"),
+        _v("final_real", "ce que ça achète après un an, en euros d'aujourd'hui",
+           round_price(p["amount"] * (1 + exact / 100)), "€"),
     ]
-    series = {"x": [0, 1], "x_label": "années", "a": [p["amount"], round(p["amount"] * (1 + p["nominal"] / 100))],
-              "a_label": "sur le compte",
-              "b": [p["amount"], round(p["amount"] * (1 + exact / 100))], "b_label": "ce que ça achète"}
+    months = list(range(13))                    # gains au fil de l'année : intérêts et gain réel, depuis 0
+    series = {"x": months, "x_label": "mois",
+              "a": [round(p["amount"] * p["nominal"] / 100 * m / 12, 2) for m in months], "a_label": "intérêts",
+              "b": [round(p["amount"] * exact / 100 * m / 12, 2) for m in months], "b_label": "gain réel"}
     return Calc("taux_reel", {v.key: v for v in values}, "real_exact", series, compare=("real_approx", "real_exact"))
+
+
+def leasing_epargne(p: dict) -> Calc:
+    """`monthly` € par mois pendant `years` ans : loyer de leasing (la voiture est rendue, rien ne reste) ou
+    même somme mise de côté chaque mois à `rate` %/an (taux mensuel équivalent)."""
+    months = p["years"] * 12
+    paid = round_money(p["monthly"] * months)
+    saved = round_money(grow_monthly(p["monthly"], p["rate"], months))
+    values = [
+        _v("leasing_paid", f"loyers payés en {p['years']} ans", paid, "€"),
+        _v("leasing_left", "ce qui reste à la fin du leasing", 0, "€"),
+        _v("saving_final", f"la même somme mise de côté pendant {p['years']} ans", saved, "€"),
+        _v("saving_gain", "intérêts gagnés en mettant de côté", saved - paid, "€"),
+    ]
+    series = _years_series(p["years"], lambda y: round(grow_monthly(p["monthly"], p["rate"], y * 12)),
+                           lambda y: round(p["monthly"] * 12 * y), a_label="mis de côté", b_label="loyers payés")
+    return Calc("leasing_epargne", {v.key: v for v in values}, "saving_final", series,
+                compare=("saving_final", "leasing_left"))
 
 
 CONCEPTS = {"interets_composes": interets_composes, "inflation": inflation, "cout_du_temps": cout_du_temps,
@@ -445,7 +478,7 @@ CONCEPTS = {"interets_composes": interets_composes, "inflation": inflation, "cou
             "remises_successives": remises_successives, "paiement_fractionne": paiement_fractionne,
             "credit_amortissable": credit_amortissable, "decouvert_agios": decouvert_agios,
             "forfait_appareil": forfait_appareil, "carte_fidelite": carte_fidelite, "epargne_age": epargne_age,
-            "salaire_vs_prix": salaire_vs_prix, "taux_reel": taux_reel}
+            "salaire_vs_prix": salaire_vs_prix, "taux_reel": taux_reel, "leasing_epargne": leasing_epargne}
 
 
 # ---------- Paramètres attendus et plages réalistes (hypothèses 2026, jamais des données officielles) ----------
@@ -501,7 +534,41 @@ SPECS: dict[str, dict] = {
     "taux_reel": {"label": "taux réel", "params": {
         "nominal": ("taux affiché", "%", 0, 10), "inflation": ("inflation", "%", 0, 10),
         "amount": ("somme", "€", 100, 100_000)}},
+    "leasing_epargne": {"label": "leasing ou épargne", "params": {
+        "monthly": ("loyer mensuel", "€", 50, 1_000), "years": ("durée", "ans", 2, 6),
+        "rate": ("rendement annuel de l'épargne", "%", 1, 6)}},
 }
+
+# Hypothèse affichée à l'écran (jamais reformulée par le LLM) : conventions du calcul, chiffres du sujet
+HYPOTHESES: dict[str, str] = {
+    "depenses_repetees": "{amount} € · {per_week} fois par semaine · 52 semaines par an",
+    "abonnements": "prix mensuels constants · sans hausse de tarif",
+    "remises_successives": "remises appliquées l'une après l'autre",
+    "paiement_fractionne": "1er paiement le jour de l'achat, puis 1 par mois · taux annuel composé",
+    "credit_amortissable": "{rate} %/an · mensualités fixes · taux mensuel = taux annuel \u00f7 12 · hors assurance",
+    "decouvert_agios": "{rate} %/an · agios = montant \u00d7 taux \u00d7 jours \u00f7 365",
+    "forfait_appareil": "forfait sans appareil à {monthly_without} €/mois · engagement de {months} mois",
+    "carte_fidelite": "bon d'achat dépensé en entier · même pourcentage en remise immédiate",
+    "epargne_age": "{monthly} €/mois · {rate} %/an, taux mensuel équivalent · jusqu'à {end_age} ans · avant inflation",
+    "salaire_vs_prix": "salaire net · prix sur 1 an · pouvoir d'achat = salaire \u00f7 prix",
+    "taux_reel": "taux réel = (1 + taux) \u00f7 (1 + inflation) \u2212 1 · sur 1 an",
+    "leasing_epargne": "{monthly} €/mois · voiture rendue à la fin · épargne à {rate} %/an, taux mensuel équivalent",
+}
+
+# Résultats qui ne se citent qu'expliqués : la phrase qui les cite doit contenir l'une de ces expressions
+EXPLAIN: dict[str, dict[str, tuple[str, ...]]] = {
+    "paiement_fractionne": {"annual_rate": ("comme un crédit", "taux annuel", "par an")},
+}
+
+
+def money_text(x: float) -> str:
+    """Montant d'un paramètre : « 2 € », « 2,50 € », « 13,49 € »."""
+    return Value("", "", float(x), "€").text
+
+
+def hypothesis_text(concept: str, p: dict) -> str:
+    fields = {k: (fmt_number(v) if isinstance(v, (int, float)) else v) for k, v in p.items()}
+    return HYPOTHESES[concept].format(**fields)
 
 
 def _constraint(concept: str, p: dict) -> str | None:
