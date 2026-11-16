@@ -1,4 +1,6 @@
 """Capital Simple, partie 1 (1.2 à 1.7) : fiabilité de la validation des scripts."""
+import copy
+
 import pytest
 from auracontent.channels.base_channel import BaseChannel
 from auracontent.channels.finance.brain import FinanceBrain
@@ -101,3 +103,120 @@ def test_bandeau_impossible_to_rebuild_asks_the_llm():
     brain = _brain("frais", FRAIS)
     with pytest.raises(ValueError, match=r"AFFIRMATION \| PUNCHLINE"):
         brain.validate_script_specifics(_frais_data("x", bandeau="FRAIS"), "t")
+
+
+# ---------- 1.5 / 1.6 Meilleur script gardé, réécriture ciblée, passe d'allongement ----------
+class _Queue:
+    """Faux LLM : renvoie les réponses dans l'ordre et garde les messages envoyés."""
+
+    def __init__(self, *answers):
+        self.answers, self.sent = list(answers), []
+
+    def call_json_with_retry(self, messages, **kw):
+        self.sent.append(messages)
+        return copy.deepcopy(self.answers.pop(0))
+
+
+FILLER = "Les frais grignotent ton argent chaque année."            # 7 mots, aucun chiffre
+
+
+def _long_frais(brain, ratio=1.0):
+    """Script de frais valide dont chaque scène vise `ratio` x sa longueur cible."""
+    targets = brain.scene_word_targets()
+    data = _frais_data("x")
+    data["scenes"][0]["text"] = brain.chosen_hook_text
+    for scene, target in zip(data["scenes"][1:-1], targets[1:-1], strict=True):
+        base = scene["text"]
+        n = max(1, round((target * ratio - brain.spoken_words({"text": base})) / 7))
+        scene["text"] = " ".join([base] + [FILLER] * n) if n > 0 else base
+    data["scenes"][-1]["text"] = "Fin."
+    return data
+
+
+def _near_short(brain):
+    """Script court de 90 à 100 % du minimum de mots."""
+    for r in (0.85, 0.83, 0.8, 0.78, 0.75):
+        script = _long_frais(brain, ratio=r)
+        issues = brain._checked("t", copy.deepcopy(script))
+        if issues and 0.9 <= issues[0].ratio < 1:
+            return script
+    raise AssertionError("aucun script entre 90 et 100 % du minimum")
+
+
+def _loop_brain(llm, retries=4):
+    brain = _brain("frais", FRAIS, llm)
+    brain.config["brain"].update(meaning_check="off", script_max_retries=retries, style_warnings="warn")
+    brain.chosen_hook_text = "2 % de frais te coûtent 5 300 €."
+    return brain
+
+
+def _run(brain):
+    return brain._generate_script_attempt("t", 6, {"text": brain.chosen_hook_text}, brain._brain()["script_max_retries"])
+
+
+def test_only_failing_scene_is_sent_back():
+    brain = _loop_brain(None)
+    script = _long_frais(brain)
+    good = script["scenes"][2]["text"]
+    script["scenes"][2]["text"] = "Investis ton argent chaque mois. " + good
+    brain.llm = llm = _Queue(script, {"scenes": [{"id": 3, "text": good}]})
+    data = _run(brain)
+    assert len(llm.sent) == 2
+    user = llm.sent[1][1]["content"]
+    assert "À RÉÉCRIRE" in user and "- Scène 3 :" in user and "- Scène 2 :" not in user
+    assert "Investis" not in user.split("SCRIPT ACTUEL")[1]                  # formulation refusée masquée
+    assert data["scenes"][2]["text"] == good and "unresolved_issues" not in data
+    assert [s["text"] for s in data["scenes"][3:]] == [s["text"] for s in _run_checked(brain, script)[3:]]
+
+
+def _run_checked(brain, script):
+    clean = copy.deepcopy(script)
+    clean["scenes"][2]["text"] = clean["scenes"][2]["text"].replace("Investis ton argent chaque mois. ", "")
+    brain.validate_script_specifics(clean, "t")
+    return clean["scenes"]
+
+
+def test_best_script_is_kept_when_rewrite_is_worse():
+    brain = _loop_brain(None, retries=1)
+    script = _long_frais(brain)
+    script["scenes"][2]["text"] = "Investis ton argent chaque mois. " + script["scenes"][2]["text"]
+    worse = {"scenes": [{"id": 3, "text": "Investis 77 € par mois. Place 99 € par an. Tu vous perds."}]}
+    brain.llm = _Queue(script, worse)
+    data = _run(brain)
+    assert data["scenes"][2]["text"].startswith("Investis ton argent")         # le meilleur (1 avertissement)
+    assert len(data["unresolved_issues"]) == 2                     # terme interdit + ordre, pas les 5 du pire
+
+
+def test_many_failing_scenes_regenerate_everything():
+    brain = _loop_brain(None)
+    script = _long_frais(brain)
+    issues = [f"scène {i} : phrase de 20 mots (maximum 14)" for i in (1, 2, 3, 4)]
+    assert brain.rewrite_plan(script, issues) is None
+    assert brain.rewrite_plan(script, [*issues[:2], "le bandeau exagère"]) is not None
+    assert brain.rewrite_plan(script, ["la narration doit nommer « x »"]) is None
+
+
+def test_near_length_script_gets_one_lengthening_pass_then_is_accepted(capsys):
+    brain = _loop_brain(None)
+    script = _near_short(brain)
+    brain.llm = llm = _Queue(script, {"scenes": []})                          # l'allongement échoue
+    data = _run(brain)
+    assert len(llm.sent) == 2 and "allonge à environ" in llm.sent[1][1]["content"]
+    assert "accepté un peu court" in capsys.readouterr().out and data["unresolved_issues"]
+
+
+def test_near_length_script_lengthened():
+    brain = _loop_brain(None)
+    short, full = _near_short(brain), _long_frais(brain)
+    answer = {"scenes": [{"id": s["id"], "text": s["text"]} for s in full["scenes"][1:-1]]}
+    brain.llm = _Queue(short, answer)
+    data = _run(brain)
+    assert "unresolved_issues" not in data and data["scenes"][1]["text"] == full["scenes"][1]["text"]
+
+
+def test_too_short_script_is_regenerated_not_accepted():
+    brain = _loop_brain(None, retries=0)
+    script = _long_frais(brain, ratio=0.5)
+    assert brain._checked("t", copy.deepcopy(script))[0].ratio < 0.9
+    brain.llm = _Queue(script)
+    assert "trop court" in _run(brain)["unresolved_issues"][0]

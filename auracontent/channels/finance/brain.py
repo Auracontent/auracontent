@@ -8,6 +8,7 @@ d'entrée ou des résultats de calc.py ; le résultat principal doit être dit d
 """
 from __future__ import annotations
 
+import copy
 import difflib
 import itertools
 import os
@@ -19,7 +20,7 @@ from pathlib import Path
 from auracontent.channels.finance import calc as fcalc
 from auracontent.channels.finance import storyboard as fstory
 from auracontent.channels.finance.spoken import SpokenError, display_text, spoken_text
-from auracontent.core.brain.base_brain import BaseBrain
+from auracontent.core.brain.base_brain import BaseBrain, VeracityIssue
 from auracontent.utils.topic_tracker import load_global_history, load_last_categories, load_used_values
 
 TEMPLATES = tuple(fstory.VARIANTS)
@@ -101,6 +102,18 @@ def _fold(text: str) -> str:
 def contains_term(text: str, term: str) -> bool:
     """Terme interdit présent (mots entiers, sans casse ni accents)."""
     return re.search(rf"(?<![\w]){re.escape(_fold(term))}(?![\w])", _fold(text)) is not None
+
+
+class LengthIssue(str):
+    """« Script trop court » : ratio = mots prononcés / minimum exigé, gaps = {scène: (mots, mots visés)}."""
+
+    def __new__(cls, text: str, ratio: float = 0.0, gaps: dict | None = None):
+        obj = super().__new__(cls, text)
+        obj.ratio, obj.gaps = ratio, dict(gaps or {})
+        return obj
+
+
+_FIELD_WHAT = {"le bandeau": "on_screen_title", "la question finale": "closing_cta", "le titre": "title"}
 
 
 def _fmt(value) -> str:
@@ -206,6 +219,18 @@ class FinanceBrain(BaseBrain):
         for pattern in self.style_cfg().get("hype_patterns") or []:
             out = _folded_sub(pattern, "[terme exagéré]", out)
         return out
+
+    def mask_orders(self, text: str) -> str:
+        """Comme mask_forbidden, et l'impératif en tête de phrase (brain.style.imperatives) remplacé : un texte
+        à réécrire renvoyé au LLM ne lui remontre jamais la formulation refusée."""
+        words = [_fold_keep(w) for w in self._brain().get("style", {}).get("imperatives") or []]
+        out = []
+        for sentence in sentences(text) or [text]:
+            head = sentence.split(" ", 1)
+            if words and _fold_keep(head[0]) in words:
+                sentence = " ".join(["[ordre au spectateur]", *head[1:]])
+            out.append(sentence)
+        return self.mask_forbidden(" ".join(out))
 
     def disclaimer_text(self) -> str:
         return clean_text(self._brain().get("disclaimer_text") or "")
@@ -821,7 +846,8 @@ class FinanceBrain(BaseBrain):
             for key in keys:
                 value = self.calc().values[key]
                 if value.value not in said:
-                    issues.append(f"la scène « {fstory.ROLES[role]} » ne dit pas : {value.label} = {value.text}")
+                    issues.append(f"la scène {scene.get('id') if scene else '?'} (« {fstory.ROLES[role]} ») ne dit "
+                                  f"pas : {value.label} = {value.text}")
         narration = " ".join(comparable(s.get("text", "")) for s in scenes)
         for phrase in fstory.must_say(concept):
             if comparable(phrase) not in narration:
@@ -843,12 +869,14 @@ class FinanceBrain(BaseBrain):
         if targets and len(targets) == len(scenes):
             said = [self.spoken_words(s) for s in scenes]
             wps = float(self._brain().get("voice_words_per_second"))
-            if sum(said) < 0.9 * sum(targets):
-                short = [f"scène {i} : {w} mots, vise {t} (+{t - w})"
-                         for i, (w, t) in enumerate(zip(said, targets, strict=True), 1) if t - w >= 3]
-                issues.append(f"script trop court : {sum(said)} mots prononcés (environ {sum(said) / wps:.0f} s), il "
-                              f"en faut {sum(targets)} (environ {sum(targets) / wps:.0f} s) ; allonge : "
-                              + " ; ".join(short))
+            minimum = 0.9 * sum(targets)                                # en dessous : script trop court
+            if sum(said) < minimum:
+                gaps = {i: (w, t) for i, (w, t) in enumerate(zip(said, targets, strict=True), 1) if t - w >= 3}
+                short = [f"scène {i} : {w} mots, vise {t} (+{t - w})" for i, (w, t) in gaps.items()]
+                issues.append(LengthIssue(
+                    f"script trop court : {sum(said)} mots prononcés (environ {sum(said) / wps:.0f} s), il en faut "
+                    f"{sum(targets)} (environ {sum(targets) / wps:.0f} s) ; allonge : " + " ; ".join(short),
+                    ratio=sum(said) / minimum, gaps=gaps))
         return issues
 
     def caption_issues(self, script: dict, caption: str) -> list[str]:
@@ -907,3 +935,164 @@ class FinanceBrain(BaseBrain):
         for issue in issues:
             print(f"   ↻ Script : {issue}")
         return issues
+
+    # ---------- Boucle de correction (partie 1.5 / 1.6) ----------
+    def issue_targets(self, issue: str, data: dict) -> set | None:
+        """Ce qu'un avertissement demande de réécrire : numéros de scène et/ou champs (bandeau, question finale,
+        titre). None : avertissement global (tout le script est alors régénéré)."""
+        if isinstance(issue, LengthIssue):
+            return set(issue.gaps) or None
+        ids = {int(n) for n in re.findall(r"\bsc[eè]ne (\d+)\b", issue, flags=re.IGNORECASE)}
+        ids &= {int(s.get("id", 0)) for s in data.get("scenes", [])}
+        fields = {key for what, key in _FIELD_WHAT.items() if issue.startswith(what) or f", {what}" in issue}
+        targets = ids | fields
+        return targets or None
+
+    def rewrite_plan(self, data: dict, issues: list[str], limit: int | None = None) -> dict | None:
+        """{cible: [consignes]} si chaque avertissement vise une scène ou un champ précis et que peu de scènes
+        sont concernées (brain.partial_rewrite_max_scenes, défaut 3) ; None sinon (script régénéré en entier)."""
+        plan: dict = {}
+        for issue in issues:
+            targets = self.issue_targets(issue, data)
+            if targets is None:
+                return None
+            for target in targets:
+                if isinstance(issue, LengthIssue) and target in issue.gaps:
+                    said, goal = issue.gaps[target]
+                    plan.setdefault(target, []).append(
+                        f"allonge à environ {goal} mots prononcés (actuellement {said}), sans nouveau chiffre")
+                else:
+                    plan.setdefault(target, []).append(issue)
+        fixed = {s.get("id") for s in data.get("scenes", []) if s.get("fixed_text")}
+        if any(t in fixed for t in plan):
+            return None
+        if limit is None:
+            limit = int(self._brain().get("partial_rewrite_max_scenes", 3))
+        scenes = [t for t in plan if isinstance(t, int)]
+        return plan if plan and len(scenes) <= limit else None
+
+    def rewrite_prompt(self, topic, scene_count, chosen_hook, data: dict, plan: dict) -> list[dict]:
+        """Règles et chiffres du script (script.md) + script actuel + consigne précise pour chaque cible."""
+        base = self.build_script_prompt(topic, scene_count, chosen_hook)
+        names = {v: k for k, v in _FIELD_WHAT.items()}
+        script = [f"Scène {s.get('id')} : {self.mask_orders(s.get('text', '')) if s.get('id') in plan else s.get('text', '')}"
+                  for s in data.get("scenes", [])]
+        script += [f"Bandeau : {data.get('on_screen_title', '')}", f"Titre : {data.get('title', '')}",
+                   f"Question finale : {data.get('closing_cta', '')}"]
+        lines = []
+        for target, todo in sorted(plan.items(), key=lambda kv: (isinstance(kv[0], str), str(kv[0]))):
+            label = f"Scène {target}" if isinstance(target, int) else names[target].capitalize()
+            lines.append(f"- {label} : " + " ; ".join(todo))
+        sections = self.read_sections("rewrite.md")
+        user = self.fill(sections["user"], script="\n".join(script), instructions="\n".join(lines))
+        return [{"role": "system", "content": base[0]["content"] + "\n\n" + sections["system"]},
+                {"role": "user", "content": base[1]["content"] + "\n\n" + self.mask_forbidden(user)}]
+
+    def rewrite_scenes(self, topic, scene_count, chosen_hook, data: dict, plan: dict) -> dict:
+        """Un appel LLM qui ne réécrit que les cibles du plan ; le reste du script est repris tel quel."""
+        print("   ✍️ Réécriture ciblée : " + ", ".join(
+            f"scène {t}" if isinstance(t, int) else t for t in plan))
+        answer = self.llm.call_json_with_retry(
+            self.rewrite_prompt(topic, scene_count, chosen_hook, data, plan), temperature=0.5,
+            max_completion_tokens=min(len(plan) * 350 + 600, 3000), **self.script_routing())
+        merged = copy.deepcopy(data)
+        merged.pop("unresolved_issues", None)
+        by_id = {int(s["id"]): s for s in merged["scenes"]}
+        for scene in answer.get("scenes") or []:
+            if not isinstance(scene, dict):
+                continue
+            try:
+                sid = int(scene.get("id"))
+            except (TypeError, ValueError):
+                continue
+            if sid in plan and str(scene.get("text", "")).strip() and sid in by_id:
+                by_id[sid]["text"] = str(scene["text"])
+                by_id[sid].pop("spoken", None)
+        for key in ("on_screen_title", "closing_cta", "title"):
+            if key in plan and answer.get(key):
+                merged[key] = answer[key]
+        return merged
+
+    def _checked(self, topic, data: dict) -> list[str] | None:
+        """Structure puis contrôles ; None si la structure est refusée."""
+        try:
+            self._validate_script_base(data)
+            self.validate_script_specifics(data, topic)
+        except ValueError as e:
+            self._structure_error = e
+            return None
+        return self.check_script_logic(topic, data)
+
+    def _near_length_only(self, issues: list[str]) -> bool:
+        """Seul avertissement : script trop court d'au plus 10 % sous le minimum (brain.near_length_ratio)."""
+        near = float(self._brain().get("near_length_ratio", 0.9))
+        return len(issues) == 1 and isinstance(issues[0], LengthIssue) and issues[0].ratio >= near
+
+    def _lengthen_or_accept(self, topic, scene_count, chosen_hook, data: dict, issues: list[str]):
+        """Une passe d'allongement des scènes courtes ; si elle échoue, le script est accepté tel quel,
+        après la vérification du sens (sautée tant qu'un autre avertissement existait). None : sens refusé."""
+        longer = self.rewrite_scenes(topic, scene_count, chosen_hook, data, self.rewrite_plan(data, issues, limit=99) or {})
+        new_issues = self._checked(topic, longer)
+        if new_issues == []:
+            print("   ✔️ Script allongé.")
+            return longer, []
+        if new_issues is not None and self._near_length_only(new_issues) and new_issues[0].ratio > issues[0].ratio:
+            data, issues = longer, new_issues
+        problems = self.llm_meaning_issues(data)
+        if problems:
+            return None, problems
+        print(f"   ⚠️ Script accepté un peu court ({issues[0].ratio:.0%} du minimum de mots).")
+        data["unresolved_issues"] = list(issues)
+        return data, []
+
+    def _generate_script_attempt(self, topic, scene_count, chosen_hook, max_retries, can_reduce=False):
+        """Comme la boucle commune, en plus économe : le meilleur script (le moins d'avertissements) est gardé ;
+        si peu de scènes posent problème, seules elles sont réécrites ; un script à moins de 10 % de la longueur
+        minimale a droit à une passe d'allongement, puis est accepté tel quel."""
+        best, feedback, plan, lengthened = None, "", None, False
+        self._structure_error = None
+        for _attempt in range(max_retries + 1):
+            if plan and best:
+                data = self.rewrite_scenes(topic, scene_count, chosen_hook, best[0], plan)
+            else:
+                data = self.llm.call_json_with_retry(
+                    self.build_script_prompt(topic, scene_count, chosen_hook, feedback), temperature=0.7,
+                    max_completion_tokens=min(scene_count * 350 + 1200, 6500), **self.script_routing())
+            plan = None
+            issues = self._checked(topic, data)
+            if issues is None:
+                feedback = f"CORRECTION OBLIGATOIRE : {self._structure_error}"
+                continue
+            if not issues:
+                return data
+            if best is None or len(issues) < len(best[1]):
+                best = (data, issues)
+            else:
+                print(f"   ↩️ Script précédent gardé ({len(best[1])} avertissement(s) contre {len(issues)}).")
+            if self._near_length_only(best[1]) and not lengthened:
+                lengthened = True
+                accepted, problems = self._lengthen_or_accept(topic, scene_count, chosen_hook, *best)
+                if accepted is not None:
+                    return accepted
+                best = (best[0], problems)
+            plan = self.rewrite_plan(*best)
+            feedback = "CORRECTIONS OBLIGATOIRES :\n" + "\n".join(f"- {i}" for i in best[1])
+        if best is None:
+            raise self._structure_error or ValueError("aucun script valide")
+        data, issues = best
+        if self._near_length_only(issues) and not self.llm_meaning_issues(data):
+            data["unresolved_issues"] = list(issues)
+            print(f"   ⚠️ Script accepté un peu court ({issues[0].ratio:.0%} du minimum de mots).")
+            return data
+        from auracontent.core.brain.base_brain import TopicRejected
+
+        blocking = [i for i in issues if isinstance(i, VeracityIssue)]
+        if blocking:
+            raise TopicRejected(f"contrôle de véracité en échec après {max_retries + 1} essais : " + " ; ".join(blocking))
+        if self._brain().get("style_warnings") == "reject":
+            raise ValueError(f"avertissements non résolus après {max_retries + 1} essais : " + " ; ".join(issues))
+        print("⚠️ Script généré avec des avertissements de style ignorés (limite d'essais atteinte) :")
+        for i in issues:
+            print(f"   - {i}")
+        data["unresolved_issues"] = issues
+        return data

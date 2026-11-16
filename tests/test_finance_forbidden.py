@@ -59,6 +59,12 @@ def test_nothing_sent_to_the_llm_contains_a_forbidden_word(concept):
     scenes = [{"id": i, "text": "Le temps travaille.", "role": r, "template": t}
               for i, (r, t) in enumerate(storyboard.storyboard(concept), 1)]
     scenes[-1].update(text=brain.disclaimer_text(), fixed_text=True)
+    bad = dict(scenes[1], text="Investis à la banque, c'est un conseil.")
+    issues = brain.text_issues(bad["text"], "la scène 2")
+    plan = brain.rewrite_plan({"scenes": [scenes[0], bad, *scenes[2:]]}, issues)
+    assert plan and 2 in plan
+    llm.sent += [m["content"] for m in brain.rewrite_prompt(topic, 7, {"text": "h"},
+                                                            {"scenes": [scenes[0], bad, *scenes[2:]]}, plan)]
     brain.llm_meaning_issues({"scenes": scenes, "on_screen_title": "A | B", "title": "t", "closing_cta": "?"})
     other = _brain("frais", llm)
     other.config["brain"]["concept_selection"] = "llm"

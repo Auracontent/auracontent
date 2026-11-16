@@ -25,6 +25,12 @@ brain:
   hook_words: 10
   end_words: 8
   script_max_retries: 4      # contrôles stricts (chiffres, sens, exagération) : jusqu'à 5 essais
+  # Meilleur script gardé (le moins d'avertissements) ; si 3 scènes au plus posent problème, seules
+  # elles sont réécrites (un appel court) au lieu de tout régénérer
+  partial_rewrite_max_scenes: 3
+  # Seul avertissement « trop court » et au moins 90 % du minimum de mots : une passe d'allongement
+  # des scènes courtes, puis script accepté tel quel
+  near_length_ratio: 0.9
   resume_max_attempts: 3
   # Sujet inscrit à l'historique seulement une fois la vidéo produite : si elle échoue (voix Edge
   # indisponible...), le sujet reste en attente
