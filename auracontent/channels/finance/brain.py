@@ -1142,6 +1142,9 @@ class FinanceBrain(FreeTopics, BaseBrain):
         from auracontent.channels.finance import visuals
 
         cfg = dict((self.config.get("visuals") or {}).get("linework") or {})
+        if cfg.get("engine") == "v2":                    # refonte V2 (opt-in) : objets, étiquettes, caméra
+            from auracontent.channels.finance.v2 import scenes as v2_scenes
+            return v2_scenes.render_scenes(script, scenes, work_dir, cfg)
         return visuals.render_scenes(script, scenes, work_dir, cfg)
 
     def check_script_logic(self, topic, data):

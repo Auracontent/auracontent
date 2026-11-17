@@ -305,8 +305,9 @@ video_composer:
   video_width: 1080
   video_height: 1920
   fps: 30
-  transitions: ["fade"]
-  transition_duration: 0.2
+  # Transitions variées entre scènes (refonte V2) ; même durée courte
+  transitions: ["fade", "slideleft", "slideup", "circleopen", "wipeleft", "smoothleft"]
+  transition_duration: 0.3
   voice_gain: 1.0
   music_gain: 0.0            # pas de musique
   fonts_dir: "finance/fonts"
@@ -353,6 +354,9 @@ visuals:
   # Scènes dessinées (style de la vidéo test : papier quadrillé, trait à la main, Caveat) ; zones en pixels de
   # sortie. Contrôles bloquants : texte coupé, hors zone sûre, zones réservées, chevauchements, appuis.
   linework:
+    # Moteur de rendu des scènes : « v2 » = refonte V2 (étiquettes et objets du quotidien, gros chiffre en accroche,
+    # caméra) ; absent ou « v1 » = gabarits actuels. Une scène V2 refusée par la mise en page retombe sur la V1.
+    engine: v2
     background: "#F7F3EA"
     grid: true
     layout:

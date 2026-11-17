@@ -167,6 +167,61 @@ def burst(seed: str = "burst", color: str = GOLD) -> Image.Image:
     return img
 
 
+def cup(seed: str = "cup") -> Image.Image:
+    """Tasse de café fumante."""
+    img, d = _canvas(260, 260)
+    _poly(d, [(40, 90), (190, 90), (176, 230), (54, 230)], seed, fill=PALE)
+    _ellipse(d, (176, 120, 236, 190), seed + "h", width=W)
+    _ellipse(d, (196, 140, 220, 172), seed + "hi", fill=PAPER, width=4)
+    d.rectangle([48, 98, 182, 118], fill="#8B5A3C")
+    for x in (85, 120, 155):
+        d.line([(x, 70), (x - 8, 50), (x + 4, 30), (x - 4, 12)], fill=GRAY, width=5, joint="curve")
+    return img
+
+
+def card(seed: str = "card") -> Image.Image:
+    """Carte bancaire générique."""
+    img, d = _canvas(360, 240)
+    _rounded(d, (12, 12, 348, 228), 26, seed, fill=TURQUOISE)
+    d.rectangle([12, 58, 348, 92], fill=INK)
+    _rounded(d, (40, 120, 100, 168), 8, seed + "p", fill=GOLD, width=4)
+    for k in range(4):
+        d.line([(130 + k * 50, 190), (162 + k * 50, 190)], fill=PALE, width=6)
+    return img
+
+
+def car(seed: str = "car") -> Image.Image:
+    img, d = _canvas(440, 240)
+    _poly(d, [(20, 170), (20, 120), (90, 110), (150, 50), (300, 50), (360, 110), (420, 120), (420, 170)], seed,
+          fill=CORAL)
+    _poly(d, [(165, 64), (230, 64), (230, 108), (120, 108)], seed + "w1", fill=PALE, width=5)
+    _poly(d, [(245, 64), (292, 64), (338, 108), (245, 108)], seed + "w2", fill=PALE, width=5)
+    for cx in (110, 330):
+        _ellipse(d, (cx - 40, 140, cx + 40, 220), seed + str(cx), fill=INK)
+        _ellipse(d, (cx - 16, 164, cx + 16, 196), seed + str(cx) + "i", fill=GRAY, width=4)
+    return img
+
+
+def cart(seed: str = "cart") -> Image.Image:
+    """Caddie de courses."""
+    img, d = _canvas(380, 300)
+    d.line([(20, 30), (70, 30), (110, 200), (320, 200)], fill=INK, width=W, joint="curve")
+    _poly(d, [(80, 70), (350, 70), (320, 180), (104, 180)], seed, fill=PALE)
+    for x in (150, 210, 270):
+        d.line([(x, 74), (x - 8, 176)], fill=GRAY, width=4)
+    for cx in (130, 300):
+        _ellipse(d, (cx - 24, 226, cx + 24, 274), seed + str(cx), fill=INK, width=5)
+    return img
+
+
+def banknote(seed: str = "note") -> Image.Image:
+    img, d = _canvas(380, 210)
+    _rounded(d, (12, 12, 368, 198), 14, seed, fill="#BFE3C9")
+    _ellipse(d, (140, 50, 240, 160), seed + "c", fill=PALE, width=5)
+    d.text((190, 106), "€", font=_font(64, "ui"), fill=INK, anchor="mm")
+    return img
+
+
 BUILDERS = {
     "coin": lambda: coin(),
     "coin-side": lambda: coin_side(),
@@ -176,6 +231,32 @@ BUILDERS = {
     "phone": lambda: phone(),
     "piggy": lambda: piggy(),
     "burst": lambda: burst(),
+    "cup": lambda: cup(),
+    "card": lambda: card(),
+    "car": lambda: car(),
+    "cart": lambda: cart(),
+    "banknote": lambda: banknote(),
+}
+
+# Objets qui racontent chaque calcul (scènes d'accroche et de personnages)
+CONCEPT_PROPS: dict[str, tuple[str, ...]] = {
+    "abonnements": ("app-play", "app-note", "app-gym"),
+    "depenses_repetees": ("cup", "coin", "cup"),
+    "remises_successives": ("cart", "banknote"),
+    "paiement_fractionne": ("card", "cart"),
+    "credit_amortissable": ("car", "banknote"),
+    "decouvert_agios": ("card", "coin"),
+    "forfait_appareil": ("phone", "card"),
+    "carte_fidelite": ("card", "cart"),
+    "epargne_age": ("piggy", "coin"),
+    "salaire_vs_prix": ("banknote", "cart"),
+    "taux_reel": ("piggy", "cart"),
+    "leasing_epargne": ("car", "piggy"),
+    "interets_composes": ("piggy", "coin"),
+    "inflation": ("cart", "banknote"),
+    "cout_du_temps": ("piggy", "coin"),
+    "frais": ("coin", "banknote"),
+    "regle_72": ("piggy", "coin"),
 }
 
 

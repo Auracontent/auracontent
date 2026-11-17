@@ -121,3 +121,91 @@ def test_pilote_avec_voix_simulee(tmp_path: Path, monkeypatch):
     assert all(s["voice"].exists() for s in sc)
     assert sc[0]["duration"] == pytest.approx(pilot.LEAD + 1.4 + 0.5, abs=0.01)
     assert sc[0]["words"][0].start == pytest.approx(pilot.LEAD + 0.1)
+
+
+# ---------- Branchement dans le pipeline (étape 3) ----------
+def _params(concept):
+    from auracontent.channels.finance import calc
+    spec = calc.SPECS[concept]["params"]
+    p = {}
+    for name, (_label, _unit, lo, hi) in spec.items():
+        v = lo + (hi - lo) * 0.3
+        p[name] = round(v) if float(lo).is_integer() and float(hi).is_integer() else round(v, 2)
+    fixed, msg = calc.check_params(concept, p)
+    assert fixed, msg
+    return fixed
+
+
+def test_tous_les_calculs_ont_leurs_objets():
+    from auracontent.channels.finance import calc
+    assert set(calc.SPECS) <= set(props.CONCEPT_PROPS)
+
+
+@pytest.mark.parametrize("concept", ["abonnements", "epargne_age", "credit_amortissable", "interets_composes",
+                                     "inflation", "remises_successives", "forfait_appareil", "regle_72"])
+def test_scenes_v2_passent_la_mise_en_page(concept, tmp_path):
+    """Chaque scène V2 du storyboard passe le contrôle bloquant (sinon repli V1 : jamais de vidéo refusée)."""
+    from auracontent.channels.finance import storyboard
+    from auracontent.channels.finance.v2 import scenes
+    from auracontent.services.visuals.linework.engine import Scene
+    from auracontent.services.visuals.linework.layout import Zones, check_layout
+
+    p = _params(concept)
+    kw = scenes._scene_kwargs({})
+    for i, (role, template) in enumerate(storyboard.storyboard(concept), 1):
+        sc = {"id": i, "role": role, "template": template, "visual": "", "text": "Une phrase de test."}
+        shot, engine = scenes.scene_shot(concept, p, sc, 6.0, hypothesis="hypothèse de test", question="Et toi ?",
+                                         pdir=tmp_path)
+        if engine == "v2":
+            check_layout(Scene(layers=shot.layers, duration=6.0, **kw), Zones())
+
+
+def test_accroche_barres_en_v2_et_courbe_en_v1(tmp_path):
+    from auracontent.channels.finance.v2 import scenes
+    p = _params("abonnements")
+    hook = {"id": 1, "role": "hook", "template": "barres", "visual": "", "text": "x"}
+    curve = {"id": 3, "role": "mechanism", "template": "deux_courbes", "visual": "", "text": "x"}
+    assert scenes.scene_shot("abonnements", p, hook, 5.0, hypothesis="", question="", pdir=tmp_path)[1] == "v2"
+    assert scenes.scene_shot("abonnements", p, curve, 5.0, hypothesis="", question="", pdir=tmp_path)[1] == "v1"
+
+
+def test_texte_des_montants_garde_le_modele():
+    from auracontent.channels.finance.v2 import scenes
+    from auracontent.services.visuals.linework import templates as tpl
+    assert scenes.value_text(tpl.Item("mise", 2.7, "2,7", count_template="× {n}")) == "× 2,7"
+    assert scenes.value_text(tpl.Item("total", 4656, "4 656 €", count_template="{n} €")).endswith("€")
+
+
+def test_render_scenes_v2_produit_un_clip_par_scene(tmp_path):
+    from auracontent.channels.finance import storyboard
+    from auracontent.channels.finance.v2 import scenes
+    p = _params("abonnements")
+    sb = storyboard.storyboard("abonnements")
+    script = {"pick": {"concept": "abonnements", "params": p}, "hypothesis": "hypothèse", "closing_cta": "Et toi ?"}
+    sc = [{"id": i, "role": r, "template": t, "visual": "", "text": "Phrase.", "duration": 0.6}
+          for i, (r, t) in enumerate(sb, 1)]
+    clips = scenes.render_scenes(script, sc, tmp_path)
+    assert len(clips) == len(sc) and all(Path(c).exists() for c in clips)
+    assert all("sfx_cues" in s for s in sc)
+
+
+def test_option_v2_finance_seulement():
+    import yaml
+    root = Path(__file__).resolve().parents[1] / "config" / "channels"
+    fin = yaml.safe_load((root / "finance.yaml").read_text(encoding="utf-8"))
+    mys = yaml.safe_load((root / "mystery.yaml").read_text(encoding="utf-8"))
+    assert fin["visuals"]["linework"]["engine"] == "v2"
+    assert "engine" not in ((mys.get("visuals") or {}).get("linework") or {})
+    assert mys["video_composer"].get("transitions") != fin["video_composer"]["transitions"]
+
+
+def test_accroche_montre_le_resultat_principal_pas_l_idee_fausse(tmp_path):
+    """Remises successives : le gros chiffre est la remise réelle (calc.headline), jamais la remise crue."""
+    from auracontent.channels.finance import calc
+    from auracontent.channels.finance.v2 import scenes
+    p = _params("remises_successives")
+    c = calc.compute("remises_successives", p)
+    hook = {"id": 1, "role": "hook", "template": "barres", "visual": "", "text": "x"}
+    shot, _ = scenes.scene_shot("remises_successives", p, hook, 5.0, hypothesis="", question="", pdir=tmp_path)
+    big = next(lay for lay in shot.layers if lay.get("id") == "chiffre")
+    assert c.values[c.headline].text.replace(" ", " ") in big["text"].replace(" ", " ")
