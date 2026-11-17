@@ -135,3 +135,56 @@ def test_free_topics_and_meaning_check_run_without_gemini(ci_client, monkeypatch
     assert brain.llm_meaning_issues({"scenes": scenes, "on_screen_title": "A | B", "title": "t",
                                      "closing_cta": "?"}) == []
     assert not any(m.startswith("gemini") for m in log)
+
+
+# ---------- Gemini écarté pour le reste du run après 2 pannes de suite (finance seulement) ----------
+@pytest.mark.parametrize("error", ["Request timed out.", "Error code: 503", "Error code: 500",
+                                   "Error code: 429 - rate limit"])
+def test_gemini_disabled_for_the_run_after_two_failures(ci_client, monkeypatch, capsys, error):
+    log = []
+    monkeypatch.setattr(llm_client, "OpenAI", _fake_openai(
+        log, lambda m: RuntimeError(error) if m.startswith("gemini") else '{"ok": true}'))
+    client = ci_client.with_gemini_key_env("GEMINI_API_KEY")       # client propre à finance (état neuf)
+    routing = BaseChannel("finance", FinanceBrain, client).brain.script_routing()
+    assert routing["breaker"] == {"models": ["gemini"], "after": 2}
+    for _ in range(4):
+        assert client.call_json_with_retry([{"role": "user", "content": "x"}], **routing) == {"ok": True}
+    assert sum(m.startswith("gemini") for m in log) == 2                    # 2 pannes, puis plus jamais
+    assert "écarté pour le reste du run : 2 pannes de suite" in capsys.readouterr().out
+
+
+def test_a_success_resets_the_failure_streak(ci_client, monkeypatch):
+    log, outcomes = [], iter([RuntimeError("Error code: 503"), '{"ok": true}', RuntimeError("Error code: 503"),
+                              '{"ok": true}'])
+    monkeypatch.setattr(llm_client, "OpenAI", _fake_openai(
+        log, lambda m: next(outcomes) if m.startswith("gemini") else '{"ok": true}'))
+    client = ci_client.with_gemini_key_env("GEMINI_API_KEY")
+    routing = BaseChannel("finance", FinanceBrain, client).brain.script_routing()
+    for _ in range(4):
+        client.call_json_with_retry([{"role": "user", "content": "x"}], **routing)
+    assert sum(m.startswith("gemini") for m in log) == 4 and not client.tripped   # jamais 2 pannes de suite
+
+
+def test_mystery_never_disables_gemini(ci_client, monkeypatch):
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.core.brain.base_brain import rate_limit_routing_from
+
+    routing = rate_limit_routing_from(load_channel_config("mystery").get("brain"))
+    assert "breaker" not in routing
+    log = []
+    monkeypatch.setattr(llm_client.time, "sleep", lambda s: None)
+    monkeypatch.setattr(llm_client, "OpenAI", _fake_openai(
+        log, lambda m: RuntimeError("Error code: 503") if m.startswith("gemini") else '{"ok": true}'))
+    for _ in range(3):
+        ci_client.call_json_with_retry([{"role": "user", "content": "x"}], **routing)
+    assert sum(m.startswith("gemini") for m in log) == 9 and not ci_client.tripped   # 3 essais à chaque appel
+
+
+# ---------- Comptage des mots : « 10 000 » = un mot pour finance seulement ----------
+def test_word_count_change_is_finance_only():
+    from auracontent.channels.finance.brain import count_words as finance_count
+    from auracontent.channels.mystery.brain import count_words as mystery_count
+
+    text = "Tes 10 000 € dorment sans bouger, mais leur valeur chute à 7 440 €."
+    assert finance_count(text) == 11 and mystery_count(text) == 13          # mystery inchangé
+    assert finance_count is not mystery_count

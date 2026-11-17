@@ -368,6 +368,9 @@ class LLMClient:
     # Étape en cours (titre, retournement, script...) et appels par étape, pour le rapport de fin
     stage: str = "autre"
     stage_usage: dict[str, dict[str, int]] = field(default_factory=dict)
+    # Disjoncteur (opt-in, routage `breaker`) : pannes de suite par modèle, modèles écartés pour le run
+    fail_streak: dict[str, int] = field(default_factory=dict)
+    tripped: set[str] = field(default_factory=set)
 
     @contextmanager
     def in_stage(self, name: str):
@@ -431,7 +434,7 @@ class LLMClient:
         if not key:
             raise RuntimeError(f"Secret {env_name} absent : aucun repli sur la clé Gemini commune.")
         print(f"🔑 Clé Gemini : secret {env_name}")
-        return replace(self, keys={**self.keys, "gemini": key})
+        return replace(self, keys={**self.keys, "gemini": key}, fail_streak={}, tripped=set())
 
     @classmethod
     def create_default(cls):
@@ -523,7 +526,7 @@ class LLMClient:
                            max_completion_tokens=3000, hard_token_cap=7500,
                            allowed_models: list[str] | None = None, wait_rounds: int = 0, wait_seconds: float = 60,
                            fallback_excluded: list[str] | None = None, rate_limit: str = "wait",
-                           unavailable: str = "retry"):
+                           unavailable: str = "retry", breaker: dict | None = None):
         """Cascade des fournisseurs.
 
         `rate_limit` : « wait » (défaut) attend la fin de la limite par minute puis réessaie le même modèle ;
@@ -540,6 +543,8 @@ class LLMClient:
         extra = {"rate_limit": rate_limit} if rate_limit != "wait" else {}   # défaut : appel inchangé
         if unavailable != "retry":       # 503 / délai dépassé : fournisseur suivant sans réessayer (opt-in)
             extra["unavailable"] = unavailable
+        if breaker:                      # modèles écartés pour le run après N pannes de suite (opt-in)
+            extra["breaker"] = breaker
         for round_ in range(wait_rounds + 1):
             try:
                 return self._call_providers(messages, temperature, json_mode, max_completion_tokens,
@@ -563,7 +568,8 @@ class LLMClient:
         raise RuntimeError("inaccessible")
 
     def _call_providers(self, messages, temperature, json_mode, max_completion_tokens, hard_token_cap,
-                        allowed_models=None, rate_limit: str = "wait", unavailable: str = "retry"):
+                        allowed_models=None, rate_limit: str = "wait", unavailable: str = "retry",
+                        breaker: dict | None = None):
         providers = self.providers
         if not providers:
             raise RuntimeError("Aucune clé API LLM (GEMINI / GROQ / OPENROUTER) configurée.")
@@ -578,9 +584,14 @@ class LLMClient:
         last_error = None
         prompt_tokens = _estimate_prompt_tokens(messages)
 
+        watched = [str(m).lower() for m in (breaker or {}).get("models") or []]
         for provider in providers:
             if provider["model"] in _DEAD_MODELS:
                 continue
+            guarded = bool(breaker) and any(m in provider["model"].lower() for m in watched)
+            if guarded and provider["model"] in self.tripped:
+                continue
+            broke = False
             client = OpenAI(
                 base_url=provider["base_url"], api_key=provider["api_key"], max_retries=0, timeout=90,
                 default_headers={
@@ -608,6 +619,8 @@ class LLMClient:
                     response = client.chat.completions.create(**kwargs)
                     content = self._extract_content(response)
                     self._record(provider["name"], True, response)
+                    if guarded:
+                        self.fail_streak[provider["model"]] = 0
                     print(f"✅ Réponse obtenue via {provider['name']} ({provider['model']})")
                     return content
                 except Exception as e:
@@ -624,6 +637,8 @@ class LLMClient:
                         continue
                     print(f"⚠️ Échec {provider['name']} [{provider['model']}] ({attempt + 1}/3, {kind}) : "
                           f"{err_str[:200]}{'…' if len(err_str) > 200 else ''}")
+                    if guarded and (kind == "rate_limit" or _is_unavailable_error(low)):
+                        broke = True
 
                     if kind == "json_failed":
                         failed = _extract_failed_generation(e, err_str)
@@ -678,7 +693,14 @@ class LLMClient:
                         print(f"⏭️ {provider['model']} indisponible (503 ou délai dépassé) : fournisseur suivant.")
                         break
                     time.sleep(2)
-
+            if guarded and broke:                                  # cet appel a échoué sur ce modèle
+                streak = self.fail_streak.get(provider["model"], 0) + 1
+                self.fail_streak[provider["model"]] = streak
+                if streak >= int(breaker.get("after", 2)):
+                    self.tripped.add(provider["model"])
+                    print(f"⛔ {provider['model']} écarté pour le reste du run : {streak} pannes de suite "
+                          "(503, 5xx, délai dépassé ou 429). Les appels suivants passent directement au "
+                          "fournisseur suivant.")
         raise RuntimeError(f"Échec total après tous les fournisseurs LLM ({', '.join(self.order)}). Dernière erreur : {last_error}")
 
     def call_json_with_retry(self, messages, temperature=1.0, max_json_retries=2,

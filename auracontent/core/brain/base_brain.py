@@ -33,6 +33,9 @@ def rate_limit_routing_from(brain_cfg: dict | None) -> dict:
     out = {"rate_limit": str(b["rate_limit"])} if b.get("rate_limit") else {}
     if b.get("unavailable"):
         out["unavailable"] = str(b["unavailable"])
+    if b.get("disable_after_failures"):      # {models: ["gemini"], after: 2} : disjoncteur pour le run
+        rule = dict(b["disable_after_failures"])
+        out["breaker"] = {"models": list(rule.get("models") or []), "after": int(rule.get("after", 2))}
     return out
 
 

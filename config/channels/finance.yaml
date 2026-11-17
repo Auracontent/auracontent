@@ -45,6 +45,8 @@ brain:
   rate_limit: fallback
   # 503 ou délai dépassé (Gemini saturé) : fournisseur suivant (Groq, Cloudflare...) sans réessayer le même
   unavailable: fallback
+  # Gemini en panne 2 appels de suite (503, 5xx, délai dépassé ou 429) : écarté pour le reste du run
+  disable_after_failures: {models: ["gemini"], after: 2}
   # Un script qui garde des avertissements de style est régénéré, jamais publié
   style_warnings: reject
 
