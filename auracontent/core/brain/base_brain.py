@@ -27,9 +27,13 @@ _SECTION_HEADER = re.compile(r"^#\s+(.+?)\s*$", re.MULTILINE)
 
 
 def rate_limit_routing_from(brain_cfg: dict | None) -> dict:
-    """`brain.rate_limit` du YAML (« wait » ou « fallback ») ; absent = rien (comportement par défaut du client)."""
-    value = (brain_cfg or {}).get("rate_limit")
-    return {"rate_limit": str(value)} if value else {}
+    """`brain.rate_limit` (429) et `brain.unavailable` (503, délai dépassé) du YAML, « fallback » = fournisseur
+    suivant tout de suite ; absents = rien (comportement par défaut du client)."""
+    b = brain_cfg or {}
+    out = {"rate_limit": str(b["rate_limit"])} if b.get("rate_limit") else {}
+    if b.get("unavailable"):
+        out["unavailable"] = str(b["unavailable"])
+    return out
 
 
 def simple_routing_from(brain_cfg: dict | None) -> dict:

@@ -327,3 +327,42 @@ def test_true_peak_limiter_is_opt_in():
 
     assert Composer({}, "mystery").final_true_peak is None
     assert BaseChannel("finance", FinanceBrain, None).cfg["video_composer"]["final_true_peak"] == -1.5
+
+
+# ---------- Accroches : 10 mots visés, un nombre = un mot ----------
+def test_numbers_count_as_one_word():
+    from auracontent.channels.finance.brain import count_words
+
+    assert count_words("Tes 10 000 € dorment sans bouger, mais leur valeur chute à 7 440 €.") == 11
+    assert count_words("Il faut 6,1 ans.") == 4
+
+
+def test_hook_prompt_aims_at_ten_words():
+    brain = _brain("frais", FRAIS, _Queue({"hooks": []}, {"hooks": []}))
+    with pytest.raises(RuntimeError):                         # le faux LLM ne propose aucune accroche
+        brain.generate_hook_variants("t")
+    assert "Vise 10 mots ; 12 mots AU PLUS" in brain.llm.sent[0][1]["content"]
+
+
+# ---------- Longueur seule : allongement de toutes les scènes courtes, jamais tout régénérer ----------
+def test_length_only_lengthens_every_short_scene():
+    brain = _loop_brain(None)
+    script = _long_frais(brain, ratio=0.5)                      # 4 scènes courtes, bien sous 90 %
+    issues = brain._checked("t", copy.deepcopy(script))
+    assert len(issues) == 1 and len(issues[0].gaps) == 4 and issues[0].ratio < 0.9
+    plan = brain.rewrite_plan(script, issues)
+    assert plan is not None and sorted(plan) == sorted(issues[0].gaps)
+    mixed = brain.rewrite_plan(script, [*issues, "scène 5 : phrase de 15 mots (maximum 14)"])
+    assert mixed is not None and "phrase de 15 mots" in " ".join(mixed[5])
+    fond = [f"scène {i} : phrase de 20 mots (maximum 14)" for i in (1, 2, 3, 4)]
+    assert brain.rewrite_plan(script, [*issues, *fond]) is None          # 4 scènes à corriger sur le fond
+
+
+def test_too_short_script_is_lengthened_not_regenerated():
+    brain = _loop_brain(None, retries=1)
+    short, full = _long_frais(brain, ratio=0.5), _long_frais(brain)
+    answer = {"scenes": [{"id": s["id"], "text": s["text"]} for s in full["scenes"][1:-1]]}
+    brain.llm = llm = _Queue(short, answer)
+    data = _run(brain)
+    assert "À RÉÉCRIRE" in llm.sent[1][1]["content"] and "allonge à environ" in llm.sent[1][1]["content"]
+    assert "unresolved_issues" not in data

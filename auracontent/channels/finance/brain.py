@@ -88,7 +88,9 @@ def comparable(text: str) -> str:
 
 
 def count_words(text: str) -> int:
-    return len([w for w in _WORD_RE.findall(normalize_title(text)) if any(c.isalnum() for c in w)])
+    """Mots lus : un nombre écrit en chiffres compte pour UN mot (« 10 000 », « 7,5 »), comme à la lecture."""
+    text = _NUMBER_RE.sub("0", normalize_title(text))
+    return len([w for w in _WORD_RE.findall(text) if any(c.isalnum() for c in w)])
 
 
 def sentences(text: str) -> list[str]:
@@ -221,6 +223,7 @@ class FinanceBrain(FreeTopics, BaseBrain):
         cfg = dict(self._brain().get("style") or {})
         cfg.setdefault("max_sentence_words", 12)
         cfg.setdefault("max_hook_words", 12)
+        cfg.setdefault("target_hook_words", 10)            # visé par le prompt : marge sous le maximum
         cfg["banned_words"] = _as_reasons(cfg.get("banned_words"), "terme interdit")
         return cfg
 
@@ -747,6 +750,7 @@ class FinanceBrain(FreeTopics, BaseBrain):
         cfg = self.style_cfg()
         values = dict(topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""), n=n,
                       wording=self.wording(), max_hook_words=cfg["max_hook_words"],
+                      target_hook_words=cfg["target_hook_words"],
                       numbers_block=self.numbers_block(), hook_example=self.hook_example())
         valid = []
         for attempt in range(2):
@@ -1171,7 +1175,8 @@ class FinanceBrain(FreeTopics, BaseBrain):
 
     def rewrite_plan(self, data: dict, issues: list[str], limit: int | None = None) -> dict | None:
         """{cible: [consignes]} si chaque avertissement vise une scène ou un champ précis et que peu de scènes
-        sont concernées (brain.partial_rewrite_max_scenes, défaut 3) ; None sinon (script régénéré en entier)."""
+        sont à corriger sur le fond (brain.partial_rewrite_max_scenes, défaut 3 ; les scènes seulement trop
+        courtes ne comptent pas) ; None sinon (script régénéré en entier)."""
         plan: dict = {}
         for issue in issues:
             targets = self.issue_targets(issue, data)
@@ -1189,7 +1194,10 @@ class FinanceBrain(FreeTopics, BaseBrain):
             return None
         if limit is None:
             limit = int(self._brain().get("partial_rewrite_max_scenes", 3))
-        scenes = [t for t in plan if isinstance(t, int)]
+        # la limite ne compte que les scènes à corriger sur le fond : les scènes seulement trop courtes sont
+        # allongées quel que soit leur nombre (jamais tout le script régénéré pour une question de longueur)
+        lengthen = "allonge à environ"
+        scenes = [t for t, todo in plan.items() if isinstance(t, int) and not all(x.startswith(lengthen) for x in todo)]
         return plan if plan and len(scenes) <= limit else None
 
     def rewrite_prompt(self, topic, scene_count, chosen_hook, data: dict, plan: dict) -> list[dict]:

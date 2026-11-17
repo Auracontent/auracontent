@@ -196,6 +196,12 @@ def _is_rate_limit_error(low):
     ))
 
 
+def _is_unavailable_error(low: str) -> bool:
+    """Service saturé ou muet : 500/502/503/504, surcharge, délai dépassé."""
+    return any(k in low for k in ("error code: 503", "error code: 502", "error code: 504", "error code: 500",
+                                  "timed out", "timeout", "overloaded", "service unavailable"))
+
+
 def _classify_error(e, err_str):
     low = err_str.lower()
     if isinstance(e, ValueError):
@@ -516,7 +522,8 @@ class LLMClient:
     def call_with_fallback(self, messages, temperature=1.0, json_mode=False,
                            max_completion_tokens=3000, hard_token_cap=7500,
                            allowed_models: list[str] | None = None, wait_rounds: int = 0, wait_seconds: float = 60,
-                           fallback_excluded: list[str] | None = None, rate_limit: str = "wait"):
+                           fallback_excluded: list[str] | None = None, rate_limit: str = "wait",
+                           unavailable: str = "retry"):
         """Cascade des fournisseurs.
 
         `rate_limit` : « wait » (défaut) attend la fin de la limite par minute puis réessaie le même modèle ;
@@ -528,7 +535,11 @@ class LLMClient:
         sauf ceux qui correspondent à ces fragments (Gemini, réservé au script)."""
         if rate_limit not in ("wait", "fallback"):
             raise ValueError(f"rate_limit inconnu : {rate_limit!r} (attendu « wait » ou « fallback »)")
+        if unavailable not in ("retry", "fallback"):
+            raise ValueError(f"unavailable inconnu : {unavailable!r} (attendu « retry » ou « fallback »)")
         extra = {"rate_limit": rate_limit} if rate_limit != "wait" else {}   # défaut : appel inchangé
+        if unavailable != "retry":       # 503 / délai dépassé : fournisseur suivant sans réessayer (opt-in)
+            extra["unavailable"] = unavailable
         for round_ in range(wait_rounds + 1):
             try:
                 return self._call_providers(messages, temperature, json_mode, max_completion_tokens,
@@ -552,7 +563,7 @@ class LLMClient:
         raise RuntimeError("inaccessible")
 
     def _call_providers(self, messages, temperature, json_mode, max_completion_tokens, hard_token_cap,
-                        allowed_models=None, rate_limit: str = "wait"):
+                        allowed_models=None, rate_limit: str = "wait", unavailable: str = "retry"):
         providers = self.providers
         if not providers:
             raise RuntimeError("Aucune clé API LLM (GEMINI / GROQ / OPENROUTER) configurée.")
@@ -663,6 +674,9 @@ class LLMClient:
                         print(f"⏳ Limite par minute sur {provider['model']}, attente de {delay:.0f}s...")
                         time.sleep(delay + 1)
                         continue
+                    if unavailable == "fallback" and _is_unavailable_error(low):
+                        print(f"⏭️ {provider['model']} indisponible (503 ou délai dépassé) : fournisseur suivant.")
+                        break
                     time.sleep(2)
 
         raise RuntimeError(f"Échec total après tous les fournisseurs LLM ({', '.join(self.order)}). Dernière erreur : {last_error}")

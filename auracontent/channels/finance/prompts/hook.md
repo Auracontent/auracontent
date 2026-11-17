@@ -11,7 +11,7 @@ CHIFFRES AUTORISÉS (calculés ; les seuls que tu peux écrire, tels quels, pour
 
 Écris {n} accroches différentes, lues dans les 3 premières secondes.
 Règles :
-1. {max_hook_words} mots AU PLUS.
+1. Vise {target_hook_words} mots ; {max_hook_words} mots AU PLUS (un nombre comme « 10 000 € » compte pour un mot).
 2. Une contradiction ou une surprise, compréhensible sans contexte et sans avoir vu la vidéo (ex : « {hook_example} »).
 3. Aucun jargon : pas de « taux composé », « capitalisation », « rendement annualisé ». Des mots de tous les jours.
 4. Tutoiement ou forme impersonnelle ; jamais « vous ».
