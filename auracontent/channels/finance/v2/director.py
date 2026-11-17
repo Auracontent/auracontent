@@ -18,8 +18,8 @@ from . import easing
 
 TRANSITIONS = ("fade", "slideleft", "slideup", "circleopen", "wipeleft", "zoomin", "smoothleft", "radial")
 FONTS_DIR = Path(__file__).resolve().parents[4] / "assets" / "finance" / "fonts"
-SFX_DIRS = [Path(__file__).resolve().parents[4] / "assets" / "finance" / "sfx",
-            Path(__file__).resolve().parents[4] / "assets" / "shared" / "sfx"]
+# Effets sonores propres à Capital Simple uniquement (jamais ceux de mystery ni du dossier partagé).
+SFX_DIRS = [Path(__file__).resolve().parents[4] / "assets" / "finance" / "sfx"]
 
 
 def key_state(layer: dict, t: float) -> dict:
@@ -133,7 +133,7 @@ def _sfx_path(name: str) -> Path | None:
 
 
 def assemble(clips: list[Path], shots: list[Shot], target: Path, *, overlap: float = 0.35,
-             ass: Path | None = None, voice: Path | None = None, music: Path | None = None,
+             ass: Path | None = None, voices: list[tuple[Path, float]] | None = None, music: Path | None = None,
              music_gain: float = 0.12, crf: int = 20) -> Path:
     """Enchaîne les plans (xfade), mixe voix + musique + effets, brûle les sous-titres, limite le pic à -1,5 dBTP."""
     target = Path(target)
@@ -156,9 +156,11 @@ def assemble(clips: list[Path], shots: list[Shot], target: Path, *, overlap: flo
     # audio : voix, musique, effets
     n = len(clips)
     a_parts, a_labels = [], []
-    if voice:
-        inputs += ["-i", str(voice)]
-        a_labels.append(f"[{n}:a]")
+    for j, (vpath, vstart) in enumerate(voices or []):      # voix de chaque plan, posée à son instant
+        inputs += ["-i", str(vpath)]
+        ms = int(vstart * 1000)
+        a_parts.append(f"[{n}:a]adelay={ms}|{ms}[vo{j}]")
+        a_labels.append(f"[vo{j}]")
         n += 1
     if music:
         inputs += ["-stream_loop", "-1", "-i", str(music)]

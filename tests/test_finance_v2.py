@@ -99,3 +99,25 @@ def test_le_moteur_partage_n_est_pas_modifie():
     from auracontent.services.visuals.linework import engine
     layer = {"keys": [{"t": 0, "y": 0}, {"t": 1, "y": 100, "ease": "linear"}]}
     assert engine.key_state(layer, 0.25)["y"] == pytest.approx(100 * easing.smooth(0.25))
+
+
+def test_aucun_son_de_mystery_ni_du_dossier_partage():
+    assert all("finance" in str(p) for p in director.SFX_DIRS)
+
+
+def test_pilote_avec_voix_simulee(tmp_path: Path, monkeypatch):
+    """Chemin --voice : durée des plans = durée de la voix, voix posée au début de chaque plan."""
+    import subprocess
+
+    from auracontent.channels.finance.v2 import pilot
+
+    async def fake_synth(text, path):
+        subprocess.run(["ffmpeg", "-v", "error", "-y", "-f", "lavfi", "-i", "sine=f=220:d=1.5", str(path)], check=True)
+        return [{"offset": 1_000_000, "duration": 2_000_000, "text": "a"},
+                {"offset": 12_000_000, "duration": 2_000_000, "text": "b"}]
+
+    monkeypatch.setattr(pilot, "_synth", fake_synth)
+    sc = pilot.timed_script(1.0, tmp_path / "voix")
+    assert all(s["voice"].exists() for s in sc)
+    assert sc[0]["duration"] == pytest.approx(pilot.LEAD + 1.4 + 0.5, abs=0.01)
+    assert sc[0]["words"][0].start == pytest.approx(pilot.LEAD + 0.1)

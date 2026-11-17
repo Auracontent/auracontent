@@ -4,8 +4,10 @@ A : style actuel (gabarits génériques existants), animé : caméra douce, fond
 B : narration par objets et personnages (appli, étiquettes de prix, calendrier, ticket de caisse), graphique minimal.
 C : même histoire que B, réalisation dynamique : gros plans sur les chiffres, rebonds, transitions marquées.
 
-Tous les chiffres viennent de calc.py. Sans voix (aperçu local) : minutage des mots estimé.
-Usage : python -m auracontent.channels.finance.v2.pilot --out output/pilote_v2 [--versions A,B,C]
+Tous les chiffres viennent de calc.py. Effets sonores propres à Capital Simple uniquement.
+Usage : python -m auracontent.channels.finance.v2.pilot --out output/pilote_v2 [--versions A,B,C] [--voice]
+  --voice : vraie voix de Rémy (Edge TTS, comme la chaîne) et sous-titres calés sur la voix ; sans --voice,
+            aperçu muet avec minutage estimé.
 """
 from __future__ import annotations
 
@@ -86,13 +88,50 @@ SCRIPT = [
 ]
 
 
-def timed_script(pace: float = 1.0) -> list[dict]:
+VOICE = {"voice": "fr-FR-RemyMultilingualNeural", "rate": "-8%", "pitch": "+0Hz"}   # comme config/channels/finance.yaml
+LEAD = 0.2                          # la voix commence 0,2 s après le début du plan
+
+
+async def _synth(text: str, path: Path) -> list[dict]:
+    """Voix Edge TTS (Rémy) + événements WordBoundary (minutage réel des mots)."""
+    import edge_tts
+    comm = edge_tts.Communicate(text, voice=VOICE["voice"], rate=VOICE["rate"], pitch=VOICE["pitch"],
+                                boundary="WordBoundary")
+    marks = []
+    with open(path, "wb") as f:
+        async for chunk in comm.stream():
+            if chunk["type"] == "audio":
+                f.write(chunk["data"])
+            elif chunk["type"] == "WordBoundary":
+                marks.append(chunk)
+    return marks
+
+
+def timed_script(pace: float = 1.0, voice_dir: Path | None = None) -> list[dict]:
+    """Script minuté. Avec voice_dir : vraie voix de Rémy, durée des plans = durée de la voix, sous-titres calés
+    sur les mots réellement prononcés ; sinon minutage estimé (aperçu sans voix)."""
+    import asyncio
+
+    from auracontent.channels.finance import spoken
     out = []
-    for role, shown, spoken in SCRIPT:
-        n = len((spoken or shown).replace("-", " ").split())
-        dur = n / (WPS * pace) + 0.55
-        out.append({"role": role, "text": shown, "duration": round(dur, 2),
-                    "words": captions.estimate(shown, 0.2, dur - 0.45)})
+    for i, (role, shown, said) in enumerate(SCRIPT):
+        said = said or spoken.spoken_text(shown)
+        if voice_dir:
+            voice_dir.mkdir(parents=True, exist_ok=True)
+            path = voice_dir / f"voix_{i + 1}.mp3"
+            marks = asyncio.run(_synth(said, path))
+            if not marks:
+                raise RuntimeError(f"Edge TTS : aucun minutage de mot pour le plan {i + 1}")
+            first = marks[0]["offset"] / 1e7
+            last = (marks[-1]["offset"] + marks[-1]["duration"]) / 1e7
+            dur = LEAD + last + 0.5
+            words = captions.estimate(shown, LEAD + first, last - first)
+            out.append({"role": role, "text": shown, "duration": round(dur, 2), "words": words, "voice": path})
+        else:
+            n = len(said.replace("-", " ").split())
+            dur = n / (WPS * pace) + 0.55
+            out.append({"role": role, "text": shown, "duration": round(dur, 2),
+                        "words": captions.estimate(shown, LEAD, dur - 0.45)})
     return out
 
 
@@ -117,7 +156,7 @@ def shots_objects(sc: list[dict], pdir: Path, c: fcalc.Calc, dyn: bool) -> list[
         if dyn else [{"t": 0, "zoom": 1.0}, {"t": s["duration"], "zoom": 1.05, "ease": "linear"}]
     shots.append(Shot(L, s["duration"], cam, "slideup" if dyn else "fade",
                       [{"at": 0.05 + i * 0.18 + 0.5, "file": "pop.wav", "gain": 0.3} for i in range(3)]
-                      + [{"at": t_num, "file": "reveal.mp3", "gain": 0.45}]))
+                      + [{"at": t_num, "file": "chime.wav", "gain": 0.4}]))
 
     # 2. Situation : Hugo et son téléphone, les applis sortent du téléphone
     s = sc[1]
@@ -191,7 +230,7 @@ def shots_objects(sc: list[dict], pdir: Path, c: fcalc.Calc, dyn: bool) -> list[
     cam = [{"t": 0, "zoom": 1.0}, {"t": t_tot, "zoom": 1.0},
            {"t": t_tot + 0.5, "zoom": 1.12 if dyn else 1.06, "cx": 420, "cy": 880, "ease": "back" if dyn else "out"}]
     shots.append(Shot(L, s["duration"], cam, "radial" if dyn else "fade",
-                      [{"at": 0.1, "file": "paper.wav", "gain": 0.35}, {"at": t_tot, "file": "impact.mp3", "gain": 0.4}]))
+                      [{"at": 0.1, "file": "paper.wav", "gain": 0.35}, {"at": t_tot, "file": "coins.wav", "gain": 0.45}]))
 
     # 6. Fin : question + signature, retour visuel aux applis (boucle)
     s = sc[5]
@@ -216,7 +255,7 @@ def shots_current(sc: list[dict], c: fcalc.Calc) -> list[Shot]:
           "from": t_num + 0.3, "to": 99, "keys": [{"t": t_num + 0.3, "progress": 0}, {"t": t_num + 0.7, "progress": 1}]},
          txt("big", f"{tot} €", 180, 640, 190, INK, "ui", w=760, t0=t_num, keys=pop(t_num, "out", 0.4, False)),
          txt("sub", "3 abonnements oubliés · 5 ans", 180, 900, 70, GRAY, w=760)]
-    shots.append(Shot(L, s["duration"], gentle(s["duration"]), "fade", [{"at": t_num, "file": "reveal.mp3", "gain": 0.4}]))
+    shots.append(Shot(L, s["duration"], gentle(s["duration"]), "fade", [{"at": t_num, "file": "chime.wav", "gain": 0.4}]))
     plan = [("situation", "personnages"), ("mechanism", "barres"), ("year", "deux_courbes"), ("reveal", "deux_arbres")]
     for (role, template), s in zip(plan, sc[1:5], strict=True):
         layers = fvis.scene_layers("abonnements", PARAMS, {"role": role, "template": template, "visual": ""},
@@ -230,11 +269,11 @@ def shots_current(sc: list[dict], c: fcalc.Calc) -> list[Shot]:
 
 
 # ---------- Rendu ----------
-def render_version(name: str, out: Path) -> dict:
+def render_version(name: str, out: Path, voice: bool = False) -> dict:
     t_start = time.time()
     c = fcalc.compute("abonnements", PARAMS)
     pace = 1.08 if name == "C" else 1.0
-    sc = timed_script(pace)
+    sc = timed_script(pace, out / "voix" if voice else None)
     pdir = out / "props"
     shots = shots_current(sc, c) if name == "A" else shots_objects(sc, pdir, c, dyn=(name == "C"))
     overlap = 0.35 if name != "C" else 0.3
@@ -248,7 +287,9 @@ def render_version(name: str, out: Path) -> dict:
     ass = work / "sous_titres.ass"
     ass.write_text(captions.build_ass(words, bandeau=("3 ABONNEMENTS OUBLIÉS", f"{fcalc.fmt_number(c.values['over_years'].value)} € EN 5 ANS"),
                                       total=total), encoding="utf-8")
-    final = director.assemble(clips, shots, out / f"pilote_{name}.mp4", overlap=overlap, ass=ass)
+    voices = [(s["voice"], t0[i] + LEAD) for i, s in enumerate(sc) if s.get("voice")]
+    final = director.assemble(clips, shots, out / f"pilote_{name}{'_voix' if voice else ''}.mp4", overlap=overlap,
+                              ass=ass, voices=voices)
     return {"version": name, "fichier": str(final), "duree_s": round(total, 1),
             "rendu_s": round(time.time() - t_start, 1), "taille_mo": round(final.stat().st_size / 1e6, 2),
             "plans": len(shots)}
@@ -258,10 +299,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--out", default="output/pilote_v2")
     ap.add_argument("--versions", default="A,B,C")
+    ap.add_argument("--voice", action="store_true", help="vraie voix de Rémy (Edge TTS, accès Internet requis)")
     args = ap.parse_args()
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
-    report = [render_version(v.strip(), out) for v in args.versions.split(",")]
+    report = [render_version(v.strip(), out, args.voice) for v in args.versions.split(",")]
     (out / "rapport.json").write_text(json.dumps(report, ensure_ascii=False, indent=2), encoding="utf-8")
     for r in report:
         print(f"🎬 Version {r['version']} : {r['duree_s']} s, rendue en {r['rendu_s']} s, {r['taille_mo']} Mo -> {r['fichier']}")
