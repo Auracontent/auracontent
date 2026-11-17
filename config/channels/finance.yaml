@@ -16,10 +16,23 @@ brain:
   target_duration: 50       # secondes (surchargé par VIDEO_DURATION dans le workflow) ; cible 45-60 s
   seconds_per_scene: 7      # 50 s -> 7 scènes
   scene_count_tolerance: 0   # storyboard fixé par concept : nombre de scènes exact
-  # Narration de 100 mots au moins (le prompt en demande 125) : environ 40 s de voix (2,5 mots/s mesurés), 45 s
-  # avec la question finale et les transitions ; la vidéo du 14/11 (68 mots) ne durait que 29,5 s
-  min_narration_words: 100
+  # Longueur calculée : (durée visée - question finale) x débit de la voix, en mots PRONONCÉS (montants en
+  # toutes lettres). Rémy à -8 % : 2,6 mots/s mesurés (78 mots en 29,8 s). Accroche et fin courtes, le reste
+  # réparti ; un script sous 90 % de la cible est régénéré avec les scènes à allonger et de combien.
+  voice_words_per_second: 2.6
+  cta_seconds: 3
+  hook_words: 10
+  end_words: 8
+  # Clé Gemini propre à la chaîne (son propre quota) : secret GEMINI_API_KEY_FINANCE, jamais la clé de
+  # mystery ; secret absent = chaîne arrêtée. Seul le nom du secret est journalisé.
+  gemini_key_env: GEMINI_API_KEY_FINANCE
   script_max_retries: 4      # contrôles stricts (chiffres, sens, exagération) : jusqu'à 5 essais
+  # Meilleur script gardé (le moins d'avertissements) ; si 3 scènes au plus posent problème, seules
+  # elles sont réécrites (un appel court) au lieu de tout régénérer
+  partial_rewrite_max_scenes: 3
+  # Seul avertissement « trop court » et au moins 90 % du minimum de mots : une passe d'allongement
+  # des scènes courtes, puis script accepté tel quel
+  near_length_ratio: 0.9
   resume_max_attempts: 3
   # Sujet inscrit à l'historique seulement une fois la vidéo produite : si elle échoue (voix Edge
   # indisponible...), le sujet reste en attente
@@ -50,18 +63,141 @@ brain:
                     "\\benorm\\w*", "\\bmagiques?\\b", "\\bspectaculaire\\w*", "\\babsolument\\b",
                     "\\bcatastroph\\w*", "\\bdesastr\\w*", "\\bexplos\\w*", "\\bsecrets?\\b",
                     "\\bincroyable\\w*", "\\bdramatique\\w*", "\\bgrignote tout\\b"]
-    banned_words: ["rendement garanti", "gain garanti", "sans risque", "investis", "achète", "conseil",
-                   "placement sûr", "valeur sûre", "devenir riche", "millionnaire"]
+    # Mots interdits (terme : raison). JAMAIS écrits dans une consigne, un exemple ou une correction envoyés au
+    # LLM (masqués en « [terme interdit] »). « achète » n'y est plus : « ce que ton argent peut acheter » décrit
+    # le pouvoir d'achat ; seul l'ordre donné au spectateur est interdit (imperatives, en début de phrase).
+    banned_words:
+      rendement garanti: promesse de résultat
+      gain garanti: promesse de résultat
+      sans risque: promesse de sécurité
+      placement sûr: promesse de sécurité
+      valeur sûre: promesse de sécurité
+      devenir riche: promesse d'enrichissement
+      millionnaire: promesse d'enrichissement
+      investis: ordre donné au spectateur
+      conseil: recommandation personnalisée (la vidéo explique, elle ne recommande pas)
+    # Ordre donné au spectateur, en début de phrase : la vidéo ne dit jamais quoi faire de son argent
+    imperatives: ["achète", "investis", "place", "épargne", "souscris", "ouvre", "vends", "emprunte"]
+    # Noms qui commencent comme un ordre (« Épargne de précaution : ... », « Place de parking ») : acceptés
+    imperative_exceptions: ["épargne de précaution", "épargne :", "place de parking", "place de stationnement",
+                            "place de cinéma", "place de concert"]
+    # Expressions courantes qui contiennent un mot interdit sans en avoir le sens (domaines études, famille...)
+    allowed_contexts: ["bourse d'études", "bourses d'études", "bourse étudiante", "bourses étudiantes",
+                       "bourse sur critères sociaux", "bourse du Crous", "bourse au mérite", "conseil de classe",
+                       "conseil municipal", "conseil d'administration", "conseil de discipline"]
+    # Verbes sans complément d'objet : « Dormir 1 000 € » n'a pas de sujet correct (on LAISSE dormir
+    # 1 000 €, ou les 1 000 € dorment). Refusés quand un montant ou « ton argent » les suit directement.
+    intransitive_verbs: ["dormir", "dors", "dort", "dorment", "grandir", "grandit", "grandissent", "fondre",
+                         "fond", "fondent", "vieillir", "vieillit", "croitre", "croit", "gonfler", "gonfle",
+                         "rouiller", "rouille", "stagner", "stagne"]
   # Question finale : une question sur le mécanisme, jamais une invitation à agir (placer, investir...)
-  cta_banned: ["placement", "placements", "placer", "places", "commencer à placer", "investir", "investis",
-               "investissement", "investissements", "épargner"]
+  cta_banned:
+    placement: invitation à agir
+    placements: invitation à agir
+    placer: invitation à agir
+    places: invitation à agir
+    commencer à placer: invitation à agir
+    investir: invitation à agir
+    investis: invitation à agir
+    investissement: invitation à agir
+    investissements: invitation à agir
+    épargner: invitation à agir
   # Produits, banques et marques : jamais cités
-  banned_names: ["livret A", "PEL", "LDDS", "assurance-vie", "PEA", "ETF", "bourse", "crypto", "bitcoin",
-                 "SCPI", "banque"]
+  banned_names:
+    livret A: nom de produit financier
+    PEL: nom de produit financier
+    LDDS: nom de produit financier
+    assurance-vie: nom de produit financier
+    PEA: nom de produit financier
+    ETF: nom de produit financier
+    SCPI: nom de produit financier
+    bourse: marché financier (la vidéo ne parle d'aucun produit)
+    crypto: actif financier (la vidéo ne parle d'aucun produit)
+    bitcoin: actif financier (la vidéo ne parle d'aucun produit)
+    # Noms d'établissements précis (banques, crédit, paiement fractionné) : le mot générique « banque » est
+    # accepté (« les frais de ta banque », « compte en banque »), aucun établissement n'est cité
+    BNP Paribas: nom d'établissement
+    Crédit Agricole: nom d'établissement
+    Société Générale: nom d'établissement
+    LCL: nom d'établissement
+    Crédit Lyonnais: nom d'établissement
+    Caisse d'Épargne: nom d'établissement
+    Banque Populaire: nom d'établissement
+    Crédit Mutuel: nom d'établissement
+    CIC: nom d'établissement
+    Banque Postale: nom d'établissement
+    BoursoBank: nom d'établissement
+    Boursorama: nom d'établissement
+    Fortuneo: nom d'établissement
+    Hello bank: nom d'établissement
+    Monabanq: nom d'établissement
+    ING: nom d'établissement
+    HSBC: nom d'établissement
+    Revolut: nom d'établissement
+    N26: nom d'établissement
+    Orange Bank: nom d'établissement
+    Qonto: nom d'établissement
+    Lydia: nom d'établissement
+    PayPal: nom d'établissement
+    Klarna: nom d'établissement
+    Cofidis: nom d'établissement
+    Cetelem: nom d'établissement
+    Sofinco: nom d'établissement
+    Oney: nom d'établissement
+    Floa: nom d'établissement
+    Younited: nom d'établissement
+  # Scène de fin : texte FIXE (jamais écrit par le LLM), exclu du contrôle des mots interdits
+  disclaimer_text: "C'est un exemple simplifié et théorique, pas un conseil : chaque situation est différente."
 
   # Concepts permanents. Le sujet = concept + paramètres ; la déduplication porte sur les deux.
   # Les valeurs autorisées sont les seules que le script peut citer en entrée (les résultats viennent de calc.py).
-  recent_concepts_window: 2   # un concept ne revient pas dans les 2 dernières vidéos
+  # Anti-répétition. Identité d'un sujet = concept + situation du quotidien :
+  # - concept_window : un même concept (calcul) ne revient pas dans les 3 dernières vidéos, même avec d'autres
+  #   chiffres ou une autre situation ;
+  # - situation_window : un même couple concept + situation ne revient pas dans les 30 dernières vidéos.
+  # Les sujets abandonnés comptent dans ces fenêtres. Sans sujet libre possible, le concept le moins récent revient.
+  concept_window: 3
+  situation_window: 30
+
+  # Génération libre de sujets ancrés dans le quotidien (partie 3). Le concept imposé par le workflow
+  # (option « concept » -> FINANCE_CONCEPT) reste prioritaire. Échec de la génération = repli sur les
+  # combinaisons des concepts ci-dessous.
+  free_topics:
+    enabled: true
+    candidates: 8                # candidats NOUVEAUX demandés à chaque run
+    domains_per_run: 2           # domaines tirés au hasard ; au moins la moitié des candidats y sont demandés
+    examples_shown: 3            # exemples montrés au LLM (format seulement, jamais un catalogue)
+    max_from_examples: 1         # candidats qui reprennent une situation des exemples, au plus
+    domains: ["logement", "transport", "alimentation", "travail et salaire", "études", "famille",
+              "loisirs et vacances", "santé", "numérique et abonnements", "banque et paiements",
+              "administration et impôts", "consommation et soldes"]
+    # Comparaison de deux situations : mots-clés normalisés (accents, pluriels, mots vides, synonymes) ;
+    # part commune >= same : même situation ; < different : différentes ; entre les deux : le LLM tranche.
+    similarity: {same: 0.75, different: 0.4}
+    synonyms:
+      cafe: ["café", "cafés", "expresso", "expressos", "cappuccino", "petit noir", "boisson chaude"]
+      travail: ["bureau", "boulot", "job", "taf", "entreprise"]
+      jour: ["matin", "matins", "jours", "quotidien", "quotidienne", "journée", "chaque jour", "tous les jours"]
+      abonnement: ["abonnements", "streaming", "plateforme", "plateformes", "forfait mensuel"]
+      telephone: ["téléphone", "smartphone", "portable", "mobile"]
+      voiture: ["auto", "véhicule", "automobile"]
+      soldes: ["solde", "promo", "promos", "promotion", "promotions", "remise", "remises", "réduction"]
+      decouvert: ["découvert", "agios", "rouge", "négatif"]
+      salaire: ["paie", "paye", "rémunération", "augmentation"]
+    # Exemples : UNIQUEMENT le format attendu (3 tirés au hasard par run). « calcul » : un calcul de calc.py.
+    examples:
+      - {situation: "Léa prend un café à 2 € chaque matin avant d'aller au travail", calcul: {type: depenses_repetees, params: {amount: 2, per_week: 5, years: 10}}, question_spectateur: "Combien coûte vraiment ce café sur 1 an et sur 10 ans ?"}
+      - {situation: "Hugo paie sa console 400 € en 4 fois et oublie une échéance", calcul: {type: paiement_fractionne, params: {price: 400, installments: 4, fee_pct: 2.2, late_fee: 15}}, question_spectateur: "Combien coûte vraiment un paiement en 4 fois ?"}
+      - {situation: "Léa découvre trois abonnements qu'elle n'utilise plus sur son relevé", calcul: {type: abonnements, params: {sub_1: 13.49, sub_2: 9.99, sub_3: 5.99, years: 5}}, question_spectateur: "Combien coûtent des abonnements oubliés sur un an ?"}
+      - {situation: "Hugo achète une voiture à crédit sur 5 ans", calcul: {type: credit_amortissable, params: {amount: 15000, rate: 6, years: 5}}, question_spectateur: "Combien coûtent les intérêts d'un crédit voiture ?"}
+      - {situation: "Léa voit un pull à -30 % puis -20 % en caisse pendant les soldes", calcul: {type: remises_successives, params: {price: 100, first: 30, second: 20}}, question_spectateur: "Pourquoi -30 % puis -20 % ne font pas -50 % ?"}
+      - {situation: "Hugo garde son argent sur un livret qui rapporte 3 % quand les prix montent de 2 %", calcul: {type: taux_reel, params: {nominal: 3, inflation: 2, amount: 1000}}, question_spectateur: "Que rapporte vraiment un livret une fois l'inflation retirée ?"}
+      - {situation: "Léa obtient 3 % d'augmentation l'année où les prix montent de 3 %", calcul: {type: salaire_vs_prix, params: {salary: 2000, raise_pct: 3, inflation: 3}}, question_spectateur: "Une augmentation de 3 % rend-elle plus riche ?"}
+      - {situation: "Hugo reste à découvert de 500 € pendant 10 jours en fin de mois", calcul: {type: decouvert_agios, params: {overdraft: 500, days: 10, rate: 16}}, question_spectateur: "Combien coûtent quelques jours de découvert ?"}
+      - {situation: "Léa met de côté 50 € par mois dès 20 ans, Hugo dès 35 ans", calcul: {type: epargne_age, params: {monthly: 50, rate: 5, age_a: 20, age_b: 35, end_age: 65}}, question_spectateur: "Pourquoi commencer 15 ans plus tôt change tout ?"}
+      - {situation: "Hugo prend un téléphone à 1 € avec un forfait à 45 € par mois pendant 24 mois", calcul: {type: forfait_appareil, params: {phone_price: 600, upfront: 1, monthly_with: 45, monthly_without: 15, months: 24}}, question_spectateur: "Combien coûte vraiment un téléphone à 1 € ?"}
+      - {situation: "Léa reçoit 10 % offerts en bon d'achat avec sa carte de fidélité", calcul: {type: carte_fidelite, params: {spend: 100, pct: 10}}, question_spectateur: "10 % offerts, est-ce vraiment 10 % de réduction ?"}
+      - {situation: "Hugo roule en voiture en leasing à 300 € par mois quand Léa met la même somme de côté", calcul: {type: leasing_epargne, params: {monthly: 300, years: 4, rate: 3}}, question_spectateur: "Avoir l'air riche ou l'être vraiment : que reste-t-il après 4 ans ?"}
   # Le LLM choisit parmi un candidat inédit par concept (résultats déjà calculés par calc.py) ; « random » :
   # tirage au hasard. En cas d'échec du LLM, tirage au hasard.
   concept_selection: "llm"
@@ -84,6 +220,14 @@ brain:
     inflation:
       label: "inflation"
       idea: "l'argent qui dort perd du pouvoir d'achat chaque année"
+      # L'argent reste sur le compte : seule une perte « de pouvoir d'achat » est vraie. Toute « perte » sans ces
+      # mots est rejetée (accroches, narration, bandeau, titre).
+      # Formulations (clés de calc.py entre accolades) : données au LLM dès le premier appel
+      wording: "La somme reste sur le compte : seul le pouvoir d'achat baisse. INTERDIT : dire que l'argent disparaît ou que tu perds des euros (« ton argent perd {lost} »). AUTORISÉ : « ton argent perd {lost_pct} de pouvoir d'achat », « tes {amount} n'ont plus que la valeur réelle de {real_value} », « ce que ton argent peut acheter baisse »."
+      # Une phrase avec « perd / perdre / perte » n'est acceptée qu'avec l'une de ces expressions
+      loss_needs: ["pouvoir d'achat", "valeur réelle", "ce que ton argent peut acheter"]
+      # Reformulations proposées au LLM quand la règle est enfreinte
+      loss_fixes: ["ton argent perd {lost_pct} de pouvoir d'achat", "tes {amount} n'ont plus que la valeur réelle de {real_value}"]
       params:
         amount: [1000, 5000, 10000]
         inflation: [2, 3, 4]
@@ -118,6 +262,8 @@ brain:
 # la vidéo échoue et le sujet reste en attente (brain.history_after_video), jamais une autre voix.
 audio:
   engines: [edge]
+  retries: 3                 # même voix jusqu'à 3 fois par scène (pause de 3 à 5 s), jamais une autre voix
+  retry_pause: [3, 5]
   role_directions: false     # voix native : aucune consigne de jeu ajoutée selon le rôle de la scène
   edge:
     # Rémy ralenti à -8 % (choix du 15/11) : environ 2,6 mots/s, 45 s pour 100 mots avec la question finale
@@ -135,6 +281,9 @@ video_composer:
   fonts_dir: "finance/fonts"
   sfx_dir: "finance/sfx"
   require_all_scenes: true   # une scène en échec = vidéo refusée (jamais de vidéo tronquée)
+  # Pic vrai du fichier final : le dernier encodage AAC dépassait la cible de loudnorm (−1,4 dBTP mesuré) ;
+  # au-dessus, le gain de la piste audio est baissé puis remesuré
+  final_true_peak: -1.5
   # Question finale : déjà écrite à la main sur la carte de fin, donc sans sous-titres ; pas de filigrane sur
   # les cartes de fin (le grand logo suffit)
   cta_scene: {subtitles: false, hide_watermark: true}

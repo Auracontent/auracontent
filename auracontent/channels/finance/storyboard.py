@@ -8,6 +8,8 @@ de STORYBOARDS ; SCENE_KEYS dit quels résultats de calc.py chaque rôle doit ci
 """
 from __future__ import annotations
 
+from auracontent.channels.finance import calc as fcalc
+
 # Variantes dessinables de chaque gabarit (nom -> description donnée au LLM). La première est le défaut.
 VARIANTS: dict[str, dict[str, str]] = {
     "deux_arbres": {"arbres": "deux arbres de tailles différentes, Léa et Hugo à côté",
@@ -31,7 +33,7 @@ ROLES: dict[str, str] = {
     "reveal": "le résultat chiffré",
     "example": "un deuxième exemple chiffré, avec l'autre taux",
     "takeaway": "ce qu'il faut retenir",
-    "disclaimer": "rappel : exemple simplifié",
+    "disclaimer": "rappel de fin : texte fixe ajouté par le code, écris simplement « Fin. »",
 }
 
 # (rôle, gabarit) scène par scène, propre à chaque concept : 5 à 7 scènes de ~7-9 s, 45-60 s de vidéo.
@@ -40,9 +42,10 @@ STORYBOARDS: dict[str, tuple[tuple[str, str], ...]] = {
     "interets_composes": (("hook", "deux_arbres"), ("context", "curseur_temps"), ("belief", "personnages"),
                           ("mechanism", "deux_courbes"), ("reveal", "deux_arbres"), ("takeaway", "barres"),
                           ("disclaimer", "carte_fin")),
-    # pas d'intuition contraire à poser : le mécanisme (les prix montent) suffit
-    "inflation": (("hook", "barres"), ("context", "curseur_temps"), ("mechanism", "deux_courbes"),
-                  ("reveal", "barres"), ("takeaway", "curseur_temps"), ("disclaimer", "carte_fin")),
+    # 7 scènes : l'intuition « l'argent qui dort ne perd rien » est posée avant le mécanisme (les prix montent)
+    "inflation": (("hook", "barres"), ("context", "curseur_temps"), ("belief", "personnages"),
+                  ("mechanism", "deux_courbes"), ("reveal", "barres"), ("takeaway", "curseur_temps"),
+                  ("disclaimer", "carte_fin")),
     "cout_du_temps": (("hook", "deux_courbes"), ("context", "curseur_temps"), ("belief", "personnages"),
                       ("mechanism", "curseur_temps"), ("reveal", "deux_courbes"), ("takeaway", "barres"),
                       ("disclaimer", "carte_fin")),
@@ -52,6 +55,10 @@ STORYBOARDS: dict[str, tuple[tuple[str, str], ...]] = {
     "regle_72": (("hook", "curseur_temps"), ("mechanism", "curseur_temps"), ("reveal", "barres"),
                  ("example", "barres"), ("takeaway", "deux_courbes"), ("disclaimer", "carte_fin")),
 }
+
+# Concepts du quotidien (calculs de calc.py sans storyboard propre) : une suite générique de 6 scènes
+DAILY: tuple[tuple[str, str], ...] = (("hook", "barres"), ("context", "personnages"), ("mechanism", "deux_courbes"),
+                                      ("reveal", "deux_arbres"), ("takeaway", "barres"), ("disclaimer", "carte_fin"))
 
 # Résultats (clés de calc.py) que chaque rôle doit citer ; absent = {"reveal": (résultat principal,)}.
 SCENE_KEYS: dict[str, dict[str, tuple[str, ...]]] = {
@@ -73,10 +80,11 @@ MUST_SAY: dict[str, tuple[str, ...]] = {
 
 
 def storyboard(concept: str) -> tuple[tuple[str, str], ...]:
-    try:
+    if concept in STORYBOARDS:
         return STORYBOARDS[concept]
-    except KeyError:
-        raise KeyError(f"Concept sans storyboard : {concept}") from None
+    if concept in fcalc.CONCEPTS:
+        return DAILY
+    raise KeyError(f"Concept sans storyboard : {concept}")
 
 
 def scene_keys(concept: str, headline: str) -> dict[str, tuple[str, ...]]:

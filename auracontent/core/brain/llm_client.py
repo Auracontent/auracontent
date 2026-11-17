@@ -16,7 +16,7 @@ import os
 import re
 import time
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any
 
 import requests
@@ -414,6 +414,18 @@ class LLMClient:
         per = max(videos, 1)
         return (f"💰 Budget LLM : {ok} appel(s) réussi(s), {tin} tokens en entrée, {tout} en sortie, "
                 f"pour {videos} script(s) ; par script : {ok / per:.1f} appel(s), {tin // per} + {tout // per} tokens.")
+
+    def with_gemini_key_env(self, env_name: str | None) -> LLMClient:
+        """Opt-in par chaîne (brain.gemini_key_env) : client dont la clé Gemini vient de CE secret, sans repli
+        sur GEMINI_API_KEY ; journal d'usage partagé. Sans nom (défaut) : le client lui-même, inchangé.
+        Seul le NOM du secret est journalisé, jamais sa valeur."""
+        if not env_name:
+            return self
+        key = _env_key([env_name])
+        if not key:
+            raise RuntimeError(f"Secret {env_name} absent : aucun repli sur la clé Gemini commune.")
+        print(f"🔑 Clé Gemini : secret {env_name}")
+        return replace(self, keys={**self.keys, "gemini": key})
 
     @classmethod
     def create_default(cls):

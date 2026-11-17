@@ -89,6 +89,8 @@ def display_text(text: str) -> str:
     """Reformate chaque nombre au format de l'écran : « 10000 € » -> « 10 000 € », « 6.1 » -> « 6,1 »."""
     def fmt(m: re.Match) -> str:
         value = float(re.sub(r"[ \u00a0\u202f]", "", m.group()).replace(",", "."))
+        if not value.is_integer() and re.match(r"\s*(?:€|euros?\b)", text[m.end():]):   # « 2,50 € »
+            return f"{fmt_number(int(value))},{round(abs(value) * 100) % 100:02d}"
         return fmt_number(value)
     return _NUMBER_RE.sub(fmt, text)
 
@@ -106,6 +108,14 @@ _SYMBOLS = [
 def _euros(m: re.Match) -> str:
     raw = m.group(1)
     value = float(re.sub(r"[ \u00a0\u202f]", "", raw).replace(",", "."))
+    if "," in raw:                                   # centimes : « 4,93 € » -> « quatre euros quatre-vingt-treize »
+        whole, cents = raw.split(",", 1)
+        cents = int((cents + "0")[:2])
+        euros = int(re.sub(r"[ \u00a0\u202f]", "", whole) or 0)
+        unit = "euro" if euros == 1 else "euros"
+        if cents == 0:
+            return f"{int_to_words(euros)} {unit}"
+        return f"{int_to_words(euros)} {unit} {int_to_words(cents)}" if euros else f"{int_to_words(cents)} centimes"
     words = number_to_words(raw)
     if value == 1:
         return f"{words} euro"

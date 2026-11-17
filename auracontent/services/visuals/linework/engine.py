@@ -133,6 +133,11 @@ def _sized(path: str, w: int, h: int) -> Image.Image:
     return canvas
 
 
+@lru_cache(maxsize=256)
+def _mirrored(path: str, w: int, h: int) -> Image.Image:
+    return _sized(path, w, h).transpose(Image.FLIP_LEFT_RIGHT)
+
+
 def wrap(font: ImageFont.FreeTypeFont, text: str, max_width: float) -> list[str]:
     """Retour à la ligne au mot ; ValueError si un mot seul dépasse (texte coupé : jamais toléré)."""
     lines, line = [], ""
@@ -276,7 +281,10 @@ class Painter:
             src = _sprite(path)
             w = lay.get("w", 200)
             h = lay.get("h") or w * src.height / src.width
-            self._place(canvas, _sized(path, max(1, round(w * s)), max(1, round(h * s))), lay, x, y)
+            piece = _sized(path, max(1, round(w * s)), max(1, round(h * s)))
+            if lay.get("flip"):                             # miroir horizontal (personnage tourné vers la gauche)
+                piece = _mirrored(path, piece.width, piece.height)
+            self._place(canvas, piece, lay, x, y)
         elif kind == "text":
             size = round(lay.get("size", 52) * s)
             font = self.font(lay, size)

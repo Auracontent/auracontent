@@ -12,7 +12,7 @@ def _picked(concept, params, llm=None):
     brain = BaseChannel("finance", FinanceBrain, llm).brain
     resolved = brain.resolve_params(concept, params)
     brain.last_pick = {"concept": concept, "params": resolved, "topic_key": brain.topic_key(concept, resolved)}
-    brain.config["brain"]["min_narration_words"] = 0          # scripts factices courts : règle testée à part
+    brain.config["brain"]["voice_words_per_second"] = 0      # scripts factices courts : règle testée à part
     return brain
 
 
@@ -313,26 +313,37 @@ def test_regle_72_years_saved_is_an_allowed_number():
     assert brain.hook_issues("Passer de 2 % à 3 % te fait gagner 12 ans.", "sujet") == []
 
 
-# ---------- Run du 14/11 : vidéo de 29,5 s, narration trop courte ----------
-def test_short_narration_is_regenerated():
+# ---------- Longueur calculée depuis la durée visée et le débit de la voix ----------
+def test_word_targets_follow_duration_voice_rate_and_scene_count(monkeypatch):
+    monkeypatch.setenv("VIDEO_DURATION", "45")
     brain = _picked("cout_du_temps", COUT)
-    brain.config["brain"]["min_narration_words"] = 95
-    short = _script("Verser 6 000 € de plus rapporte 23 800 € de plus.")          # 39 mots
-    assert any("script trop court" in i and "95" in i for i in brain.check_script_logic("t", short))
-    long_text = ("Le temps travaille pour toi chaque mois sans effort. "
-                 "Les intérêts produisent à leur tour de nouveaux intérêts chaque année.")
-    for scene in short["scenes"][1:-1]:
-        if scene["role"] != "reveal":
-            scene["text"] = long_text
-    assert not [i for i in brain.check_script_logic("t", short) if "trop court" in i]
+    brain.config["brain"]["voice_words_per_second"] = 2.6
+    targets = brain.scene_word_targets()
+    assert len(targets) == 7 and targets[0] == 10
+    assert targets[-1] == FinanceBrain.spoken_words({"text": brain.disclaimer_text()})   # texte fixe de la fin
+    assert sum(targets) == pytest.approx((45 - 3) * 2.6, abs=3)                # 109 mots prononcés
+    prompt = brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
+    assert f"scène 2 : environ {targets[1]} mots" in prompt
 
 
-def test_yaml_minimum_narration_and_prompt():
-    brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
-    assert BaseChannel("finance", FinanceBrain, None).brain.min_words() == 100
-    brain.config["brain"]["min_narration_words"] = 100
-    prompt = brain.build_script_prompt("t", 6, {"text": "h"})[1]["content"]
-    assert "environ 125 mots (jamais moins de 100)" in prompt
+def test_short_script_lists_scenes_to_lengthen(monkeypatch):
+    monkeypatch.setenv("VIDEO_DURATION", "45")
+    brain = _picked("cout_du_temps", COUT)
+    brain.config["brain"]["voice_words_per_second"] = 2.6
+    issues = brain.check_script_logic("t", _script("Verser 6 000 € de plus rapporte 23 800 € de plus."))
+    short = next(i for i in issues if "script trop court" in i)
+    assert "mots prononcés" in short and "scène 2 : 5 mots, vise" in short and "(+" in short
+
+
+def test_spoken_words_count_amounts_in_full():
+    from auracontent.channels.finance.brain import FinanceBrain
+
+    assert FinanceBrain.spoken_words({"text": "Verser 12 000 € de plus."}) == 6           # verser douze mille euros de plus
+    assert FinanceBrain.spoken_words({"text": "x", "spoken": "un deux trois"}) == 3
+
+
+def test_inflation_has_seven_scenes():
+    assert len(storyboard.storyboard("inflation")) == 7
 
 
 def test_sentence_limit_14_and_bandeau_lengths_in_prompt():
@@ -399,3 +410,54 @@ def test_mechanism_question_passes():
     data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
     data["closing_cta"] = "Pourquoi les premières années comptent-elles autant ?"
     assert not [i for i in brain.check_script_logic("t", data) if "question finale" in i]
+
+
+# ---------- Inflation : une perte est toujours « de pouvoir d'achat » ----------
+INFL = {"amount": 10000, "inflation": 3, "years": 30}
+
+
+def test_inflation_loss_without_purchasing_power_is_rejected():
+    brain = _picked("inflation", INFL)
+    assert brain.calc()["lost"] == 5880
+    assert any("pouvoir d'achat" in i for i in brain.hook_issues("Dormir ton argent, c'est perdre 5 880 € en 30 ans.", "s"))
+    assert brain.hook_issues("Tu perds 5 880 € de pouvoir d'achat en 30 ans.", "s") == []
+    assert brain.hook_issues("Laisser dormir ton argent coûte du pouvoir d'achat.", "s") == []
+
+
+def test_loss_rule_only_for_inflation():
+    brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
+    assert brain.hook_issues("Avec 2 % de frais, tu perds 5 300 € sur 20 ans.", "s") == []
+
+
+class _HookJudge:
+    def __init__(self, answer):
+        self.answer, self.prompts = answer, []
+
+    def call_json_with_retry(self, messages, **kw):
+        self.prompts.append(messages[1]["content"])
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+def test_llm_checks_hooks_before_selection(capsys):
+    judge = _HookJudge({"rejets": [{"numero": 1, "motif": "« Dormir ton argent » n'est pas français"}]})
+    brain = _picked("inflation", INFL, judge)
+    brain.config["brain"]["meaning_check"] = "llm"
+    hooks = [{"text": "Dormir ton argent coûte du pouvoir d'achat."}, {"text": "Tes 10 000 € achètent moins."}]
+    kept = brain.llm_hook_check(hooks)
+    assert [h["text"] for h in kept] == ["Tes 10 000 € achètent moins."]
+    assert "pas français" in capsys.readouterr().out
+    assert "pouvoir d'achat perdu : 5 880 €" in judge.prompts[0] and "1. Dormir ton argent" in judge.prompts[0]
+
+
+def test_hook_check_unavailable_keeps_hooks():
+    brain = _picked("inflation", INFL, _HookJudge(RuntimeError("quota")))
+    brain.config["brain"]["meaning_check"] = "llm"
+    hooks = [{"text": "Tes 10 000 € achètent moins."}]
+    assert brain.llm_hook_check(hooks) == hooks
+
+
+def test_inflation_wording_in_prompts():
+    brain = _picked("inflation", INFL)
+    assert "La somme reste sur le compte" in brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]

@@ -1,6 +1,7 @@
 import asyncio
 import base64
 import os
+import random
 import re
 import subprocess
 import time
@@ -235,21 +236,35 @@ class AudioEngine:
     async def generate(self, text, name, role="narrator", scene=None):
         text = self.prepare_text(text)
         last_err = None
+        # audio.retries : essais de la MÊME voix (moteurs autres que Gemini) avant le moteur suivant ; absent = 1,
+        # pause de audio.retry_pause secondes [min, max] entre deux essais. Gemini : comportement inchangé.
+        tries = max(1, int(self.cfg.get("retries", 1)))
+        pause = list(self.cfg.get("retry_pause") or [3, 5])
         for engine in list(self.engines):
             ext = "mp3" if engine == "edge" else "wav"
             path = self.out / f"{name}.{ext}"
-            try:
-                if engine == "gemini":
+            if engine == "gemini":
+                try:
                     await asyncio.to_thread(self._gemini, text, role, path, scene)
-                else:
-                    await self._edge(text, role, path)
-                if audio_duration(str(path)) > 0:
-                    return str(path), engine
-            except Exception as e:
-                last_err = e
-                print(f"      ⚠️ {engine} a échoué : {e}")
-                if engine == "gemini":
+                    if audio_duration(str(path)) > 0:
+                        return str(path), engine
+                except Exception as e:
+                    last_err = e
+                    print(f"      ⚠️ {engine} a échoué : {e}")
                     self.engines.remove("gemini")
+                continue
+            for attempt in range(1, tries + 1):
+                try:
+                    await self._edge(text, role, path)
+                    if audio_duration(str(path)) > 0:
+                        return str(path), engine
+                    raise RuntimeError("fichier audio vide")
+                except Exception as e:
+                    last_err = e
+                    suffix = f" ({attempt}/{tries})" if tries > 1 else ""
+                    print(f"      ⚠️ {engine} a échoué{suffix} : {e}")
+                    if attempt < tries:
+                        await asyncio.sleep(random.uniform(float(pause[0]), float(pause[-1])))
         raise RuntimeError(f"Aucun moteur TTS disponible : {last_err}")
 
     async def _render(self, scene):

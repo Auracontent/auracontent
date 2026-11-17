@@ -23,6 +23,10 @@ on:
         description: "Tester plusieurs hooks avant génération"
         required: false
         default: "true"
+      concept:
+        description: "finance : calcul imposé (ex : remises_successives) ; vide = sujet libre du quotidien"
+        required: false
+        default: ""
   repository_dispatch:
     types: [trigger-videos]
 
@@ -41,6 +45,7 @@ jobs:
     timeout-minutes: 45
     env:
       CHANNEL: ${{ github.event.inputs.channel || github.event.client_payload.channel || 'mystery' }}
+      FINANCE_CONCEPT: ${{ github.event.inputs.concept }}   # lu par finance seulement (prioritaire sur le sujet libre)
       GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
       GEMINI_API_KEY_FINANCE: ${{ secrets.GEMINI_API_KEY_FINANCE }}   # clé (et quota) propre à finance
       GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
@@ -94,7 +99,7 @@ jobs:
               exit 1
             fi
             echo "GEMINI_API_KEY=$GEMINI_API_KEY_FINANCE" >> "$GITHUB_ENV"
-            echo "Clé Gemini : GEMINI_API_KEY_FINANCE"
+            echo "Clé Gemini : secret GEMINI_API_KEY_FINANCE (nom seul, jamais la valeur)"
           else
             echo "Clé Gemini : GEMINI_API_KEY"
           fi

@@ -65,8 +65,21 @@ def note_script_attempt(channel: str) -> int:
     return data[channel]["script_attempts"]
 
 
-def load_pending(channel: str, max_attempts: int = 3, max_age_days: float = 7) -> dict | None:
-    """État à reprendre, ou None (aucun, trop vieux, ou trop de tentatives : il est alors abandonné)."""
+def attach_script(channel: str, script: dict) -> int:
+    """La vidéo a échoué APRÈS la validation du script : le script validé est gardé avec le sujet en attente,
+    pour être réutilisé tel quel à la reprise ; l'échec compte pour l'abandon. Renvoie le nombre d'échecs."""
+    data = _load(channel)
+    if channel not in data:
+        return 0
+    data[channel]["script"] = script
+    data[channel]["script_attempts"] = int(data[channel].get("script_attempts", 0)) + 1
+    _write(data, channel)
+    return data[channel]["script_attempts"]
+
+
+def load_pending(channel: str, max_attempts: int = 3, max_age_days: float = 7, on_abandon=None) -> dict | None:
+    """État à reprendre, ou None (aucun, trop vieux, ou trop de tentatives : il est alors abandonné).
+    `on_abandon(entry, reason)` (opt-in, défaut None) : appelé avec l'entrée abandonnée."""
     entry = _load(channel).get(channel)
     if not entry or not entry.get("topic"):
         return None
@@ -78,6 +91,8 @@ def load_pending(channel: str, max_attempts: int = 3, max_age_days: float = 7) -
             datetime.now(UTC) - saved > timedelta(days=max_age_days):
         print(f"🗑️ Sujet en attente abandonné ({entry['topic']}) : trop de tentatives ou trop ancien.")
         clear_pending(channel)
+        if on_abandon is not None:
+            on_abandon(entry, f"{entry.get('script_attempts', 0)} échec(s) ou sujet trop ancien")
         return None
     return entry
 

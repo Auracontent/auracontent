@@ -133,7 +133,9 @@ def test_hook_filters_log_reasons():
     assert any("2500" in i or "2 500" in i for i in brain.hook_issues("Léa finit avec 2500 €.", topic))
     assert any("472" in i for i in brain.hook_issues("Léa a 472 € de plus.", topic))  # écart non arrondi
     assert any("vouvoie" in i for i in brain.hook_issues("Vous allez être surpris.", topic))
-    assert any("livret A" in i for i in brain.hook_issues("Le livret A ne suffit pas.", topic))
+    issues = brain.hook_issues("Le livret A ne suffit pas.", topic)
+    assert any("terme interdit (nom de produit financier)" in i for i in issues)
+    assert not any("livret" in i.lower() for i in issues)                   # jamais le mot interdit en retour
     assert brain.hook_issues("100 € à 20 ans battent 300 € à 40 ans.", topic) == []
 
 
@@ -187,7 +189,7 @@ def test_run_channel_script_only_regenerates_and_saves(finance_state, monkeypatc
     gb.output_dir = finance_state / "scripts"
     brain = gb.channels["finance"].brain
     brain.config["brain"]["concepts"] = {"interets_composes": brain.config["brain"]["concepts"]["interets_composes"]}
-    brain.config["brain"]["min_narration_words"] = 0          # scripts factices courts : règle testée à part
+    brain.config["brain"]["voice_words_per_second"] = 0      # scripts factices courts : règle testée à part
     brain.combinations = lambda concept: [brain.resolve_params(concept, {
         "early_age": 20, "late_age": 40, "early_amount": 100, "late_amount_factor": 3, "rate": 7, "end_age": 65})]
 

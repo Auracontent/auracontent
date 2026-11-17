@@ -11,7 +11,9 @@ Une chaîne marquée `enabled: false` dans son YAML est ignorée : aucun appel L
 --allow-disabled la lance quand même, en local seulement (refusé avec --upload ou --sync-state).
 """
 import argparse
+import json
 import sys
+from pathlib import Path
 
 from auracontent.channels.base_channel import channel_enabled
 from auracontent.channels.registry import CHANNEL_REGISTRY
@@ -19,7 +21,7 @@ from auracontent.core.brain.global_brain import GlobalBrain
 from auracontent.core.brain.llm_client import LLMClient
 from auracontent.core.pipeline import produce_video
 from auracontent.services.publishing.state_sync import pull_state, push_state
-from auracontent.utils.pending_topic import PENDING_FILE
+from auracontent.utils.pending_topic import PENDING_FILE, attach_script
 
 
 def main(argv: list[str]) -> int:
@@ -56,15 +58,23 @@ def main(argv: list[str]) -> int:
             # brain.history_after_video (YAML) : le sujet n'est inscrit qu'une fois la vidéo produite ; si la vidéo
             # échoue (voix indisponible...), il reste en attente pour l'exécution suivante. Absent : dès le script.
             channel = brain.channels.get(name)
+            # brain.gemini_key_env (YAML, opt-in) : clé Gemini propre à la chaîne (finance) ; absent : client commun
+            channel_llm = llm
+            key_env = channel and (channel.section("brain") or {}).get("gemini_key_env")
+            if key_env:
+                channel_llm = llm.with_gemini_key_env(key_env)
+                channel.brain.llm = channel_llm
             deferred = bool(channel and (channel.section("brain") or {}).get("history_after_video"))
             deferred = deferred and not args.script_only
             script_path = brain.run_channel(name, finalize=not deferred)
             if not args.script_only:
                 try:
-                    produce_video(brain.channels[name], llm, script_path, upload=args.upload)
+                    produce_video(brain.channels[name], channel_llm, script_path, upload=args.upload)
                 except Exception:
                     if deferred:
-                        print(f"💾 {name} : vidéo en échec, le sujet reste en attente pour la prochaine exécution.")
+                        # script validé gardé : la reprise le réutilise tel quel (aucun appel LLM pour le refaire)
+                        attach_script(name, json.loads(Path(script_path).read_text(encoding="utf-8")))
+                        print(f"💾 {name} : vidéo en échec, le sujet et son script validé restent en attente.")
                     raise
                 if deferred:
                     brain.finalize_channel(name, script_path)

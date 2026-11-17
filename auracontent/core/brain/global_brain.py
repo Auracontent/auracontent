@@ -23,6 +23,22 @@ from auracontent.utils.topic_tracker import save_global_history
 from config import settings
 
 
+
+def _notify_abandon(brain, topic: str, reason: str, pick: dict) -> None:
+    """Opt-in : une chaîne qui définit on_topic_abandoned(topic, reason, pick) inscrit le sujet abandonné
+    (finance : à l'historique, statut « abandonné »). Les autres chaînes : aucun effet."""
+    hook = getattr(brain, "on_topic_abandoned", None)
+    if callable(hook):
+        hook(topic, reason, dict(pick or {}))
+
+
+def _pending_abandon_hook(brain):
+    """Rappel pour load_pending (sujet en attente abandonné), ou None si la chaîne n'en définit pas."""
+    if not callable(getattr(brain, "on_topic_abandoned", None)):
+        return None
+    return lambda entry, reason: _notify_abandon(
+        brain, entry.get("topic", ""), reason, ((entry.get("brain") or {}).get("last_pick") or {}))
+
 @dataclass
 class GlobalBrain:
     llm_client: LLMClient
@@ -56,6 +72,13 @@ class GlobalBrain:
 
         b = channel.section("brain") or {}
         resumable = hasattr(brain, "export_state") and hasattr(brain, "restore_state")
+        saved = self._validated_script(channel_name, brain, b) if resumable else None
+        if saved is not None:
+            path = self._save_script(channel_name, saved)
+            print(f"♻️ Script validé repris tel quel (vidéo précédente en échec) : {saved.get('topic')}")
+            if finalize:
+                self.finalize_channel(channel_name, path)
+            return path
         rounds = max(1, int(b.get("veracity_topic_rounds", 3)))
         for round_ in range(1, rounds + 1):
             topic, hooks, chosen_hook = self._topic_and_hook(channel_name, channel, brain, b, resumable,
@@ -71,6 +94,7 @@ class GlobalBrain:
                 if resumable:
                     clear_pending(channel_name)
                 note_rejected(channel_name, pick.get("source_title"), pick.get("anecdote_id"), str(e))
+                _notify_abandon(brain, topic, f"contrôle de véracité : {e}", pick)
                 if round_ == rounds:
                     raise RuntimeError(f"{rounds} sujet(s) abandonné(s) par le contrôle de véracité.") from e
                 print(f"↪️ Sujet suivant ({round_ + 1}/{rounds}).")
@@ -85,6 +109,7 @@ class GlobalBrain:
                         clear_pending(channel_name)
                         note_rejected(channel_name, pick.get("source_title"), pick.get("anecdote_id"),
                                       f"{failures} échec(s) du script : {e}")
+                        _notify_abandon(brain, topic, f"{failures} échec(s) du script : {e}", pick)
                     else:
                         print(f"💾 Sujet, titre et accroche gardés ({failures}/{limit} échec(s)) : la prochaine "
                               "exécution reprendra ce sujet.")
@@ -100,6 +125,29 @@ class GlobalBrain:
             self.finalize_channel(channel_name, path)
         return path
 
+    @staticmethod
+    def _validated_script(channel_name: str, brain, b: dict) -> dict | None:
+        """Script validé gardé avec le sujet en attente (pending_topic.attach_script), ou None."""
+        pending = load_pending(channel_name, max_attempts=int(b.get("resume_max_attempts", 3)),
+                               max_age_days=float(b.get("resume_max_days", 7)),
+                               on_abandon=_pending_abandon_hook(brain))
+        if not pending or not isinstance(pending.get("script"), dict):
+            return None
+        try:
+            brain.restore_state(pending["brain"])
+        except (ValueError, KeyError) as e:
+            print(f"🗑️ Sujet en attente abandonné ({e}) : {pending.get('topic')}")
+            clear_pending(channel_name)
+            return None
+        script = pending["script"]
+        checker = getattr(brain, "pending_hook_issues", None)
+        hook = (script.get("hook") or {}).get("text", "") if isinstance(script.get("hook"), dict) else ""
+        issues = checker(hook, script.get("topic", "")) if callable(checker) and hook else []
+        if issues:
+            print(f"↻ Script en attente écarté, son accroche ne passe plus ({' ; '.join(issues)}) : nouveau script.")
+            return None
+        return script
+
     def finalize_channel(self, channel_name: str, script_path: Path) -> None:
         """Sujet traité : inscrit à l'historique, retiré de l'attente (après le script, ou après la vidéo)."""
         script = json.loads(Path(script_path).read_text(encoding="utf-8"))
@@ -111,7 +159,8 @@ class GlobalBrain:
     def _topic_and_hook(self, channel_name, channel, brain, b, resumable, previous_stats_list, resume=True):
         """(sujet, accroches, accroche choisie) : reprise d'un sujet validé, sinon nouveau sujet."""
         pending = load_pending(channel_name, max_attempts=int(b.get("resume_max_attempts", 3)),
-                               max_age_days=float(b.get("resume_max_days", 7))) if resumable and resume else None
+                               max_age_days=float(b.get("resume_max_days", 7)),
+                               on_abandon=_pending_abandon_hook(brain)) if resumable and resume else None
         if pending:
             # Une chaîne peut refuser un sujet en attente devenu invalide (concept retiré du YAML, paramètres
             # hors limites) en levant ValueError/KeyError : il est abandonné et un nouveau sujet est choisi.
@@ -121,15 +170,23 @@ class GlobalBrain:
                 print(f"🗑️ Sujet en attente abandonné ({e}) : {pending.get('topic')}")
                 clear_pending(channel_name)
                 pending = None
+        topic = None
         if pending:
             # Reprise : sujet, titre et accroche déjà validés lors d'une exécution précédente
             topic, hooks, chosen_hook = pending["topic"], pending["hooks"], pending["chosen_hook"]
             print(f"♻️ Reprise du sujet validé ({pending.get('script_attempts', 0)} échec(s) de script) : {topic}")
-            print(f"🪝 Accroche : {chosen_hook.get('text')}")
-            return topic, hooks, chosen_hook
+            # une chaîne peut refaire contrôler l'accroche gardée (règles plus strictes depuis) : accroche
+            # refusée = nouvelles accroches pour le même sujet
+            checker = getattr(brain, "pending_hook_issues", None)
+            issues = checker(chosen_hook.get("text", ""), topic) if callable(checker) else []
+            if not issues:
+                print(f"🪝 Accroche : {chosen_hook.get('text')}")
+                return topic, hooks, chosen_hook
+            print(f"↻ Accroche en attente refusée ({' ; '.join(issues)}) : nouvelles accroches pour ce sujet.")
         # 1. Sujet (l'anti-doublon sur l'historique global est fait dans pick_topic)
-        topic = brain.pick_topic()
-        print(f"🎯 Sujet retenu : {topic}")
+        if topic is None:
+            topic = brain.pick_topic()
+            print(f"🎯 Sujet retenu : {topic}")
 
         # 2. Accroche choisie par le bandit (pattern le plus performant, 20 % d'exploration)
         hooks = brain.generate_hook_variants(topic, n=5, previous_stats_list=previous_stats_list)
