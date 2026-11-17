@@ -15,6 +15,7 @@ from __future__ import annotations
 import math
 import re
 from dataclasses import dataclass, field
+from decimal import ROUND_HALF_UP, Decimal
 
 
 @dataclass(frozen=True)
@@ -59,10 +60,16 @@ class Calc:
 
 
 # ---------- Arrondis et format ----------
+def _half_up(x: float, digits: int = 0) -> float:
+    """Arrondi commercial (0,5 vers le haut en valeur absolue), sans les surprises du flottant (1,005)."""
+    q = Decimal(1).scaleb(-digits)
+    return float(Decimal(repr(float(x))).quantize(q, rounding=ROUND_HALF_UP)) + 0.0
+
+
 def round_money(x: float) -> float:
-    """Montant tel qu'on le dit : à l'euro sous 1 000, à la dizaine sous 10 000, à la centaine au-delà."""
-    step = 1 if abs(x) < 1000 else 10 if abs(x) < 10_000 else 100
-    return float(round(x / step) * step)
+    """Règle unique des montants (écran et voix) : arrondi à l'euro (1 768 €, jamais 1 770 € sans « environ »).
+    Les montants sous 100 € gardent leurs centimes (round_price)."""
+    return _half_up(x)
 
 
 def round_pct(x: float) -> float:
@@ -75,7 +82,7 @@ def round_1(x: float) -> float:
 
 def round_price(x: float) -> float:
     """Petit montant au centime (« 4,93 € », « 2,50 € ») sous 100 € ; au-delà, comme round_money."""
-    return float(round(x, 2)) + 0.0 if abs(x) < 100 else round_money(x)
+    return _half_up(x, 2) if abs(x) < 100 else round_money(x)
 
 
 def fmt_number(x: float) -> str:
@@ -354,21 +361,30 @@ def decouvert_agios(p: dict) -> Calc:
 
 
 def forfait_appareil(p: dict) -> Calc:
-    """Appareil à `upfront` € avec un forfait à `monthly_with` €/mois pendant `months` mois, contre le même
-    forfait sans appareil à `monthly_without` €/mois et l'appareil acheté `phone_price` € comptant."""
+    """Option A : appareil à `upfront` € + forfait AVEC appareil à `monthly_with` €/mois pendant `months` mois.
+    Option B : appareil acheté `phone_price` € comptant + le MÊME service sans appareil à `monthly_without` €/mois.
+    Le service est payé des deux côtés : il se compense. Coût réel de l'appareil via le forfait =
+    apport + (forfait avec - forfait sans) x durée, comparé au prix comptant. Le résultat est un surcoût OU une
+    économie (clé « difference », libellé selon le signe) : la vidéo suit le vrai résultat."""
     extra = p["monthly_with"] - p["monthly_without"]
-    real = p["upfront"] + extra * p["months"]
+    real = round_price(p["upfront"] + extra * p["months"])
+    gap = round_price(real - p["phone_price"])
+    word = "surcoût" if gap > 0 else "économie"
     values = [
-        _v("extra_monthly", "supplément par mois pour l'appareil", round_price(extra), "€"),
-        _v("real_price", f"prix réel de l'appareil sur {p['months']} mois", round_price(real), "€"),
-        _v("overcost", "surcoût par rapport à l'achat comptant", round_price(real - p["phone_price"]), "€"),
-        _v("overcost_pct", "surcoût en part du prix comptant", round_pct((real / p["phone_price"] - 1) * 100), "%"),
+        _v("extra_monthly", "supplément par mois pour l'appareil (forfait avec moins forfait sans)", round_price(extra), "€"),
+        _v("real_price", f"coût réel de l'appareil via le forfait sur {p['months']} mois", real, "€"),
+        _v("difference", f"{word} par rapport à l'achat comptant", abs(gap), "€"),
+        _v("difference_pct", f"{word} en part du prix comptant", round_pct(abs(gap) / p["phone_price"] * 100), "%"),
+        _v("total_with", f"total payé en {p['months']} mois avec le forfait avec appareil",
+           round_price(p["upfront"] + p["monthly_with"] * p["months"]), "€"),
+        _v("total_without", f"total payé en {p['months']} mois : appareil comptant et forfait sans appareil",
+           round_price(p["phone_price"] + p["monthly_without"] * p["months"]), "€"),
     ]
     series = {"x": list(range(p["months"] + 1)), "x_label": "mois",
               "a": [round(p["upfront"] + extra * m) for m in range(p["months"] + 1)], "a_label": "payé pour l'appareil",
               "b": [p["phone_price"]] * (p["months"] + 1), "b_label": "prix comptant"}
-    return Calc("forfait_appareil", {v.key: v for v in values}, "overcost", series,
-                compare=("real_price", "overcost"))
+    return Calc("forfait_appareil", {v.key: v for v in values}, "difference", series,
+                compare=("real_price", "difference"))
 
 
 def carte_fidelite(p: dict) -> Calc:
@@ -549,12 +565,14 @@ HYPOTHESES: dict[str, str] = {
     "paiement_fractionne": "1er paiement le jour de l'achat, puis 1 par mois · taux annuel composé",
     "credit_amortissable": "{rate} %/an · mensualités fixes · taux mensuel = taux annuel \u00f7 12 · hors assurance",
     "decouvert_agios": "{rate} %/an · agios = montant \u00d7 taux \u00d7 jours \u00f7 365",
-    "forfait_appareil": "forfait sans appareil à {monthly_without} €/mois · engagement de {months} mois",
+    "forfait_appareil": "forfait avec appareil {monthly_with} €/mois, sans appareil {monthly_without} €/mois, même "
+                        "service · appareil {phone_price} € comptant · {months} mois",
     "carte_fidelite": "bon d'achat dépensé en entier · même pourcentage en remise immédiate",
     "epargne_age": "{monthly} €/mois · {rate} %/an, taux mensuel équivalent · jusqu'à {end_age} ans · avant inflation",
     "salaire_vs_prix": "salaire net · prix sur 1 an · pouvoir d'achat = salaire \u00f7 prix",
     "taux_reel": "taux réel = (1 + taux) \u00f7 (1 + inflation) \u2212 1 · sur 1 an",
-    "leasing_epargne": "{monthly} €/mois · voiture rendue à la fin · épargne à {rate} %/an, taux mensuel équivalent",
+    "leasing_epargne": "{monthly} €/mois · le leasing paie l'usage d'une voiture, rendue à la fin ; l'épargne n'en "
+                       "donne pas · {rate} %/an, taux mensuel équivalent",
 }
 
 # Résultats qui ne se citent qu'expliqués : la phrase qui les cite doit contenir l'une de ces expressions
@@ -569,7 +587,13 @@ def money_text(x: float) -> str:
 
 
 def hypothesis_text(concept: str, p: dict) -> str:
-    fields = {k: (fmt_number(v) if isinstance(v, (int, float)) else v) for k, v in p.items()}
+    units = {k: spec[1] for k, spec in SPECS.get(concept, {}).get("params", {}).items()}
+    fields = {}
+    for k, v in p.items():
+        if isinstance(v, (int, float)):           # montant à centimes : « 2,50 », jamais « 2,5 »
+            fields[k] = money_text(v)[:-2] if units.get(k) == "€" else fmt_number(v)
+        else:
+            fields[k] = v
     return HYPOTHESES[concept].format(**fields)
 
 
@@ -592,8 +616,8 @@ def _constraint(concept: str, p: dict) -> str | None:
     if concept == "paiement_fractionne" and p["fee_pct"] == 0 and p["late_fee"] == 0:
         return "sans frais ni retard, il n'y a rien à calculer"
     if concept == "forfait_appareil" and \
-            p["upfront"] + (p["monthly_with"] - p["monthly_without"]) * p["months"] <= p["phone_price"]:
-        return "avec ces chiffres, l'appareil ne coûte pas plus cher via le forfait : rien à montrer"
+            abs(p["upfront"] + (p["monthly_with"] - p["monthly_without"]) * p["months"] - p["phone_price"]) < 1:
+        return "avec ces chiffres, les deux options coûtent pareil : rien à montrer"
     return None
 
 
@@ -632,7 +656,7 @@ def round_2(x: float) -> float:
 
 # Pourcentages qui ne sont pas une part d'un tout : leur complément à 100 ne veut rien dire
 NO_COMPLEMENT = {"annual_rate", "gap_pct", "real_exact", "real_approx", "extra_pct", "effective_pct",
-                 "real_change_pct", "overcost_pct"}
+                 "real_change_pct", "difference_pct"}
 
 
 def derived(concept: str, p: dict, calc: Calc) -> list[Value]:
@@ -652,6 +676,9 @@ def derived(concept: str, p: dict, calc: Calc) -> list[Value]:
     if concept == "cout_du_temps":
         out.append(_v("growth_now", "chaque euro versé au départ est multiplié par",
                       round_2(grow(1, p["rate"], p["horizon_years"])), ""))
+    # résultat négatif (« -1,9 % ») : sa valeur absolue se dit avec « perd » / « baisse » (« tu perds 1,9 % »)
+    out += [_v(f"{v.key}_abs", f"baisse : {v.label}", abs(v.value), v.unit)
+            for v in calc.values.values() if v.value < 0 and v.unit in ("%", "€")]
     if concept == "credit_amortissable":
         out.append(_v("yearly_payment", "remboursé chaque année", round_money(calc["monthly"] * 12), "€"))
     if concept == "epargne_age":

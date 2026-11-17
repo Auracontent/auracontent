@@ -45,7 +45,7 @@ def test_complement_and_cumulative_multiplier_accepted():
     assert brain.text_issues("Il ne reste que 41 % du pouvoir d'achat.", "s") == []
     assert brain.text_issues("Les prix sont multipliés par 2,43 en 30 ans.", "s") == []
     assert brain.text_issues("Les prix sont multipliés par 2,4 en 30 ans.", "s") == []          # arrondi accepté
-    assert brain.text_issues("Il faudrait 24 300 € pour acheter autant.", "s") == []
+    assert brain.text_issues("Il faudrait 24 273 € pour acheter autant.", "s") == []
 
 
 def test_derived_values_of_the_other_subject():
@@ -67,30 +67,30 @@ from auracontent.channels.finance import storyboard  # noqa: E402
 FRAIS = {"amount": 5000, "rate": 6, "fees": 2, "years": 20}
 
 
-def _frais_data(first: str, bandeau="2 % DE FRAIS | 5 300 € PERDUS"):
+def _frais_data(first: str, bandeau="2 % DE FRAIS | 5 330 € PERDUS"):
     board = storyboard.storyboard("frais")
     scenes = [{"id": i, "text": "Les frais grignotent ton argent chaque année.", "visual": ""}
               for i in range(1, len(board) + 1)]
     scenes[0]["text"] = first
-    scenes[[r for r, _ in board].index("reveal")]["text"] = "Les frais te coûtent 5 300 €."
+    scenes[[r for r, _ in board].index("reveal")]["text"] = "Les frais te coûtent 5 330 €."
     return {"title": "Les frais", "on_screen_title": bandeau, "closing_cta": "Pourquoi ?", "scenes": scenes}
 
 
 def test_hook_is_prefixed_to_scene_one(capsys):
     brain = _brain("frais", FRAIS)
-    brain.chosen_hook_text = "2 % de frais te coûtent 5 300 €."
-    data = _frais_data("Imagine 5000 € pendant 20 ans. 2 % de frais te coûtent 5300 € !")
+    brain.chosen_hook_text = "2 % de frais te coûtent 5 330 €."
+    data = _frais_data("Imagine 5000 € pendant 20 ans. 2 % de frais te coûtent 5330 € !")
     brain.validate_script_specifics(data, "t")
-    assert data["scenes"][0]["text"] == "2 % de frais te coûtent 5 300 €. Imagine 5 000 € pendant 20 ans."
-    assert "cinq mille trois cents euros" in data["scenes"][0]["spoken"]         # texte parlé recalculé
+    assert data["scenes"][0]["text"] == "2 % de frais te coûtent 5 330 €. Imagine 5 000 € pendant 20 ans."
+    assert "cinq mille trois cent trente euros" in data["scenes"][0]["spoken"]         # texte parlé recalculé
     assert "Accroche ajoutée" in capsys.readouterr().out
 
 
 @pytest.mark.parametrize("raw, expected", [
-    ({"affirmation": "2 % DE FRAIS", "punchline": "5 300 € PERDUS"}, "2 % DE FRAIS | 5 300 € PERDUS"),
-    (["2 % DE FRAIS", "5 300 € PERDUS"], "2 % DE FRAIS | 5 300 € PERDUS"),
-    ("2 % de frais \u2013 5 300 € perdus", "2 % DE FRAIS | 5 300 € PERDUS"),
-    ("2 % DE FRAIS : 5 300 € PERDUS", "2 % DE FRAIS | 5 300 € PERDUS"),
+    ({"affirmation": "2 % DE FRAIS", "punchline": "5 330 € PERDUS"}, "2 % DE FRAIS | 5 330 € PERDUS"),
+    (["2 % DE FRAIS", "5 330 € PERDUS"], "2 % DE FRAIS | 5 330 € PERDUS"),
+    ("2 % de frais \u2013 5 330 € perdus", "2 % DE FRAIS | 5 330 € PERDUS"),
+    ("2 % DE FRAIS : 5 330 € PERDUS", "2 % DE FRAIS | 5 330 € PERDUS"),
 ])
 def test_malformed_bandeau_is_rebuilt(raw, expected):
     brain = _brain("frais", FRAIS)
@@ -146,7 +146,7 @@ def _near_short(brain):
 def _loop_brain(llm, retries=4):
     brain = _brain("frais", FRAIS, llm)
     brain.config["brain"].update(meaning_check="off", script_max_retries=retries, style_warnings="warn")
-    brain.chosen_hook_text = "2 % de frais te coûtent 5 300 €."
+    brain.chosen_hook_text = "2 % de frais te coûtent 5 330 €."
     return brain
 
 

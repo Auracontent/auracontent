@@ -555,7 +555,8 @@ class FinanceBrain(FreeTopics, BaseBrain):
         spec = (self._brain().get("concepts") or {}).get(concept)
         if spec is None:                      # concept du quotidien : libellé de calc.py, idée = question du sujet
             spec = {"label": fcalc.SPECS[concept]["label"],
-                    "idea": " ".join(x for x in (self.last_pick.get("question"), fcalc.SPECS[concept].get("note")) if x)}
+                    "idea": " ".join(x for x in (self.last_pick.get("question"), fcalc.SPECS[concept].get("note")) if x),
+                    **dict((self._brain().get("daily_concepts") or {}).get(concept) or {})}
         return concept, self.last_pick["params"], spec
 
     def is_daily(self, concept: str) -> bool:
@@ -648,7 +649,10 @@ class FinanceBrain(FreeTopics, BaseBrain):
         example = spec.get("hook_example")
         if not example:
             return "Mettre moins d'argent… et finir avec plus."
-        return example.format_map({k: v.text for k, v in self.calc().values.items()})
+        try:
+            return example.format_map(self._calc_texts())
+        except (KeyError, IndexError, ValueError):
+            return "Mettre moins d'argent… et finir avec plus."
 
     def _calc_texts(self) -> dict[str, str]:
         """Textes de calc.py (« 5 540 € », « 45 % ») et paramètres formatés (« amount » -> « 10 000 € »)."""
@@ -656,7 +660,10 @@ class FinanceBrain(FreeTopics, BaseBrain):
         texts = {k: v.text for k, v in self.calc().values.items()}
         for key, value in params.items():
             unit = self.param_unit(key)
-            texts.setdefault(key, f"{fcalc.fmt_number(value)} {unit if unit in ('€', '%') else ''}".strip())
+            if unit in ("€", "€/mois"):                     # « 2,50 € », « 300 € »
+                texts.setdefault(key, fcalc.money_text(value))
+            else:
+                texts.setdefault(key, f"{fcalc.fmt_number(value)} {unit if unit == '%' else ''}".strip())
         return texts
 
     def wording(self) -> str:

@@ -131,7 +131,7 @@ def test_hook_filters_log_reasons():
     assert any("mots" in i for i in brain.hook_issues("Un deux trois quatre cinq six sept huit neuf dix onze douze treize.", topic))
     assert brain.hook_issues("Léa finit avec 2 100 €.", topic) == []               # résultat de calc.py
     assert any("2500" in i or "2 500" in i for i in brain.hook_issues("Léa finit avec 2500 €.", topic))
-    assert any("472" in i for i in brain.hook_issues("Léa a 472 € de plus.", topic))  # écart non arrondi
+    assert any("471" in i for i in brain.hook_issues("Léa a 471 € de plus.", topic))  # nombre hors calc.py
     assert any("vouvoie" in i for i in brain.hook_issues("Vous allez être surpris.", topic))
     issues = brain.hook_issues("Le livret A ne suffit pas.", topic)
     assert any("terme interdit (nom de produit financier)" in i for i in issues)
@@ -171,7 +171,7 @@ def _script(first_scene: str):
     scenes = [{"id": 1, "text": first_scene, "visual": "piles", "mood": "surprise", "pause_after_ms": 400}]
     scenes += [{"id": i, "text": "Les gains rapportent à leur tour des gains.", "visual": "arbres",
                 "mood": "calm", "pause_after_ms": 400} for i in range(2, 8)]
-    scenes[4]["text"] = "À 65 ans, Léa a 2 100 € et Hugo 1 630 €."      # scène 5 : « reveal » du storyboard
+    scenes[4]["text"] = "À 65 ans, Léa a 2 100 € et Hugo 1 628 €."      # scène 5 : « reveal » du storyboard
     scenes[6]["text"] = "C'est un exemple simplifié."                   # scène de fin : rappel sans chiffre
     return {"title": "Moins d'argent, plus à l'arrivée", "on_screen_title": "100 € À 20 ANS | BATTENT 300 € À 40",
             "hypothesis": "reformulée", "closing_cta": "Et toi, tu aurais parié sur qui ?", "scenes": scenes}
@@ -190,6 +190,7 @@ def test_run_channel_script_only_regenerates_and_saves(finance_state, monkeypatc
     brain = gb.channels["finance"].brain
     brain.config["brain"]["concepts"] = {"interets_composes": brain.config["brain"]["concepts"]["interets_composes"]}
     brain.config["brain"]["voice_words_per_second"] = 0      # scripts factices courts : règle testée à part
+    brain.config["brain"]["free_topics"]["enabled"] = False  # chemin des concepts du YAML (sujets libres : part3b)
     brain.combinations = lambda concept: [brain.resolve_params(concept, {
         "early_age": 20, "late_age": 40, "early_amount": 100, "late_amount_factor": 3, "rate": 7, "end_age": 65})]
 

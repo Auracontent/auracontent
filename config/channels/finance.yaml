@@ -165,6 +165,31 @@ brain:
   concept_window: 3
   situation_window: 30
 
+  # Concepts du quotidien (calculs de calc.py sans entrée dans « concepts ») : exemple d'accroche (clés de calc.py
+  # et paramètres entre accolades, valeurs réelles du sujet) et, pour le taux réel et le salaire, la règle
+  # « perdre » : une perte n'est vraie qu'en pouvoir d'achat.
+  daily_concepts:
+    depenses_repetees: {hook_example: "Ce petit plaisir quotidien coûte {over_years} en {years} ans."}
+    abonnements: {hook_example: "Tes abonnements oubliés coûtent {total_year} par an."}
+    remises_successives: {hook_example: "{first} puis {second} de remise ne font pas {naive_pct}."}
+    paiement_fractionne: {hook_example: "Payer en {installments} fois coûte {extra_cost} de plus."}
+    credit_amortissable: {hook_example: "Ce crédit coûte {interest} rien qu'en intérêts."}
+    decouvert_agios: {hook_example: "Quelques jours dans le rouge coûtent {agios}."}
+    forfait_appareil: {hook_example: "Le téléphone à {upfront} coûte vraiment {real_price}."}
+    carte_fidelite: {hook_example: "{pct} offerts ne font que {effective_pct} de remise."}
+    epargne_age: {hook_example: "Commencer à {age_a} ans rapporte {gap} de plus."}
+    leasing_epargne: {hook_example: "{monthly} par mois : rien à la fin, ou {saving_final}."}
+    taux_reel:
+      hook_example: "Ton livret à {nominal} ne rapporte que {real_exact}."
+      wording: "Les intérêts arrivent bien sur le compte : seul le gain réel, inflation retirée, est plus faible. INTERDIT : dire que tu perds des euros (« tu perds {real_approx} »). AUTORISÉ : « ton gain réel n'est que de {real_gain} », « en pouvoir d'achat, tu gagnes {real_exact} »."
+      loss_needs: ["pouvoir d'achat", "valeur réelle", "gain réel", "en réel"]
+      loss_fixes: ["ton gain réel n'est que de {real_gain}", "en pouvoir d'achat, tu gagnes {real_exact}"]
+    salaire_vs_prix:
+      hook_example: "{raise_pct} de salaire, et ton pouvoir d'achat varie de {real_change_pct}."
+      wording: "Le salaire augmente bien en euros : seul ce qu'il permet d'acheter change. INTERDIT : dire que tu perds des euros de salaire. AUTORISÉ : « ton pouvoir d'achat varie de {real_change_pct} », « ton salaire achète l'équivalent de {real_salary} d'aujourd'hui »."
+      loss_needs: ["pouvoir d'achat", "valeur réelle", "en réel", "ce qu'il achète", "ce que ton salaire achète"]
+      loss_fixes: ["ton pouvoir d'achat varie de {real_change_pct}", "ton salaire achète l'équivalent de {real_salary} d'aujourd'hui"]
+
   # Génération libre de sujets ancrés dans le quotidien (partie 3). Le concept imposé par le workflow
   # (option « concept » -> FINANCE_CONCEPT) reste prioritaire. Échec de la génération = repli sur les
   # combinaisons des concepts ci-dessous.

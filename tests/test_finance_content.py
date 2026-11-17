@@ -32,14 +32,14 @@ def test_hype_is_rejected(text):
 
 def test_measured_hook_passes():
     brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
-    assert brain.hook_issues("2 % de frais par an te coûtent 5 300 € sur 20 ans.", "sujet") == []
+    assert brain.hook_issues("2 % de frais par an te coûtent 5 330 € sur 20 ans.", "sujet") == []
 
 
 # ---------- 2. Coût du temps : écart de versements ----------
 def test_cout_du_temps_hook_example_is_valid():
     brain = _picked("cout_du_temps", COUT)
     example = brain.hook_example()
-    assert example == "Verser 6 000 € de plus rapporte 23 800 € de plus."
+    assert example == "Verser 6 000 € de plus rapporte 23 789 € de plus."
     assert brain.hook_issues(example, "sujet") == []
 
 
@@ -49,15 +49,15 @@ def _script(reveal: str, concept="cout_du_temps"):
               for i, (role, template) in enumerate(storyboard.storyboard(concept), 1)]
     next(s for s in scenes if s["role"] == "reveal")["text"] = reveal
     scenes[-1]["text"] = "C'est un exemple simplifié."
-    return {"title": "Le coût du temps", "on_screen_title": "ATTENDRE 10 ANS | COÛTE 23 800 €",
+    return {"title": "Le coût du temps", "on_screen_title": "ATTENDRE 10 ANS | COÛTE 23 789 €",
             "closing_cta": "Tu as commencé à quel âge ?", "scenes": scenes}
 
 
 def test_cout_du_temps_reveal_must_say_paid_gap():
     brain = _picked("cout_du_temps", COUT)
-    issues = brain.check_script_logic("t", _script("Attendre 10 ans te coûte 23 800 €."))
+    issues = brain.check_script_logic("t", _script("Attendre 10 ans te coûte 23 789 €."))
     assert any("versements en plus" in i and "6 000 €" in i for i in issues)
-    ok = "Verser 6 000 € de plus rapporte 23 800 € de plus."
+    ok = "Verser 6 000 € de plus rapporte 23 789 € de plus."
     assert brain.check_script_logic("t", _script(ok)) == []
 
 
@@ -73,9 +73,9 @@ def test_all_rates_capped_at_8():
 
 # ---------- 4. Sens des chiffres : contrôle par le code ----------
 @pytest.mark.parametrize("text, expected", [
-    ("Mettre 50 € aujourd'hui te donne 58 100 € plus tard.", "versement mensuel"),
-    ("Tu mets 58 100 € par mois de côté.", "n'est pas mensuel"),
-    ("Attendre te coûte 23 800 % de ton résultat.", "ne correspond à rien"),
+    ("Mettre 50 € aujourd'hui te donne 58 053 € plus tard.", "versement mensuel"),
+    ("Tu mets 58 053 € par mois de côté.", "n'est pas mensuel"),
+    ("Attendre te coûte 23 789 % de ton résultat.", "ne correspond à rien"),
     ("Tu attends 41 ans avant de commencer.", "ne correspond à rien"),
 ])
 def test_meaning_errors_are_caught(text, expected):
@@ -86,7 +86,7 @@ def test_meaning_errors_are_caught(text, expected):
 @pytest.mark.parametrize("text", [
     "Tu verses 50 € par mois pendant 40 ans.",
     "Avec 50 euros chaque mois, à 4 % par an.",
-    "Le résultat chute à 34 300 € au lieu de 58 100 €.",
+    "Le résultat chute à 34 264 € au lieu de 58 053 €.",
     "Tu perds 41 % du résultat en attendant 10 ans.",
 ])
 def test_meaning_correct_sentences_pass(text):
@@ -111,14 +111,14 @@ class _Verifier:
         return self.answer
 
 
-GOOD = "Verser 6 000 € de plus rapporte 23 800 € de plus."
+GOOD = "Verser 6 000 € de plus rapporte 23 789 € de plus."
 
 
 def test_llm_meaning_check_receives_table_and_accepts():
     llm = _Verifier({"ok": True, "problems": []})
     brain = _picked("cout_du_temps", COUT, llm)
     assert brain.check_script_logic("t", _script(GOOD)) == []
-    assert "coût de l'attente : 23 800 €" in llm.prompts[0] and "versement mensuel (€) : 50 €/mois" in llm.prompts[0]
+    assert "coût de l'attente : 23 789 €" in llm.prompts[0] and "versement mensuel (€) : 50 €/mois" in llm.prompts[0]
 
 
 @pytest.mark.parametrize("answer, expected", [
@@ -330,7 +330,7 @@ def test_short_script_lists_scenes_to_lengthen(monkeypatch):
     monkeypatch.setenv("VIDEO_DURATION", "45")
     brain = _picked("cout_du_temps", COUT)
     brain.config["brain"]["voice_words_per_second"] = 2.6
-    issues = brain.check_script_logic("t", _script("Verser 6 000 € de plus rapporte 23 800 € de plus."))
+    issues = brain.check_script_logic("t", _script("Verser 6 000 € de plus rapporte 23 789 € de plus."))
     short = next(i for i in issues if "script trop court" in i)
     assert "mots prononcés" in short and "scène 2 : 5 mots, vise" in short and "(+" in short
 
@@ -360,7 +360,7 @@ COUT_5 = {"monthly": 200, "rate": 5, "delay_years": 5, "horizon_years": 40}
 
 
 def _bandeau(brain, bandeau):
-    data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
+    data = _script("Verser 12 000 € de plus rapporte 74 812 € de plus.")
     data["on_screen_title"] = bandeau
     brain.validate_script_specifics(data, "t")
     return data["on_screen_title"]
@@ -369,28 +369,28 @@ def _bandeau(brain, bandeau):
 def test_cost_alone_in_bandeau_is_replaced_by_both_figures(capsys):
     brain = _picked("cout_du_temps", COUT_5)
     c = brain.calc()
-    assert (c.values["paid_gap"].text, c.values["cost"].text) == ("12 000 €", "74 800 €")
-    assert _bandeau(brain, "ATTENDRE 5 ANS | COÛTE 74 800 €") == "+12 000 € VERSÉS | +74 800 € AU FINAL"
+    assert (c.values["paid_gap"].text, c.values["cost"].text) == ("12 000 €", "74 812 €")
+    assert _bandeau(brain, "ATTENDRE 5 ANS | COÛTE 74 812 €") == "+12 000 € VERSÉS | +74 812 € AU FINAL"
     assert "remplacé" in capsys.readouterr().out
 
 
 def test_bandeau_with_both_figures_is_kept():
     brain = _picked("cout_du_temps", COUT_5)
-    assert _bandeau(brain, "12 000 € DE PLUS | DONNENT 74 800 €") == "12 000 € DE PLUS | DONNENT 74 800 €"
+    assert _bandeau(brain, "12 000 € DE PLUS | DONNENT 74 812 €") == "12 000 € DE PLUS | DONNENT 74 812 €"
 
 
 def test_other_concepts_bandeau_untouched():
     brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
-    data = _script("Les frais te coûtent 5 300 €.", concept="frais")
-    data["on_screen_title"] = "2 % DE FRAIS | 5 300 € PERDUS"
+    data = _script("Les frais te coûtent 5 330 €.", concept="frais")
+    data["on_screen_title"] = "2 % DE FRAIS | 5 330 € PERDUS"
     brain.validate_script_specifics(data, "t")
-    assert data["on_screen_title"] == "2 % DE FRAIS | 5 300 € PERDUS"
+    assert data["on_screen_title"] == "2 % DE FRAIS | 5 330 € PERDUS"
 
 
 def test_prompt_states_bandeau_rule_and_meaning_check_covers_bandeau():
     brain = _picked("cout_du_temps", COUT_5)
     prompt = brain.build_script_prompt("t", 7, {"text": "h"})[1]["content"]
-    assert "cite ENSEMBLE 12 000 € et 74 800 €" in prompt
+    assert "cite ENSEMBLE 12 000 € et 74 812 €" in prompt
     assert "BANDEAU et le TITRE" in brain.read_sections("meaning.md")["user"]
 
 
@@ -400,14 +400,14 @@ def test_prompt_states_bandeau_rule_and_meaning_check_covers_bandeau():
                                  "Combien vas-tu placer chaque mois ?"])
 def test_incentive_closing_question_is_rejected(cta):
     brain = _picked("cout_du_temps", COUT_5)
-    data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
+    data = _script("Verser 12 000 € de plus rapporte 74 812 € de plus.")
     data["closing_cta"] = cta
     assert any("invite à agir" in i for i in brain.check_script_logic("t", data))
 
 
 def test_mechanism_question_passes():
     brain = _picked("cout_du_temps", COUT_5)
-    data = _script("Verser 12 000 € de plus rapporte 74 800 € de plus.")
+    data = _script("Verser 12 000 € de plus rapporte 74 812 € de plus.")
     data["closing_cta"] = "Pourquoi les premières années comptent-elles autant ?"
     assert not [i for i in brain.check_script_logic("t", data) if "question finale" in i]
 
@@ -426,7 +426,7 @@ def test_inflation_loss_without_purchasing_power_is_rejected():
 
 def test_loss_rule_only_for_inflation():
     brain = _picked("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
-    assert brain.hook_issues("Avec 2 % de frais, tu perds 5 300 € sur 20 ans.", "s") == []
+    assert brain.hook_issues("Avec 2 % de frais, tu perds 5 330 € sur 20 ans.", "s") == []
 
 
 class _HookJudge:

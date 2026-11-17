@@ -87,10 +87,12 @@ GENERIC: dict[str, dict] = {
         "bars": [("per_day", "par jour", G), ("agios", "{days} jours", K), ("agios_year", "sur 1 an", T)],
         "curve": ("agios", "agios", None, None, None, ("0", "{days} jours"), "€"),
         "cast": ("lea-neutral.png", "lea-surprise.png", "\u2212{overdraft_eur}", "pendant {days} jours")},
-    "forfait_appareil": {
+    "forfait_appareil": {                    # surcoût OU économie : « {diff} » et le rôle des piles suivent calc.py
+        # deux coûts pour le même appareil : le plus élevé est toujours la mauvaise nouvelle
         "two": (("real_price", "via le forfait"), ("param:phone_price", "comptant")), "bad": True,
-        "bars": [("param:phone_price", "comptant", G), ("real_price", "via le forfait", K), ("overcost", "surcoût", T)],
-        "curve": ("payé pour l'appareil", "real_price", "prix comptant", "param:phone_price", "overcost", ("0", "{months} mois"), "€"),
+        "bars": [("param:phone_price", "comptant", G), ("real_price", "via le forfait", K), ("difference", "{diff}", T)],
+        "curve": ("payé pour l'appareil", "real_price", "prix comptant", "param:phone_price", "difference",
+                  ("0", "{months} mois"), "€"),
         "cast": ("hugo-neutral.png", "hugo-smug.png", "téléphone à {upfront_eur}", "+{extra_monthly_eur} par mois")},
     "carte_fidelite": {
         "two": (("param:pct", "remise immédiate"), ("effective_pct", "bon d'achat")), "bad": False,
@@ -130,6 +132,8 @@ def _fields(p: dict, c: fcalc.Calc) -> dict:
     for key, v in c.values.items():
         out.setdefault(key, fmt(v.value))
         out[f"{key}_eur"] = v.text
+    if "difference" in c.values:                            # « surcoût » ou « économie », d'après calc.py
+        out["diff"] = c.values["difference"].label.split()[0]
     return out
 
 
@@ -149,7 +153,10 @@ def _g_two(concept, p, c):
     (ka, la), (kb, lb) = g["two"]
     a, b = _g_item(c, p, ka, la), _g_item(c, p, kb, lb)
     big, small = (a, b) if a.value >= b.value else (b, a)
-    good_big = not g.get("bad")
+    bad = g.get("bad")
+    if isinstance(bad, str):                                # clé de calc.py : surcoût = mauvaise nouvelle
+        bad = c.values[bad].label.startswith("surcoût")
+    good_big = not bad
     big_side = tpl.Side(big.label, big.value, big.text, color=T if good_big else K,
                         react="lea-joy.png" if good_big else "hugo-shock.png", count_template=big.count_template)
     small_side = tpl.Side(small.label, small.value, small.text, color=K if good_big else T,
@@ -170,7 +177,8 @@ def _g_curve(concept, p, c):
 
     a = end(la, ka, T)
     b = end(lb, kb, K) if lb and c.series.get("b") else None
-    gap = _item(c, gap_key, c.values[gap_key].label, K) if gap_key else None
+    # légende courte (une ligne) : « économie » / « surcoût » pour le forfait, « écart » sinon
+    gap = _item(c, gap_key, f.get("diff", "écart") if gap_key == "difference" else "écart", K) if gap_key else None
     return a, b, gap, (xa.format(**f), xb.format(**f)), unit
 
 

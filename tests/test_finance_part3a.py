@@ -13,7 +13,7 @@ NEW = {
     "paiement_fractionne": {"price": 400, "installments": 4, "fee_pct": 2.2, "late_fee": 0},
     "credit_amortissable": {"amount": 15000, "rate": 6, "years": 5},
     "decouvert_agios": {"overdraft": 500, "days": 10, "rate": 16},
-    "forfait_appareil": {"phone_price": 600, "upfront": 1, "monthly_with": 45, "monthly_without": 15, "months": 24},
+    "forfait_appareil": {"phone_price": 600, "upfront": 1, "monthly_with": 30, "monthly_without": 15, "months": 24},
     "carte_fidelite": {"spend": 100, "pct": 10},
     "epargne_age": {"monthly": 50, "rate": 5, "age_a": 20, "age_b": 35, "end_age": 65},
     "salaire_vs_prix": {"salary": 2000, "raise_pct": 3, "inflation": 3},
@@ -51,7 +51,7 @@ def test_small_repeated_spending():
 
 def test_subscriptions_add_up():
     calc = _calc("abonnements")                              # 13,49 + 9,99 + 5,99 = 29,47 €/mois
-    assert calc["total_month"] == 29.47 and calc["total_year"] == 354 and calc["over_years"] == 1770
+    assert calc["total_month"] == 29.47 and calc["total_year"] == 354 and calc["over_years"] == 1768      # 29,47 € x 60 = 1 768,20 € : arrondi à l'euro
     assert calc["count"] == 3
 
 
@@ -92,11 +92,23 @@ def test_overdraft_fees():
     assert calc["agios"] == 2.19 and calc["agios_year"] == 26.3 and calc["per_day"] == 0.22
 
 
-def test_phone_paid_through_the_plan():
-    calc = _calc("forfait_appareil")                         # 1 € + 30 € x 24 mois = 721 € pour 600 €
-    assert (calc["extra_monthly"], calc["real_price"], calc["overcost"], calc["overcost_pct"]) == (30, 721, 121, 20)
-    params, why = c.check_params("forfait_appareil", {**NEW["forfait_appareil"], "phone_price": 800})
-    assert params is None and "pas plus cher" in why
+def test_phone_paid_through_the_plan_can_be_a_saving():
+    """Service payé des deux côtés : 1 € + (30 - 15) € x 24 = 361 € pour un appareil à 600 € : économie de 239 €.
+    En coûts totaux : 1 € + 30 € x 24 = 721 € contre 600 € + 15 € x 24 = 960 €."""
+    calc = _calc("forfait_appareil")
+    assert (calc["extra_monthly"], calc["real_price"], calc["difference"]) == (15, 361, 239)
+    assert calc.values["difference"].label.startswith("économie") and calc["difference_pct"] == 40
+    assert (calc["total_with"], calc["total_without"]) == (721, 960)
+    hyp = c.hypothesis_text("forfait_appareil", c.check_params("forfait_appareil", NEW["forfait_appareil"])[0])
+    assert "avec appareil 30 €/mois" in hyp and "sans appareil 15 €/mois" in hyp and "même service" in hyp
+
+
+def test_phone_paid_through_the_plan_can_be_an_overcost():
+    calc = _calc("forfait_appareil", monthly_with=45)        # 1 € + (45 - 15) € x 24 = 721 € pour 600 €
+    assert (calc["real_price"], calc["difference"]) == (721, 121)
+    assert calc.values["difference"].label.startswith("surcoût")
+    params, why = c.check_params("forfait_appareil", {**NEW["forfait_appareil"], "phone_price": 361})
+    assert params is None and "coûtent pareil" in why
 
 
 def test_loyalty_voucher_is_less_than_an_immediate_discount():
@@ -111,7 +123,7 @@ def test_monthly_saving_by_starting_age():
     assert (calc["years_a"], calc["years_b"]) == (45, 30)
 
 
-@pytest.mark.parametrize("raise_pct, inflation, pct, real", [(3, 3, 0, 2000), (2, 4, -1.9, 1960), (5, 2, 2.9, 2060)])
+@pytest.mark.parametrize("raise_pct, inflation, pct, real", [(3, 3, 0, 2000), (2, 4, -1.9, 1962), (5, 2, 2.9, 2059)])
 def test_salary_versus_prices(raise_pct, inflation, pct, real):
     calc = _calc("salaire_vs_prix", raise_pct=raise_pct, inflation=inflation)
     assert calc["real_change_pct"] == pct and calc["real_salary"] == real
@@ -147,7 +159,7 @@ def test_params_accept_french_decimals_and_optional_subscriptions():
 
 def test_old_concepts_keep_their_values():
     calc = c.compute("frais", {"amount": 5000, "rate": 6, "fees": 2, "years": 20})
-    assert calc["lost"] == 5300
+    assert calc["lost"] == 5330
     params, _ = c.check_params("interets_composes", {"early_age": 20, "late_age": 40, "early_amount": 100,
                                                      "late_amount_factor": 3, "rate": 7, "end_age": 65})
     assert params["late_amount"] == 300
