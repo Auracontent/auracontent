@@ -96,9 +96,9 @@ def test_fixed_disclaimer_with_conseil_is_accepted():
     scenes = [{"id": i, "text": "Les frais grignotent ton argent chaque année.", "visual": ""}
               for i in range(1, len(storyboard.storyboard("frais")) + 1)]
     reveal = next(i for i, (r, _) in enumerate(storyboard.storyboard("frais")) if r == "reveal")
-    scenes[reveal]["text"] = "Les frais te coûtent 5 300 €."
+    scenes[reveal]["text"] = "Les frais te coûtent 5 330 €."
     scenes[-1]["text"] = "Fin."
-    data = {"title": "Les frais", "on_screen_title": "2 % DE FRAIS | 5 300 € PERDUS", "closing_cta": "Pourquoi ?",
+    data = {"title": "Les frais", "on_screen_title": "2 % DE FRAIS | 5 330 € PERDUS", "closing_cta": "Pourquoi ?",
             "scenes": scenes}
     brain.validate_script_specifics(data, "t")
     assert data["scenes"][-1]["text"] == brain.disclaimer_text() and data["scenes"][-1]["fixed_text"]

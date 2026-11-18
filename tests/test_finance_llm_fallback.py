@@ -79,3 +79,112 @@ def test_dead_gemini_is_skipped_for_the_rest_of_the_run(ci_client, monkeypatch):
     log.clear()
     ci_client.call_json_with_retry([{"role": "user", "content": "x"}], **_routing())
     assert not any(m.startswith("gemini") for m in log)          # plus jamais rappelé dans l'exécution
+
+
+# ---------- 503 / délai dépassé chez Gemini : fournisseur suivant tout de suite (brain.unavailable) ----------
+@pytest.mark.parametrize("error", ["Request timed out.", "Error code: 503 - {'error': 'overloaded'}"])
+def test_gemini_unavailable_goes_to_next_provider_without_retry(ci_client, monkeypatch, error):
+    log = []
+    monkeypatch.setattr(llm_client, "OpenAI", _fake_openai(
+        log, lambda m: RuntimeError(error) if m.startswith("gemini") else '{"ok": true}'))
+    brain = BaseChannel("finance", FinanceBrain, ci_client).brain
+    assert brain.script_routing()["unavailable"] == "fallback"
+    assert ci_client.call_json_with_retry([{"role": "user", "content": "x"}], **brain.script_routing()) == {"ok": True}
+    assert sum(m.startswith("gemini") for m in log) == 1 and "gpt-oss-120b" in log[-1]   # un seul essai Gemini
+
+
+def test_mystery_keeps_retrying_on_503(ci_client, monkeypatch):
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.core.brain.base_brain import rate_limit_routing_from
+
+    assert "unavailable" not in rate_limit_routing_from(load_channel_config("mystery").get("brain"))
+    log = []
+    monkeypatch.setattr(llm_client.time, "sleep", lambda s: None)
+    monkeypatch.setattr(llm_client, "OpenAI", _fake_openai(
+        log, lambda m: RuntimeError("Error code: 503") if m.startswith("gemini") else '{"ok": true}'))
+    ci_client.call_json_with_retry([{"role": "user", "content": "x"}])
+    assert sum(m.startswith("gemini") for m in log) == 3                                   # comportement inchangé
+
+
+def test_free_topics_and_meaning_check_run_without_gemini(ci_client, monkeypatch):
+    """Gemini muet : la génération libre, la vérification des situations, le choix du sujet et la vérification
+    du sens passent par les petits modèles gratuits (Groq, Cloudflare), jamais bloqués par Gemini."""
+    log = []
+    candidates = {"candidats": [{"situation": "Hugo reste à découvert de 300 € pendant 3 jours chaque mois",
+                                 "domaine": "banque et paiements", "concept": "agios",
+                                 "calcul": {"type": "decouvert_agios",
+                                            "params": {"overdraft": 300, "days": 3, "rate": 15}},
+                                 "question_spectateur": "Combien coûtent 3 jours de découvert ?"}]}
+
+    def behaviour(model):
+        if model.startswith("gemini"):
+            return RuntimeError("Request timed out.")
+        return __import__("json").dumps(candidates)
+
+    monkeypatch.setattr(llm_client, "OpenAI", _fake_openai(log, behaviour))
+    brain = BaseChannel("finance", FinanceBrain, ci_client).brain
+    monkeypatch.setattr(type(brain), "history_window", lambda self, n: [])
+    pick = brain.free_pick()
+    assert pick and pick["concept"] == "decouvert_agios" and not any(m.startswith("gemini") for m in log)
+    log.clear()
+    monkeypatch.setattr(llm_client, "OpenAI", _fake_openai(
+        log, lambda m: RuntimeError("Error code: 503") if m.startswith("gemini") else '{"ok": true, "problems": []}'))
+    brain.last_pick = pick
+    brain.config["brain"]["meaning_check"] = "llm"
+    scenes = [{"id": 1, "text": "Le découvert coûte 0,37 €.", "role": "reveal"}]
+    assert brain.llm_meaning_issues({"scenes": scenes, "on_screen_title": "A | B", "title": "t",
+                                     "closing_cta": "?"}) == []
+    assert not any(m.startswith("gemini") for m in log)
+
+
+# ---------- Gemini écarté pour le reste du run après 2 pannes de suite (finance seulement) ----------
+@pytest.mark.parametrize("error", ["Request timed out.", "Error code: 503", "Error code: 500",
+                                   "Error code: 429 - rate limit"])
+def test_gemini_disabled_for_the_run_after_two_failures(ci_client, monkeypatch, capsys, error):
+    log = []
+    monkeypatch.setattr(llm_client, "OpenAI", _fake_openai(
+        log, lambda m: RuntimeError(error) if m.startswith("gemini") else '{"ok": true}'))
+    client = ci_client.with_gemini_key_env("GEMINI_API_KEY")       # client propre à finance (état neuf)
+    routing = BaseChannel("finance", FinanceBrain, client).brain.script_routing()
+    assert routing["breaker"] == {"models": ["gemini"], "after": 2}
+    for _ in range(4):
+        assert client.call_json_with_retry([{"role": "user", "content": "x"}], **routing) == {"ok": True}
+    assert sum(m.startswith("gemini") for m in log) == 2                    # 2 pannes, puis plus jamais
+    assert "écarté pour le reste du run : 2 pannes de suite" in capsys.readouterr().out
+
+
+def test_a_success_resets_the_failure_streak(ci_client, monkeypatch):
+    log, outcomes = [], iter([RuntimeError("Error code: 503"), '{"ok": true}', RuntimeError("Error code: 503"),
+                              '{"ok": true}'])
+    monkeypatch.setattr(llm_client, "OpenAI", _fake_openai(
+        log, lambda m: next(outcomes) if m.startswith("gemini") else '{"ok": true}'))
+    client = ci_client.with_gemini_key_env("GEMINI_API_KEY")
+    routing = BaseChannel("finance", FinanceBrain, client).brain.script_routing()
+    for _ in range(4):
+        client.call_json_with_retry([{"role": "user", "content": "x"}], **routing)
+    assert sum(m.startswith("gemini") for m in log) == 4 and not client.tripped   # jamais 2 pannes de suite
+
+
+def test_mystery_never_disables_gemini(ci_client, monkeypatch):
+    from auracontent.channels.base_channel import load_channel_config
+    from auracontent.core.brain.base_brain import rate_limit_routing_from
+
+    routing = rate_limit_routing_from(load_channel_config("mystery").get("brain"))
+    assert "breaker" not in routing
+    log = []
+    monkeypatch.setattr(llm_client.time, "sleep", lambda s: None)
+    monkeypatch.setattr(llm_client, "OpenAI", _fake_openai(
+        log, lambda m: RuntimeError("Error code: 503") if m.startswith("gemini") else '{"ok": true}'))
+    for _ in range(3):
+        ci_client.call_json_with_retry([{"role": "user", "content": "x"}], **routing)
+    assert sum(m.startswith("gemini") for m in log) == 9 and not ci_client.tripped   # 3 essais à chaque appel
+
+
+# ---------- Comptage des mots : « 10 000 » = un mot pour finance seulement ----------
+def test_word_count_change_is_finance_only():
+    from auracontent.channels.finance.brain import count_words as finance_count
+    from auracontent.channels.mystery.brain import count_words as mystery_count
+
+    text = "Tes 10 000 € dorment sans bouger, mais leur valeur chute à 7 440 €."
+    assert finance_count(text) == 11 and mystery_count(text) == 13          # mystery inchangé
+    assert finance_count is not mystery_count

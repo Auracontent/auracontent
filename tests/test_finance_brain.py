@@ -45,7 +45,8 @@ def test_registry_and_config():
     assert pub["zernio_key_env"] == "ZERNIO_API_KEY_FINANCE"
     assert {p["account_env"] for p in pub["platforms"]} == {"TIKTOK_ACCOUNT_ID_FINANCE", "YOUTUBE_ACCOUNT_ID_FINANCE"}
     assert pub["brand_hashtag"] == "#capitalsimple" and pub["hf_folder"] == "finance"
-    assert pub["caption_footer"] == "Contenu pédagogique, pas un conseil en investissement."
+    assert pub["caption_footer"].endswith("Contenu pédagogique, pas un conseil en investissement.")
+    assert "astuce chiffrée par jour" in pub["caption_footer"]
     assert "Montserrat" not in json.dumps(cfg["video_composer"])        # réservée à mystery
 
 
@@ -131,7 +132,7 @@ def test_hook_filters_log_reasons():
     assert any("mots" in i for i in brain.hook_issues("Un deux trois quatre cinq six sept huit neuf dix onze douze treize.", topic))
     assert brain.hook_issues("Léa finit avec 2 100 €.", topic) == []               # résultat de calc.py
     assert any("2500" in i or "2 500" in i for i in brain.hook_issues("Léa finit avec 2500 €.", topic))
-    assert any("472" in i for i in brain.hook_issues("Léa a 472 € de plus.", topic))  # écart non arrondi
+    assert any("471" in i for i in brain.hook_issues("Léa a 471 € de plus.", topic))  # nombre hors calc.py
     assert any("vouvoie" in i for i in brain.hook_issues("Vous allez être surpris.", topic))
     issues = brain.hook_issues("Le livret A ne suffit pas.", topic)
     assert any("terme interdit (nom de produit financier)" in i for i in issues)
@@ -171,7 +172,7 @@ def _script(first_scene: str):
     scenes = [{"id": 1, "text": first_scene, "visual": "piles", "mood": "surprise", "pause_after_ms": 400}]
     scenes += [{"id": i, "text": "Les gains rapportent à leur tour des gains.", "visual": "arbres",
                 "mood": "calm", "pause_after_ms": 400} for i in range(2, 8)]
-    scenes[4]["text"] = "À 65 ans, Léa a 2 100 € et Hugo 1 630 €."      # scène 5 : « reveal » du storyboard
+    scenes[4]["text"] = "À 65 ans, Léa a 2 100 € et Hugo 1 628 €."      # scène 5 : « reveal » du storyboard
     scenes[6]["text"] = "C'est un exemple simplifié."                   # scène de fin : rappel sans chiffre
     return {"title": "Moins d'argent, plus à l'arrivée", "on_screen_title": "100 € À 20 ANS | BATTENT 300 € À 40",
             "hypothesis": "reformulée", "closing_cta": "Et toi, tu aurais parié sur qui ?", "scenes": scenes}
@@ -190,6 +191,7 @@ def test_run_channel_script_only_regenerates_and_saves(finance_state, monkeypatc
     brain = gb.channels["finance"].brain
     brain.config["brain"]["concepts"] = {"interets_composes": brain.config["brain"]["concepts"]["interets_composes"]}
     brain.config["brain"]["voice_words_per_second"] = 0      # scripts factices courts : règle testée à part
+    brain.config["brain"]["free_topics"]["enabled"] = False  # chemin des concepts du YAML (sujets libres : part3b)
     brain.combinations = lambda concept: [brain.resolve_params(concept, {
         "early_age": 20, "late_age": 40, "early_amount": 100, "late_amount_factor": 3, "rate": 7, "end_age": 65})]
 
@@ -217,3 +219,42 @@ def test_script_with_style_warnings_is_never_returned(finance_state):
     brain.chosen_hook_text = None
     with pytest.raises(RuntimeError):
         brain.generate_script_with_target("sujet", scene_count=7)
+
+
+def test_legende_mention_fixe_sur_plusieurs_lignes_acceptee():
+    """Run du 18/11 : la mention fixe (2 lignes) recopiée par le LLM ne doit pas faire refuser la légende."""
+    from pathlib import Path
+
+    import yaml
+    from auracontent.channels.finance.brain import FinanceBrain
+    root = Path(__file__).resolve().parents[1]
+    cfg = yaml.safe_load((root / "config" / "channels" / "finance.yaml").read_text(encoding="utf-8"))
+    brain = FinanceBrain.__new__(FinanceBrain)
+    brain.config, brain.last_pick = cfg, None
+    footer = cfg["publish"]["caption_footer"]
+    caption = "Tu sais combien coûte ton trajet chaque semaine ?\n\n" + footer + "\n\n#budget #argent"
+    assert not [i for i in brain.caption_issues({}, caption) if "interdit" in i]
+
+
+def test_accroche_montant_recurrent_doit_dire_sa_frequence():
+    """Run du 18/11 : « Un trajet de 50 € coûte 5 200 € en 2 ans » laisse croire à un seul trajet."""
+    from auracontent.channels.finance import calc as fcalc
+    p = {"amount": 50, "per_week": 1, "years": 2}
+    assert fcalc.frequency_problem("depenses_repetees", p, "Un trajet de 50 € coûte 5 200 € en 2 ans, tu sais?")
+    assert not fcalc.frequency_problem("depenses_repetees", p, "50 € par semaine de train : 5 200 € en 2 ans.")
+    assert not fcalc.frequency_problem("depenses_repetees", p, "Ton train coûte 5 200 € en 2 ans.")
+    assert not fcalc.frequency_problem("depenses_repetees", {"amount": 2.5, "per_week": 5, "years": 3},
+                                       "Un café à 2,50 € chaque matin : 1 950 € en 3 ans.")
+    assert fcalc.frequency_problem("abonnements", {"sub_1": 15, "years": 3}, "Netflix à 15 € te coûte 540 € en 3 ans.")
+
+
+def test_horizon_d_un_an_remonte_au_minimum():
+    """Run du 18/11 : sujets écartés pour « horizon 1 ans (de 2 à 10) » ; le total sur 1 an est déjà affiché."""
+    from auracontent.channels.finance import calc as fcalc
+    p, why = fcalc.check_params("depenses_repetees", {"amount": 1.5, "per_week": 5, "years": 1})
+    assert p and p["years"] == 2, why
+    p, why = fcalc.check_params("abonnements", {"sub_1": 25, "years": 1})
+    assert p and p["years"] == 2, why
+    p, _ = fcalc.check_params("depenses_repetees", {"amount": 60, "per_week": 1, "years": 3})   # courses : 60 €
+    assert p
+    assert fcalc.check_params("credit_amortissable", {"amount": 5000, "rate": 5, "years": 0.5})[0] is None

@@ -15,6 +15,7 @@ from pathlib import Path
 from auracontent.core.brain.base_brain import BaseBrain, SceneCountError, VeracityIssue
 from auracontent.services.scraping.anecdotes import collect_french_anecdotes
 from auracontent.services.scraping.wikipedia import fetch_intro, fetch_page, find_candidates, place_details
+from auracontent.services.trends import youtube as youtube_trends
 from auracontent.services.visuals.asset_manager import subject_settings
 from auracontent.services.visuals.subject_images import (
     WEAK_NAME_WORDS,
@@ -312,8 +313,13 @@ class MysteryBrain(BaseBrain):
         tested: dict[str, dict] = {}          # titre de la page -> essai (pour le repli)
 
         sources = [str(x) for x in b.get("topic_sources") or ["keywords"]]
+        # Tendances YouTube de la niche (section trends du YAML) : inspirent l'angle et le style du titre ;
+        # le fait reste celui de la source. Sans clé ni section : bloc vide, comportement inchangé.
+        trends = youtube_trends.trends_block(self.config.get("trends"))
         for attempt in range(1, max_attempts + 1):
             title_vars, region, category, _ = self.build_title_vars(used, stats_text)
+            if trends:
+                title_vars["stats_block"] = "\n\n".join(x for x in (title_vars.get("stats_block"), trends) if x)
             source, region, category = self._next_source(sources, region, category, used_sources | tested.keys())
             if source is None:
                 self._report["rejet : pas de page exploitable"] += 1

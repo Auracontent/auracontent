@@ -56,6 +56,8 @@ jobs:
       GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}   # GitHub Models (gratuit, aucun secret à créer)
       HF_TOKEN: ${{ secrets.HF_TOKEN }}
       ZERNIO_API_KEY_MYSTERY: ${{ secrets.ZERNIO_API_KEY_MYSTERY }}   # stats Zernio (bandit des hooks)
+      ZERNIO_API_KEY_FINANCE: ${{ secrets.ZERNIO_API_KEY_FINANCE }}   # publication Capital Simple (absent = pas de publication)
+      YOUTUBE_API_KEY: ${{ secrets.YOUTUBE_API_KEY }}   # tendances YouTube de la niche (absent = sans inspiration externe)
       PIXABAY_API_KEY: ${{ secrets.PIXABAY_API_KEY }}
       PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}
       POLLINATIONS_TOKEN: ${{ secrets.POLLINATIONS_TOKEN }}

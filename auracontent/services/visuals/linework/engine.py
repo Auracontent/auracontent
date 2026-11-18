@@ -68,7 +68,7 @@ def counter_text(layer: dict, t: float) -> str:
     x = max(0.0, min(1.0, (t - t0) / max(t1 - t0, 1e-6)))
     x = x * x * (3 - 2 * x)
     value = count["from"] + (count["to"] - count["from"]) * x
-    if count.get("step"):
+    if count.get("step") and x < 1:          # défilement par pas ; la valeur finale est toujours exacte
         value = round(value / count["step"]) * count["step"]
     return count.get("template", "{n}").replace("{n}", fr_number(value))
 

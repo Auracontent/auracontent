@@ -59,6 +59,7 @@ def lines_of(value: str, size: float, w_px: float, frame_width: int = 1080) -> i
     font = _font(str(HAND_FONT), max(1, round(size * frame_width / DESIGN_WIDTH)), True)
     return len(wrap(font, value, w_px))
 
+SMALL = 60      # plus petit texte, taille du plan de conception : 50 px de police sur l'image 1080x1920
 INK, TURQUOISE, GOLD, GRAY, PAPER = "#1A1A1A", "#0E9F8E", "#E0A526", "#454950", "#F7F3EA"   # gris foncé : lisible
 Resolver = Callable[[str], object]
 
@@ -187,8 +188,8 @@ def _title(layers: list[dict], title: str, subtitle: str, f: Frame) -> float:
         layers.append(text("titre", title, f.left, y, 76, f, start=0.1))
         y += 70
     if subtitle:
-        layers.append(text("hypothese", subtitle, f.left, y, 50, f, color=GRAY, start=0.1))
-        y += 50 * lines_of(subtitle, 50, f.right - f.left, f.width) + 8          # 1 ou 2 lignes
+        layers.append(text("hypothese", subtitle, f.left, y, SMALL, f, color=GRAY, start=0.1))
+        y += 58 * lines_of(subtitle, SMALL, f.right - f.left, f.width) + 10      # 1 ou 2 lignes
     return y
 
 
@@ -203,20 +204,20 @@ def two_amounts(left: Side, right: Side, *, resolve: Resolver, title: str = "", 
     winner, loser = (left, right) if left.value >= right.value else (right, left)
     D = duration
     t_small, t_big = 0.35, max(1.9, 0.65 * D)                       # rythme de la vidéo test (4,35 s sur 6,7)
-    surface = f.bottom - 125                                        # sol ; montants écrits en dessous
+    surface = f.bottom - 150                                        # sol ; montants écrits en dessous
     layers: list[dict] = []
     top_free = _title(layers, title, subtitle, f)
 
     big_h = surface - top_free - 10
     # piles : hauteur fidèle au rapport des montants (plancher 12 % pour rester visible), arbres : inchangé
     ratio = max(0.12 if variant == "piles" else 0.45, min(0.9, loser.value / max(winner.value, 1e-9)))
-    cols = {"win_obj": f.left + 175, "win_char": f.left + 390, "lose_obj": f.left + 560, "lose_char": f.right - 75}
+    cols = {"win_obj": f.left + 165, "win_char": f.left + 385, "lose_obj": f.left + 560, "lose_char": f.right - 110}
     if variant == "arbres":
         big_sprite, small_sprite = "tree-lea.png", "tree-hugo.png"
     elif variant == "piles":
         # même dessin pour les deux piles, hauteur proportionnelle : la plus petite paraît toujours plus petite
         big_sprite, small_sprite = "stack-16.png", "stack-16.png"
-        big_h = min(big_h, 420)
+        big_h = min(big_h, 520)
     else:
         raise ValueError(f"variante inconnue pour two_amounts : {variant}")
     big = grounded(resolve, big_sprite, big_h, cols["win_obj"], surface, f)
@@ -237,7 +238,7 @@ def two_amounts(left: Side, right: Side, *, resolve: Resolver, title: str = "", 
         layers.append(obj)
     layers.append(ground(resolve, surface, f))           # dessiné après les objets : il les cache quand ils poussent
 
-    char_h = min(330, surface - top_free - 40)
+    char_h = min(430, surface - top_free - 40)
     t_react = t_big + 1.0
     if loser.idle:
         idle = grounded(resolve, loser.idle, char_h, cols["lose_char"], surface, f)
@@ -261,17 +262,17 @@ def two_amounts(left: Side, right: Side, *, resolve: Resolver, title: str = "", 
     for who, oid, x_px, t0 in ((loser, "montant-perdant", f.left + 480, t_small + 0.9),
                                (winner, "montant-gagnant", f.left, t_big + 0.9)):
         item = Item(who.name, who.value, who.value_text, who.color, who.count_template)
-        layer = text(oid, shown(item), x_px, surface + 14, 64, f, color=who.color,
+        layer = text(oid, shown(item), x_px, surface + 12, 76, f, color=who.color,
                      role="value", start=t0, w_px=430, count=counter(item, t0, step=who.extra.get("step")),
                      sfx=_sfx(t0, "tick.wav", 0.25))
         if who is winner:                                    # surligneur or sous le résultat gagnant
             layers.append({"type": "marker", "role": "decor", "id": "surligneur", "x": x_px * k - 6,
-                           "y": (surface + 58) * k, "w": 330 * k, "h": 20, "color": GOLD, "opacity": 0.6,
+                           "y": (surface + 70) * k, "w": 330 * k, "h": 20, "color": GOLD, "opacity": 0.6,
                            "from": t0 + 0.9, "sfx": _sfx(t0 + 0.9, "chime.wav", 0.25),
                            "keys": [{"t": t0 + 0.9, "progress": 0}, {"t": t0 + 1.4, "progress": 1}]})
         layers.append(layer)
         if who.caption:
-            layers.append(text(f"{oid}-legende", who.caption, x_px, surface + 72, 46, f, color=GRAY, start=t0,
+            layers.append(text(f"{oid}-legende", who.caption, x_px, surface + 82, SMALL, f, color=GRAY, start=t0,
                                w_px=430, bold=True))
     return layers
 
@@ -288,7 +289,7 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
     layers: list[dict] = []
     top = _title(layers, title, subtitle, f) + 30
     legend_rows = 1 + (b is not None) + (gap is not None and variant == "ecart")
-    bottom = f.bottom - 60 - 58 * legend_rows                       # axe des x ; légende sous l'axe
+    bottom = f.bottom - 72 - 66 * legend_rows                       # axe des x ; légende sous l'axe
     x0, x1 = f.left + 60, f.right - 30
     xs = series["x"]
     vals = [v for key in ("a", "b") for v in (series.get(key) or []) if v is not None]
@@ -306,7 +307,7 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
         for item in (a, b):                             # valeur la plus haute : le texte de calc.py (98 000 €)
             if item is not None and item.text and abs(item.value - top_v) <= 0.01 * top_v:
                 labels[top_v] = item.text
-        x0 = f.left + max(text_width(t, 40, f.width) for t in labels.values()) + 22
+        x0 = f.left + max(text_width(t, SMALL, f.width) for t in labels.values()) + 22
     if companion and resolve is not None:
         x1 = f.right - 230                  # place à droite pour le personnage
 
@@ -320,12 +321,12 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
         y = bottom - (bottom - top) * v / vmax
         layers.append({"type": "path", "role": "decor", "id": f"graduation-{i}", "x": (x0 - 14) * k, "y": y * k,
                        "points": [(0, 0), (14 * k, 0)], "color": INK, "lineWidth": 4, "from": 0.2})
-        layers.append(text(f"graduation-texte-{i}", labels[v], f.left, y - 26, 40, f, color=GRAY, start=0.2,
+        layers.append(text(f"graduation-texte-{i}", labels[v], f.left, y - 34, SMALL, f, color=GRAY, start=0.2,
                            w_px=x0 - f.left - 16))
     if companion and resolve is not None:
         layers.append(companion_layer(resolve, companion, f.right - 105, bottom, min(300, bottom - top - 40), f))
-    layers.append(text("x-debut", x_labels[0], x0 - 20, bottom + 8, 50, f, color=GRAY, start=0.15, w_px=300))
-    layers.append(text("x-fin", x_labels[1], x1 - 170, bottom + 8, 50, f, color=GRAY, start=0.15, w_px=190))
+    layers.append(text("x-debut", x_labels[0], x0 - 20, bottom + 6, SMALL, f, color=GRAY, start=0.15, w_px=300))
+    layers.append(text("x-fin", x_labels[1], x1 - 190, bottom + 6, SMALL, f, color=GRAY, start=0.15, w_px=210))
     draw = min(1.8, 0.45 * D)                                      # tracé : jamais plus long que 1,8 s
     curves = [("a", a, 0.45)] + ([("b", b, 0.2)] if b is not None else [])
     for key, item, t0 in curves:
@@ -335,18 +336,18 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
                        "points": pts, "color": item.color, "lineWidth": 8, "sfx": _sfx(t0, "draw.wav", 0.3),
                        "keys": [{"t": t0, "progress": 0}, {"t": t0 + draw, "progress": 1}],
                        "motion": f"la courbe « {item.label} » se trace jusqu'à {item.text}"})
-    row = bottom + 62
+    row = bottom + 70
     for key, item, t0 in sorted(curves, key=lambda c: c[2]):
         end = t0 + draw
         layers.append({"type": "path", "role": "decor", "id": f"legende-trait-{key}", "x": f.left * k,
-                       "y": (row + 30) * k, "points": [(0, 0), (60 * k, 0)], "color": item.color, "lineWidth": 8,
+                       "y": (row + 36) * k, "points": [(0, 0), (60 * k, 0)], "color": item.color, "lineWidth": 8,
                        "from": end})
         label = f"{item.label} : " if item.text else item.label          # légende sans valeur possible
         layers.append(text(f"legende-{key}", shown(item, label) if item.text else label, f.left + 80,
-                           row, 54, f, color=item.color if item.color != GRAY else INK, role="value", start=end,
+                           row, 62, f, color=item.color if item.color != GRAY else INK, role="value", start=end,
                            w_px=f.right - f.left - 80, count=counter(item, end, 0.8, prefix=label),
                            sfx=_sfx(end, "tick.wav", 0.25)))
-        row += 58
+        row += 66
     if variant == "ecart" and gap is not None and b is not None:
         ya, yb = pt(len(series["a"]) - 1, series["a"][-1])[1], pt(len(series["b"]) - 1, series["b"][-1])[1]
         t_gap = 0.45 + draw + 0.2
@@ -355,10 +356,10 @@ def curve_in_time(series: dict, a: Item, b: Item | None = None, *, x_labels: tup
                        "from": t_gap, "keys": [{"t": t_gap, "progress": 0}, {"t": t_gap + 0.4, "progress": 1}],
                        "sfx": _sfx(t_gap, "chime.wav", 0.25)})
         layers.append({"type": "marker", "role": "decor", "id": "surligneur", "x": (f.left + 76) * k,
-                       "y": (row + 44) * k, "w": 420 * k, "h": 20, "color": GOLD, "opacity": 0.6, "from": t_gap,
+                       "y": (row + 52) * k, "w": 420 * k, "h": 20, "color": GOLD, "opacity": 0.6, "from": t_gap,
                        "keys": [{"t": t_gap, "progress": 0}, {"t": t_gap + 0.5, "progress": 1}]})
         label = f"{gap.label} : "
-        layers.append(text("ecart", shown(gap, label), f.left + 80, row, 54, f, role="value", start=t_gap,
+        layers.append(text("ecart", shown(gap, label), f.left + 80, row, 62, f, role="value", start=t_gap,
                            w_px=f.right - f.left - 80, count=counter(gap, t_gap, 0.7, prefix=label)))
     return layers
 
@@ -387,38 +388,41 @@ def bars(items: list[Item], *, title: str = "", subtitle: str = "", duration: fl
         layers.append(text("jauge-valeur", shown(share), x0, top + 30, 140, f, role="value",
                            start=t0, w_px=width, count=counter(share, t0, fill, step=1),
                            sfx=_sfx(t0, "tick.wav", 0.25)))
-        layers.append(text("jauge-100", "100 %", x0 + width - 130, bar_y + bar_h + 12, 50, f, color=GRAY,
+        layers.append(text("jauge-100", "100 %", x0 + width - 150, bar_y + bar_h + 12, SMALL, f, color=GRAY,
                            start=0.3, w_px=140))
         if share_caption:
-            layers.append(text("jauge-legende", share_caption, x0, bar_y + bar_h + 70, 56, f, start=t0 + fill,
+            layers.append(text("jauge-legende", share_caption, x0, bar_y + bar_h + 76, SMALL, f, start=t0 + fill,
                                w_px=width - 160))
         return layers
 
     n = len(items)
     if not 1 <= n <= 3:
         raise ValueError("bars : 1 à 3 barres")
-    base = f.bottom - 120                                       # bas des barres ; libellés dessous
-    max_h = base - top - 120                                    # place pour la valeur au-dessus
+    base = f.bottom - 135                                       # bas des barres ; libellés dessous (2 lignes)
+    max_h = base - top - 130                                    # place pour la valeur au-dessus
     right = f.right
     if companion and resolve is not None:                       # personnage à droite, sur la ligne de base
-        right = f.right - 230
+        right = f.right - 255                                   # la main tendue ne touche pas le dernier montant
         layers.append(companion_layer(resolve, companion, f.right - 105, base, min(320, base - top - 40), f))
     col = (right - f.left) / n
     vmax = max(i.value for i in items) or 1
     best = max(range(n), key=lambda i: items[i].value)
     for i, item in enumerate(items):
         cx = f.left + col * (i + 0.5)
-        bw = min(170, col * 0.55)
+        bw = min(210, col * 0.6)
         h = max(18, max_h * item.value / vmax)
         t0 = 0.2 + i * min(0.5, 0.15 * D)                            # barres l'une après l'autre, dès le début
         layers.append({"type": "box", "role": "prop", "id": f"barre-{i}", "x": (cx - bw / 2) * k, "w": bw * k,
                        "fill": item.color, "lineWidth": 5, "sfx": _sfx(t0, "grow.wav", 0.28),
                        "keys": [{"t": t0, "y": base * k, "h": 0}, {"t": t0 + 0.7, "y": (base - h) * k, "h": h * k}],
                        "motion": f"la barre « {item.label} » monte jusqu'à {item.text}"})
-        layers.append(text(f"valeur-{i}", shown(item), cx - col / 2 + 10, base - h - 80, 60, f,
+        size = 76                                               # montant sur une ligne : réduit si besoin
+        while size > SMALL and text_width(item.text, size, f.width) > col - 20:
+            size -= 4
+        layers.append(text(f"valeur-{i}", shown(item), cx - col / 2 + 10, base - h - 92, size, f,
                            role="value", start=t0 + 0.2, w_px=col - 20, count=counter(item, t0 + 0.2, 0.6),
                            sfx=_sfx(t0 + 0.2, "tick.wav", 0.2)))
-        layers.append(text(f"libelle-{i}", item.label, cx - col / 2 + 10, base + 14, 52, f, color=GRAY,
+        layers.append(text(f"libelle-{i}", item.label, cx - col / 2 + 10, base + 8, SMALL, f, color=GRAY,
                            start=t0, w_px=col - 20, bold=True))
         if i == best:
             t1 = t0 + 0.9
@@ -465,11 +469,11 @@ def timeline(steps: list[Item], *, resolve: Resolver, title: str = "", subtitle:
                        "w": (f.right - tx - 10) * k, "h": 20, "color": GOLD, "opacity": 0.6, "from": t1,
                        "keys": [{"t": t1, "progress": 0}, {"t": t1 + 0.4, "progress": 1}],
                        "sfx": _sfx(t1, "chime.wav", 0.25)})
-        layers.append(text("compteur-legende", countdown.label, tx, cy + 60, 56, f, color=GRAY, start=t0,
+        layers.append(text("compteur-legende", countdown.label, tx, cy + 60, SMALL, f, color=GRAY, start=t0,
                            w_px=f.right - tx))
         return layers
 
-    surface = f.bottom - 150                                   # la frise est le sol du personnage
+    surface = f.bottom - 215                                   # la frise est le sol ; légendes sur 2 lignes dessous
     x0, x1 = f.left + 40, f.right - 50
     lo, hi = steps[0].value, steps[-1].value
     pos = {i: x0 + (x1 - x0) * (s.value - lo) / max(hi - lo, 1e-9) for i, s in enumerate(steps)}
@@ -494,10 +498,10 @@ def timeline(steps: list[Item], *, resolve: Resolver, title: str = "", subtitle:
                        "y": (surface - 18) * k, "points": [(0, 0), (0, 36 * k)], "lineWidth": 6, "color": step.color,
                        "from": t, "sfx": _sfx(t, "tap.wav", 0.25)})
         anchor = anchors[i]
-        layers.append(text(f"etape-{i}", step.text, anchor, surface + 26, 58, f, color=step.color, role="value",
+        layers.append(text(f"etape-{i}", step.text, anchor, surface + 26, 64, f, color=step.color, role="value",
                            start=t, w_px=label_w))
         if step.label:
-            layers.append(text(f"etape-{i}-legende", step.label, anchor, surface + 88, 46, f, color=GRAY, start=t,
+            layers.append(text(f"etape-{i}-legende", step.label, anchor, surface + 88, SMALL, f, color=GRAY, start=t,
                                w_px=label_w, bold=True))
     char_h = min(300, surface - top - 30)
     margin = 60                                             # le personnage reste entier sur la frise
@@ -528,9 +532,9 @@ def characters(cast: list[dict], *, resolve: Resolver, annotation: str = "", not
                        "keys": [{"t": 0.6, "progress": 0}, {"t": 1.0, "progress": 1}]})
         top += 130
     if note:
-        layers.append(text("note", note, f.left, top, 58, f, color=GRAY, start=0.5))
-        top += 70
-    char_h = min(430, surface - top - 20)
+        layers.append(text("note", note, f.left, top, 66, f, color=GRAY, start=0.5))
+        top += 76
+    char_h = min(560, surface - top - 20)
     t_switch = 0.5 * D
     for i, person in enumerate(cast):
         cx = person.get("x", f.left + 200 + i * 420)
@@ -575,9 +579,9 @@ def end_card(*, resolve: Resolver, name: str, baseline: str, hypothesis: str = "
                            sfx=_sfx(1.0, "paper.wav", 0.3)))
         y += 210
     if hypothesis:
-        layers.append(text("hypothese", f"Hypothèse : {hypothesis}", f.left, y, 52, f, color=GRAY, start=1.0,
+        layers.append(text("hypothese", f"Hypothèse : {hypothesis}", f.left, y, SMALL, f, color=GRAY, start=1.0,
                            w_px=f.right - f.left))
         y += 120
     if mention:
-        layers.append(text("mention", mention, f.left, y, 52, f, color=GRAY, start=1.3, w_px=f.right - f.left))
+        layers.append(text("mention", mention, f.left, y, SMALL, f, color=GRAY, start=1.3, w_px=f.right - f.left))
     return layers

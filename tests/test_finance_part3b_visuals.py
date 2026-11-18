@@ -67,7 +67,8 @@ def test_curve_has_vertical_ticks_and_values_from_calc(concept):
 def test_epargne_curve_writes_calc_values_not_the_raw_series():
     layers = _layers("epargne_age", "courbe")
     texts = " ".join(lay["text"] for lay in layers if lay["type"] == "text")
-    assert "98 000 €" in texts and "97 997" not in texts and "40 770" not in texts
+    # arrondi unique à l'euro : la valeur exacte de calc.py, jamais une valeur arrondie à 10 ou 100 €
+    assert "97 997 €" in texts and "98 000" not in texts and "40 770" not in texts
 
 
 def test_cents_keep_two_digits_on_screen():
@@ -94,3 +95,24 @@ def test_old_concepts_keep_their_own_scenes():
     layers = visuals.scene_layers("frais", params, SCENES["courbe"], 6.0, hypothesis="h")
     assert not any(lay.get("id") == "compagnon" for lay in layers)
     assert not any(lay.get("id", "").startswith("graduation") for lay in layers)
+
+
+# ---------- Lisibilité : petits textes d'au moins 50 px de police sur l'image 1080x1920 ----------
+@pytest.mark.parametrize("scene", list(SCENES))
+@pytest.mark.parametrize("concept", list(PARAMS))
+def test_every_text_is_at_least_50_px(concept, scene):
+    for lay in _layers(concept, scene):
+        if lay["type"] == "text":
+            assert lay["size"] * 1080 / 1280 >= 50, (lay["id"], lay["size"])
+
+
+def test_counter_ends_on_the_exact_value():
+    from auracontent.services.visuals.linework.engine import counter_text
+
+    layer = {"count": {"from": 0, "to": 1768, "t0": 0, "t1": 1, "template": "{n} €", "step": 10}}
+    assert counter_text(layer, 0.5).endswith("0 €") and counter_text(layer, 1.0) == "1 768 €"
+
+
+def test_rounding_rule_on_screen():
+    texts = " ".join(lay["text"] for lay in _layers("abonnements", "courbe") if lay["type"] == "text")
+    assert "1 768 €" in texts and "1 770" not in texts                  # 29,47 € x 60 = 1 768,20 €

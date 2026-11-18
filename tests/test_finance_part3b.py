@@ -260,7 +260,7 @@ def _daily(concept, raw, situation="Léa vit une situation concrète du quotidie
 def test_daily_concept_builds_a_script_prompt_with_its_numbers():
     brain = _daily("epargne_age", {"monthly": 50, "rate": 5, "age_a": 20, "age_b": 35, "end_age": 65})
     user = brain.build_script_prompt("t", 6, {"text": "h"})[1]["content"]
-    assert "98 000 €" in user and "versement mensuel (€) : 50" in user
+    assert "97 997 €" in user and "versement mensuel (€) : 50" in user
     hyp = brain.hypothesis("epargne_age", brain.last_pick["params"])
     assert "jusqu'à 65 ans" in hyp and "taux mensuel équivalent" in hyp
     assert storyboard.storyboard("epargne_age") == storyboard.DAILY and brain.target_scene_count() == 6
@@ -290,3 +290,31 @@ def test_describe_uses_the_situation():
     brain = _daily("abonnements", {"sub_1": 10, "years": 3}, "Hugo garde trois abonnements qu'il n'utilise plus")
     assert brain.describe("abonnements", brain.last_pick["params"], brain.last_pick["situation"]) == \
         "Abonnements cumulés : Hugo garde trois abonnements qu'il n'utilise plus"
+
+
+# ---------- Exemple d'accroche propre à chaque calcul ; règle « perdre » du taux réel et du salaire ----------
+@pytest.mark.parametrize("concept", ["depenses_repetees", "abonnements", "remises_successives", "paiement_fractionne",
+                                     "credit_amortissable", "decouvert_agios", "forfait_appareil", "carte_fidelite",
+                                     "epargne_age", "salaire_vs_prix", "taux_reel", "leasing_epargne"])
+def test_each_daily_concept_has_a_valid_hook_example(concept):
+    from tests.test_finance_part3a import NEW
+
+    raw = NEW.get(concept, {"monthly": 300, "years": 4, "rate": 3})
+    brain = _daily(concept, raw)
+    example = brain.hook_example()
+    assert example != "Mettre moins d'argent… et finir avec plus." and "{" not in example
+    assert brain.hook_issues(example, "sujet") == []
+
+
+@pytest.mark.parametrize("concept, raw, bad, good", [
+    ("taux_reel", {"nominal": 3, "inflation": 2, "amount": 1000},
+     "Avec ce livret, tu perds 1 %.", "En pouvoir d'achat, tu gagnes 0,98 %."),
+    ("salaire_vs_prix", {"salary": 2000, "raise_pct": 2, "inflation": 4},
+     "Tu perds 38 € par mois.", "Tu perds 1,9 % de pouvoir d'achat."),
+])
+def test_loss_rule_for_real_rate_and_salary(concept, raw, bad, good):
+    brain = _daily(concept, raw)
+    issues = brain.text_issues(bad, "la scène 3")
+    assert any("dit que l'argent se perd" in i and f"« {bad} »" in i for i in issues), issues
+    assert brain.text_issues(good, "la scène 3") == []
+    assert "INTERDIT" in brain.wording() and "AUTORISÉ" in brain.wording()

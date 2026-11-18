@@ -42,6 +42,10 @@ brain:
 
   # 429 : fournisseur suivant sans attendre (Groq gpt-oss-20b : 8 000 tokens/min)
   rate_limit: fallback
+  # 503 ou délai dépassé (Gemini saturé) : fournisseur suivant (Groq, Cloudflare...) sans réessayer le même
+  unavailable: fallback
+  # Gemini en panne 2 appels de suite (503, 5xx, délai dépassé ou 429) : écarté pour le reste du run
+  disable_after_failures: {models: ["gemini"], after: 2}
   # Un script qui garde des avertissements de style est régénéré, jamais publié
   style_warnings: reject
 
@@ -57,6 +61,7 @@ brain:
   style:
     max_sentence_words: 14     # 14 (et non 12) : avec 100 mots sur 6-7 scènes, 12 mots par phrase bloquait le LLM
     max_hook_words: 12
+    target_hook_words: 10      # longueur visée par le prompt, sous le maximum
     # Formulations absolues ou alarmistes (regex sur le texte en minuscules sans accents)
     hype_patterns: ["\\btout(?:e|es)? (?:ta|ton|tes) (?:richesse|argent|epargne|economies)", "\\bdetrui\\w*",
                     "\\bfortunes?\\b", "\\bruin\\w*", "\\btout perdre\\b", "\\bperdre tout\\b",
@@ -159,6 +164,31 @@ brain:
   concept_window: 3
   situation_window: 30
 
+  # Concepts du quotidien (calculs de calc.py sans entrée dans « concepts ») : exemple d'accroche (clés de calc.py
+  # et paramètres entre accolades, valeurs réelles du sujet) et, pour le taux réel et le salaire, la règle
+  # « perdre » : une perte n'est vraie qu'en pouvoir d'achat.
+  daily_concepts:
+    depenses_repetees: {hook_example: "Ce petit plaisir quotidien coûte {over_years} en {years} ans."}
+    abonnements: {hook_example: "Tes abonnements oubliés coûtent {total_year} par an."}
+    remises_successives: {hook_example: "{first} puis {second} de remise ne font pas {naive_pct}."}
+    paiement_fractionne: {hook_example: "Payer en {installments} fois coûte {extra_cost} de plus."}
+    credit_amortissable: {hook_example: "Ce crédit coûte {interest} rien qu'en intérêts."}
+    decouvert_agios: {hook_example: "Quelques jours dans le rouge coûtent {agios}."}
+    forfait_appareil: {hook_example: "Le téléphone à {upfront} coûte vraiment {real_price}."}
+    carte_fidelite: {hook_example: "{pct} offerts ne font que {effective_pct} de remise."}
+    epargne_age: {hook_example: "Commencer à {age_a} ans rapporte {gap} de plus."}
+    leasing_epargne: {hook_example: "{monthly} par mois : rien à la fin, ou {saving_final}."}
+    taux_reel:
+      hook_example: "Ton livret à {nominal} ne rapporte que {real_exact}."
+      wording: "Les intérêts arrivent bien sur le compte : seul le gain réel, inflation retirée, est plus faible. INTERDIT : dire que tu perds des euros (« tu perds {real_approx} »). AUTORISÉ : « ton gain réel n'est que de {real_gain} », « en pouvoir d'achat, tu gagnes {real_exact} »."
+      loss_needs: ["pouvoir d'achat", "valeur réelle", "gain réel", "en réel"]
+      loss_fixes: ["ton gain réel n'est que de {real_gain}", "en pouvoir d'achat, tu gagnes {real_exact}"]
+    salaire_vs_prix:
+      hook_example: "{raise_pct} de salaire, et ton pouvoir d'achat varie de {real_change_pct}."
+      wording: "Le salaire augmente bien en euros : seul ce qu'il permet d'acheter change. INTERDIT : dire que tu perds des euros de salaire. AUTORISÉ : « ton pouvoir d'achat varie de {real_change_pct} », « ton salaire achète l'équivalent de {real_salary} d'aujourd'hui »."
+      loss_needs: ["pouvoir d'achat", "valeur réelle", "en réel", "ce qu'il achète", "ce que ton salaire achète"]
+      loss_fixes: ["ton pouvoir d'achat varie de {real_change_pct}", "ton salaire achète l'équivalent de {real_salary} d'aujourd'hui"]
+
   # Génération libre de sujets ancrés dans le quotidien (partie 3). Le concept imposé par le workflow
   # (option « concept » -> FINANCE_CONCEPT) reste prioritaire. Échec de la génération = repli sur les
   # combinaisons des concepts ci-dessous.
@@ -168,6 +198,17 @@ brain:
     domains_per_run: 2           # domaines tirés au hasard ; au moins la moitié des candidats y sont demandés
     examples_shown: 3            # exemples montrés au LLM (format seulement, jamais un catalogue)
     max_from_examples: 1         # candidats qui reprennent une situation des exemples, au plus
+    # Ligne éditoriale : chaque vidéo apporte une valeur concrète (un gain chiffré et une action simple) pour
+    # donner envie de s'abonner. Un format est tiré par run (jamais le même que la vidéo précédente) ; au moins
+    # la moitié des candidats y sont demandés, et il passe en priorité au choix final.
+    formats:
+      astuce: "L'astuce du quotidien : un problème concret, le calcul qui le prouve, puis une action simple de gestion du budget"
+      histoire: "L'histoire : Léa et Hugo face à la même situation, deux choix, deux résultats chiffrés"
+      peu_savent: "Ce que peu de gens savent : un mécanisme surprenant du quotidien, expliqué en 40 secondes"
+    astuce_max_words: 14         # l'astuce de fin : une action simple, au tutoiement
+    # Concepts d'origine (inflation, intérêts composés, coût du temps, frais, règle de 72) : au plus 1 vidéo
+    # sur cette fenêtre ; la chaîne parle d'abord de la vie quotidienne.
+    originals_window: 10
     domains: ["logement", "transport", "alimentation", "travail et salaire", "études", "famille",
               "loisirs et vacances", "santé", "numérique et abonnements", "banque et paiements",
               "administration et impôts", "consommation et soldes"]
@@ -186,18 +227,18 @@ brain:
       salaire: ["paie", "paye", "rémunération", "augmentation"]
     # Exemples : UNIQUEMENT le format attendu (3 tirés au hasard par run). « calcul » : un calcul de calc.py.
     examples:
-      - {situation: "Léa prend un café à 2 € chaque matin avant d'aller au travail", calcul: {type: depenses_repetees, params: {amount: 2, per_week: 5, years: 10}}, question_spectateur: "Combien coûte vraiment ce café sur 1 an et sur 10 ans ?"}
-      - {situation: "Hugo paie sa console 400 € en 4 fois et oublie une échéance", calcul: {type: paiement_fractionne, params: {price: 400, installments: 4, fee_pct: 2.2, late_fee: 15}}, question_spectateur: "Combien coûte vraiment un paiement en 4 fois ?"}
-      - {situation: "Léa découvre trois abonnements qu'elle n'utilise plus sur son relevé", calcul: {type: abonnements, params: {sub_1: 13.49, sub_2: 9.99, sub_3: 5.99, years: 5}}, question_spectateur: "Combien coûtent des abonnements oubliés sur un an ?"}
-      - {situation: "Hugo achète une voiture à crédit sur 5 ans", calcul: {type: credit_amortissable, params: {amount: 15000, rate: 6, years: 5}}, question_spectateur: "Combien coûtent les intérêts d'un crédit voiture ?"}
-      - {situation: "Léa voit un pull à -30 % puis -20 % en caisse pendant les soldes", calcul: {type: remises_successives, params: {price: 100, first: 30, second: 20}}, question_spectateur: "Pourquoi -30 % puis -20 % ne font pas -50 % ?"}
-      - {situation: "Hugo garde son argent sur un livret qui rapporte 3 % quand les prix montent de 2 %", calcul: {type: taux_reel, params: {nominal: 3, inflation: 2, amount: 1000}}, question_spectateur: "Que rapporte vraiment un livret une fois l'inflation retirée ?"}
-      - {situation: "Léa obtient 3 % d'augmentation l'année où les prix montent de 3 %", calcul: {type: salaire_vs_prix, params: {salary: 2000, raise_pct: 3, inflation: 3}}, question_spectateur: "Une augmentation de 3 % rend-elle plus riche ?"}
-      - {situation: "Hugo reste à découvert de 500 € pendant 10 jours en fin de mois", calcul: {type: decouvert_agios, params: {overdraft: 500, days: 10, rate: 16}}, question_spectateur: "Combien coûtent quelques jours de découvert ?"}
-      - {situation: "Léa met de côté 50 € par mois dès 20 ans, Hugo dès 35 ans", calcul: {type: epargne_age, params: {monthly: 50, rate: 5, age_a: 20, age_b: 35, end_age: 65}}, question_spectateur: "Pourquoi commencer 15 ans plus tôt change tout ?"}
-      - {situation: "Hugo prend un téléphone à 1 € avec un forfait à 45 € par mois pendant 24 mois", calcul: {type: forfait_appareil, params: {phone_price: 600, upfront: 1, monthly_with: 45, monthly_without: 15, months: 24}}, question_spectateur: "Combien coûte vraiment un téléphone à 1 € ?"}
-      - {situation: "Léa reçoit 10 % offerts en bon d'achat avec sa carte de fidélité", calcul: {type: carte_fidelite, params: {spend: 100, pct: 10}}, question_spectateur: "10 % offerts, est-ce vraiment 10 % de réduction ?"}
-      - {situation: "Hugo roule en voiture en leasing à 300 € par mois quand Léa met la même somme de côté", calcul: {type: leasing_epargne, params: {monthly: 300, years: 4, rate: 3}}, question_spectateur: "Avoir l'air riche ou l'être vraiment : que reste-t-il après 4 ans ?"}
+      - {situation: "Léa prend un café à 2 € chaque matin avant d'aller au travail", calcul: {type: depenses_repetees, params: {amount: 2, per_week: 5, years: 10}}, question_spectateur: "Combien coûte vraiment ce café sur 1 an et sur 10 ans ?", astuce: "Note une semaine tes petites dépenses répétées."}
+      - {situation: "Hugo paie sa console 400 € en 4 fois et oublie une échéance", calcul: {type: paiement_fractionne, params: {price: 400, installments: 4, fee_pct: 2.2, late_fee: 15}}, question_spectateur: "Combien coûte vraiment un paiement en 4 fois ?", astuce: "Compare le coût total avant de payer en plusieurs fois."}
+      - {situation: "Léa découvre trois abonnements qu'elle n'utilise plus sur son relevé", calcul: {type: abonnements, params: {sub_1: 13.49, sub_2: 9.99, sub_3: 5.99, years: 5}}, question_spectateur: "Combien coûtent des abonnements oubliés sur un an ?", astuce: "Fais le tri de tes abonnements une fois par trimestre."}
+      - {situation: "Hugo achète une voiture à crédit sur 5 ans", calcul: {type: credit_amortissable, params: {amount: 15000, rate: 6, years: 5}}, question_spectateur: "Combien coûtent les intérêts d'un crédit voiture ?", astuce: "Demande toujours le coût total du crédit, pas seulement la mensualité."}
+      - {situation: "Léa voit un pull à -30 % puis -20 % en caisse pendant les soldes", calcul: {type: remises_successives, params: {price: 100, first: 30, second: 20}}, question_spectateur: "Pourquoi -30 % puis -20 % ne font pas -50 % ?", astuce: "Calcule le prix final remise après remise, pas en additionnant."}
+      - {situation: "Hugo garde son argent sur un livret qui rapporte 3 % quand les prix montent de 2 %", calcul: {type: taux_reel, params: {nominal: 3, inflation: 2, amount: 1000}}, question_spectateur: "Que rapporte vraiment un livret une fois l'inflation retirée ?", astuce: "Compare toujours le taux affiché à la hausse des prix."}
+      - {situation: "Léa obtient 3 % d'augmentation l'année où les prix montent de 3 %", calcul: {type: salaire_vs_prix, params: {salary: 2000, raise_pct: 3, inflation: 3}}, question_spectateur: "Une augmentation de 3 % rend-elle plus riche ?", astuce: "Compare ton augmentation à la hausse des prix de l'année."}
+      - {situation: "Hugo reste à découvert de 500 € pendant 10 jours en fin de mois", calcul: {type: decouvert_agios, params: {overdraft: 500, days: 10, rate: 16}}, question_spectateur: "Combien coûtent quelques jours de découvert ?", astuce: "Anticipe les gros prélèvements du mois dans un petit tableau."}
+      - {situation: "Léa met de côté 50 € par mois dès 20 ans, Hugo dès 35 ans", calcul: {type: epargne_age, params: {monthly: 50, rate: 5, age_a: 20, age_b: 35, end_age: 65}}, question_spectateur: "Pourquoi commencer 15 ans plus tôt change tout ?", astuce: "Mets de côté une petite somme dès le jour de la paie."}
+      - {situation: "Hugo prend un téléphone à 1 € avec un forfait à 45 € par mois pendant 24 mois", calcul: {type: forfait_appareil, params: {phone_price: 600, upfront: 1, monthly_with: 45, monthly_without: 15, months: 24}}, question_spectateur: "Combien coûte vraiment un téléphone à 1 € ?", astuce: "Compare le forfait seul et le prix de l'appareil au comptant."}
+      - {situation: "Léa reçoit 10 % offerts en bon d'achat avec sa carte de fidélité", calcul: {type: carte_fidelite, params: {spend: 100, pct: 10}}, question_spectateur: "10 % offerts, est-ce vraiment 10 % de réduction ?", astuce: "Vérifie si l'offre est une remise immédiate ou un bon d'achat."}
+      - {situation: "Hugo roule en voiture en leasing à 300 € par mois quand Léa met la même somme de côté", calcul: {type: leasing_epargne, params: {monthly: 300, years: 4, rate: 3}}, question_spectateur: "Avoir l'air riche ou l'être vraiment : que reste-t-il après 4 ans ?", astuce: "Compare le coût total sur toute la durée avant de choisir."}
   # Le LLM choisit parmi un candidat inédit par concept (résultats déjà calculés par calc.py) ; « random » :
   # tirage au hasard. En cas d'échec du LLM, tirage au hasard.
   concept_selection: "llm"
@@ -274,8 +315,9 @@ video_composer:
   video_width: 1080
   video_height: 1920
   fps: 30
-  transitions: ["fade"]
-  transition_duration: 0.2
+  # Transitions variées entre scènes (refonte V2) ; même durée courte
+  transitions: ["fade", "slideleft", "slideup", "circleopen", "wipeleft", "smoothleft"]
+  transition_duration: 0.3
   voice_gain: 1.0
   music_gain: 0.0            # pas de musique
   fonts_dir: "finance/fonts"
@@ -322,6 +364,9 @@ visuals:
   # Scènes dessinées (style de la vidéo test : papier quadrillé, trait à la main, Caveat) ; zones en pixels de
   # sortie. Contrôles bloquants : texte coupé, hors zone sûre, zones réservées, chevauchements, appuis.
   linework:
+    # Moteur de rendu des scènes : « v2 » = refonte V2 (étiquettes et objets du quotidien, gros chiffre en accroche,
+    # caméra) ; absent ou « v1 » = gabarits actuels. Une scène V2 refusée par la mise en page retombe sur la V1.
+    engine: v2
     background: "#F7F3EA"
     grid: true
     layout:
@@ -346,4 +391,17 @@ publish:
     limit: 20
   fallback_hashtags: "#finance #epargne #argent #capitalsimple"
   brand_hashtag: "#capitalsimple"
-  caption_footer: "Contenu pédagogique, pas un conseil en investissement."
+  caption_footer: "Une astuce chiffrée par jour sur Capital Simple.\nContenu pédagogique, pas un conseil en investissement."
+
+# Tendances YouTube Shorts de la niche (service partagé, secret YOUTUBE_API_KEY ; sans clé : rien ne change).
+# Elles inspirent les sujets de la génération libre ; les chiffres viennent toujours de calc.py.
+trends:
+  enabled: true
+  queries: ["astuce argent", "économiser argent", "budget mois", "abonnements économiser", "crédit coût caché", "épargne astuce"]
+  language: fr
+  region: FR
+  max_age_days: 30
+  top: 8
+  usage: >-
+    Propose des situations du quotidien PROCHES de ces thèmes, racontées avec Léa et Hugo et calculables par la
+    liste des calculs ; jamais de titre, d'astuce ni de chiffre repris tel quel.

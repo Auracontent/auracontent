@@ -88,7 +88,9 @@ def comparable(text: str) -> str:
 
 
 def count_words(text: str) -> int:
-    return len([w for w in _WORD_RE.findall(normalize_title(text)) if any(c.isalnum() for c in w)])
+    """Mots lus : un nombre écrit en chiffres compte pour UN mot (« 10 000 », « 7,5 »), comme à la lecture."""
+    text = _NUMBER_RE.sub("0", normalize_title(text))
+    return len([w for w in _WORD_RE.findall(text) if any(c.isalnum() for c in w)])
 
 
 def sentences(text: str) -> list[str]:
@@ -133,6 +135,17 @@ class LengthIssue(str):
         obj = super().__new__(cls, text)
         obj.ratio, obj.gaps = ratio, dict(gaps or {})
         return obj
+
+
+_NO_GLYPH = "→←⇒⇐➜➔➝▸►↗↘⟶⟹"
+
+
+def spaced_units(text: str, limit: int = 20) -> str:
+    """Ajoute l'espace insécable fine qui manque entre un nombre et « € » ou « % » (« 200€/MOIS » ->
+    « 200 €/MOIS ») ; les espaces déjà présents ne changent pas ; jamais au-delà de la limite d'un segment."""
+    fixed = re.sub(r"(\d)([€%])", "\\1\u202f\\2", text)          # seulement quand l'espace manque
+    fixed = re.sub(f"[{_NO_GLYPH}]", "»", fixed)                    # flèches absentes de Poppins (sinon un carré)
+    return fixed if len(fixed.strip()) <= limit else text
 
 
 _FIELD_WHAT = {"le bandeau": "on_screen_title", "la question finale": "closing_cta", "le titre": "title"}
@@ -221,6 +234,7 @@ class FinanceBrain(FreeTopics, BaseBrain):
         cfg = dict(self._brain().get("style") or {})
         cfg.setdefault("max_sentence_words", 12)
         cfg.setdefault("max_hook_words", 12)
+        cfg.setdefault("target_hook_words", 10)            # visé par le prompt : marge sous le maximum
         cfg["banned_words"] = _as_reasons(cfg.get("banned_words"), "terme interdit")
         return cfg
 
@@ -552,7 +566,8 @@ class FinanceBrain(FreeTopics, BaseBrain):
         spec = (self._brain().get("concepts") or {}).get(concept)
         if spec is None:                      # concept du quotidien : libellé de calc.py, idée = question du sujet
             spec = {"label": fcalc.SPECS[concept]["label"],
-                    "idea": " ".join(x for x in (self.last_pick.get("question"), fcalc.SPECS[concept].get("note")) if x)}
+                    "idea": " ".join(x for x in (self.last_pick.get("question"), fcalc.SPECS[concept].get("note")) if x),
+                    **dict((self._brain().get("daily_concepts") or {}).get(concept) or {})}
         return concept, self.last_pick["params"], spec
 
     def is_daily(self, concept: str) -> bool:
@@ -645,7 +660,10 @@ class FinanceBrain(FreeTopics, BaseBrain):
         example = spec.get("hook_example")
         if not example:
             return "Mettre moins d'argent… et finir avec plus."
-        return example.format_map({k: v.text for k, v in self.calc().values.items()})
+        try:
+            return example.format_map(self._calc_texts())
+        except (KeyError, IndexError, ValueError):
+            return "Mettre moins d'argent… et finir avec plus."
 
     def _calc_texts(self) -> dict[str, str]:
         """Textes de calc.py (« 5 540 € », « 45 % ») et paramètres formatés (« amount » -> « 10 000 € »)."""
@@ -653,8 +671,27 @@ class FinanceBrain(FreeTopics, BaseBrain):
         texts = {k: v.text for k, v in self.calc().values.items()}
         for key, value in params.items():
             unit = self.param_unit(key)
-            texts.setdefault(key, f"{fcalc.fmt_number(value)} {unit if unit in ('€', '%') else ''}".strip())
+            if unit in ("€", "€/mois"):                     # « 2,50 € », « 300 € »
+                texts.setdefault(key, fcalc.money_text(value))
+            else:
+                texts.setdefault(key, f"{fcalc.fmt_number(value)} {unit if unit == '%' else ''}".strip())
         return texts
+
+    def editorial(self) -> str:
+        """Format et astuce du sujet (ligne éditoriale), pour les prompts d'accroche et de script."""
+        pick = self.last_pick or {}
+        fmt, astuce = pick.get("format"), pick.get("astuce")
+        formats = dict(((self._brain().get("free_topics") or {}).get("formats")) or {})
+        lines = []
+        if fmt and fmt in formats:
+            lines.append(f"FORMAT : {formats[fmt]}")
+            if fmt == "peu_savent":
+                lines.append("L'accroche peut commencer par « Peu de gens savent que… » (jamais « secret »).")
+            elif fmt == "histoire":
+                lines.append("Raconte la situation de Léa et Hugo comme une petite histoire, avec deux choix.")
+        if astuce:
+            lines.append(f"ASTUCE (la valeur apportée au spectateur, dite dans la scène « à retenir ») : {astuce}")
+        return "\n".join(lines)
 
     def wording(self) -> str:
         """Formulations interdites et autorisées du concept, avec ses vrais chiffres (prompt, premier appel)."""
@@ -739,6 +776,11 @@ class FinanceBrain(FreeTopics, BaseBrain):
         if comparable(text) == comparable(topic):
             issues.append("identique au sujet")
         issues += self.text_issues(text, "l'accroche")
+        pick = self.last_pick or {}
+        if pick.get("concept") and isinstance(pick.get("params"), dict):
+            problem = fcalc.frequency_problem(pick["concept"], pick["params"], text)
+            if problem:
+                issues.append(problem)
         return issues
 
     def generate_hook_variants(self, topic, n=5, previous_stats_list=None):
@@ -746,7 +788,8 @@ class FinanceBrain(FreeTopics, BaseBrain):
         sections = self.read_sections("hook.md")
         cfg = self.style_cfg()
         values = dict(topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""), n=n,
-                      wording=self.wording(), max_hook_words=cfg["max_hook_words"],
+                      wording=self.wording(), editorial=self.editorial(), max_hook_words=cfg["max_hook_words"],
+                      target_hook_words=cfg["target_hook_words"],
                       numbers_block=self.numbers_block(), hook_example=self.hook_example())
         valid = []
         for attempt in range(2):
@@ -776,7 +819,7 @@ class FinanceBrain(FreeTopics, BaseBrain):
         sections = self.read_sections("script.md")
         values = dict(
             topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""),
-            wording=self.wording(),
+            wording=self.wording(), editorial=self.editorial(),
             hypothesis=self.hypothesis(concept, params),
             params_block="\n".join(f"- {self.param_label(k)} : {_fmt(v)}" for k, v in params.items()),
             results_block="\n".join(f"- {v.label} : {v.text}" for v in self.calc().values.values()),
@@ -825,7 +868,7 @@ class FinanceBrain(FreeTopics, BaseBrain):
         too_long = [p for p in parts if len(p) > 20]
         if too_long:
             raise ValueError(f"segment du bandeau de plus de 20 caractères : « {too_long[0]} ».")
-        data["on_screen_title"] = self.checked_bandeau(" | ".join(parts))
+        data["on_screen_title"] = self.checked_bandeau(" | ".join(spaced_units(p) for p in parts))
         data["hypothesis"] = self.hypothesis(concept, params)          # jamais reformulée par le LLM
         data["calc"] = self.calc().to_dict()                           # chiffres et courbes des gabarits
         if not str(data.get("closing_cta", "")).strip():
@@ -1107,8 +1150,9 @@ class FinanceBrain(FreeTopics, BaseBrain):
         if pick.get("concept"):
             self.last_pick = dict(pick)
         footer = str((self.config.get("publish") or {}).get("caption_footer") or "")
+        fixed = {line.strip() for line in footer.splitlines() if line.strip()}   # mention fixe, ligne par ligne
         body = "\n".join(line for line in str(caption).splitlines()
-                         if not line.strip().startswith("#") and (not footer or line.strip() != footer.strip()))
+                         if not line.strip().startswith("#") and line.strip() not in fixed)
         # sans sujet (script incomplet) : seuls les contrôles qui n'ont pas besoin des chiffres de calc.py
         issues = self.text_issues(body, "la légende") if self.last_pick else self.hype_issues(body, "la légende")
         if re.search(r"[\U0001F600-\U0001F64F\U0001F910-\U0001F92F]", body):       # visages (😱, 🤯...)
@@ -1131,6 +1175,9 @@ class FinanceBrain(FreeTopics, BaseBrain):
         from auracontent.channels.finance import visuals
 
         cfg = dict((self.config.get("visuals") or {}).get("linework") or {})
+        if cfg.get("engine") == "v2":                    # refonte V2 (opt-in) : objets, étiquettes, caméra
+            from auracontent.channels.finance.v2 import scenes as v2_scenes
+            return v2_scenes.render_scenes(script, scenes, work_dir, cfg)
         return visuals.render_scenes(script, scenes, work_dir, cfg)
 
     def check_script_logic(self, topic, data):
@@ -1171,7 +1218,8 @@ class FinanceBrain(FreeTopics, BaseBrain):
 
     def rewrite_plan(self, data: dict, issues: list[str], limit: int | None = None) -> dict | None:
         """{cible: [consignes]} si chaque avertissement vise une scène ou un champ précis et que peu de scènes
-        sont concernées (brain.partial_rewrite_max_scenes, défaut 3) ; None sinon (script régénéré en entier)."""
+        sont à corriger sur le fond (brain.partial_rewrite_max_scenes, défaut 3 ; les scènes seulement trop
+        courtes ne comptent pas) ; None sinon (script régénéré en entier)."""
         plan: dict = {}
         for issue in issues:
             targets = self.issue_targets(issue, data)
@@ -1189,7 +1237,10 @@ class FinanceBrain(FreeTopics, BaseBrain):
             return None
         if limit is None:
             limit = int(self._brain().get("partial_rewrite_max_scenes", 3))
-        scenes = [t for t in plan if isinstance(t, int)]
+        # la limite ne compte que les scènes à corriger sur le fond : les scènes seulement trop courtes sont
+        # allongées quel que soit leur nombre (jamais tout le script régénéré pour une question de longueur)
+        lengthen = "allonge à environ"
+        scenes = [t for t, todo in plan.items() if isinstance(t, int) and not all(x.startswith(lengthen) for x in todo)]
         return plan if plan and len(scenes) <= limit else None
 
     def rewrite_prompt(self, topic, scene_count, chosen_hook, data: dict, plan: dict) -> list[dict]:

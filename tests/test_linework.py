@@ -113,7 +113,7 @@ def test_two_trees_scene_passes_layout_and_tells_the_story():
     assert ids["objet-gagnant"]["keys"][0]["t"] > ids["objet-perdant"]["keys"][-1]["t"]   # Hugo d'abord
     assert ids["perdant-reaction"]["path"] == "hugo-shock.png" and ids["gagnant"]["path"] == "lea-joy.png"
     assert counter_text(ids["montant-gagnant"], 99) == "Léa ≈ 2 100 €"                  # chiffre de calc.py
-    assert counter_text(ids["montant-perdant"], 99) == "Hugo ≈ 1 630 €"
+    assert counter_text(ids["montant-perdant"], 99) == "Hugo ≈ 1 628 €"
     assert all(lay.get("motion") for lay in scene.layers if lay.get("role") in ("prop",) or lay.get("id") == "gagnant")
 
 
