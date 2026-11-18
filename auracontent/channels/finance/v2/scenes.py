@@ -53,11 +53,12 @@ def _number_time(words: list[captions.Word], text: str, default: float) -> float
 
 
 def _items(concept: str, params: dict, c: fcalc.Calc, role: str):
-    """Montants du gabarit « barres » (mêmes données que le rendu actuel) ; None si c'est une jauge."""
+    """Montants du gabarit « barres » (mêmes données que le rendu actuel). La jauge des concepts d'origine
+    a aussi ses montants (« sur le compte » / « ce que ça achète ») : la V2 les montre en étiquettes."""
     if concept in fvis.GENERIC:
         return fvis._g_bars(concept, params, c)
-    items, share, _ = fvis._bars(concept, params, c, role)
-    return None if share is not None else items
+    items, _share, _ = fvis._bars(concept, params, c, role)
+    return items
 
 
 def value_text(item: tpl.Item) -> str:
@@ -185,13 +186,13 @@ def scene_shot(concept: str, params: dict, scene: dict, duration: float, *, hypo
                pdir: Path) -> tuple[Shot, str]:
     """(plan V2, moteur utilisé : « v2 » ou « v1 ») ; les calques V1 servent de repli et de base."""
     c = fcalc.compute(concept, params)
-    role, template, variant = scene.get("role"), scene.get("template"), scene.get("visual")
+    role, template = scene.get("role"), scene.get("template")
     words = captions.estimate(scene.get("text", ""), 0.15, max(0.5, duration - 0.5))
     icons = _icons(concept, pdir)
     focus = None
     layers = None
-    # La jauge n'existe que pour les 5 concepts d'origine ; pour les calculs du quotidien, « jauge » = barres.
-    if template == "barres" and (variant != "jauge" or concept in fvis.GENERIC):
+    # Barres et jauge : en V2, étiquettes (ou gros chiffre en accroche), un graphique de moins dans la vidéo.
+    if template == "barres":
         items = _items(concept, params, c, role)
         if items:
             if role == "hook":

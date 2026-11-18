@@ -233,3 +233,32 @@ def test_bandeau_espace_avant_euro_et_pourcent():
     assert spaced_units("200€/MOIS") == "200 €/MOIS"
     assert spaced_units("+3%") == "+3 %"
     assert spaced_units("X" * 19 + "5€") == "X" * 19 + "5€"      # ne dépasse jamais 20 caractères
+
+
+def test_jauge_d_un_concept_d_origine_en_etiquettes(tmp_path):
+    from auracontent.channels.finance.v2 import scenes
+    p = _params("inflation")
+    for role in ("hook", "reveal"):
+        sc = {"id": 1, "role": role, "template": "barres", "visual": "jauge", "text": "x"}
+        assert scenes.scene_shot("inflation", p, sc, 5.0, hypothesis="h", question="", pdir=tmp_path)[1] == "v2"
+
+
+def test_bandeau_sans_fleche_absente_de_la_police():
+    from auracontent.channels.finance.brain import spaced_units
+    assert spaced_units("500 € → 372 €") == "500 € » 372 €"
+
+
+def test_priorite_domaines_quotidien_et_sujets_inventes():
+    """Choix final : domaines du run, puis calculs du quotidien, puis sujets inventés (pas repris d'un exemple)."""
+    from types import SimpleNamespace
+
+    from auracontent.channels.finance.topics import FreeTopics
+    fake = SimpleNamespace(_brain=lambda: {"concepts": {"inflation": {}, "interets_composes": {}}})
+    valid = [{"concept": "inflation", "domain": "famille"},
+             {"concept": "epargne_age", "domain": "famille", "from_example": True},
+             {"concept": "abonnements", "domain": "famille"},
+             {"concept": "paiement_fractionne", "domain": "transport"}]
+    pool = FreeTopics.preferred(fake, valid, ["famille"])
+    assert [v["concept"] for v in pool] == ["abonnements"]
+    # aucun candidat dans les domaines : on garde le reste, toujours sans concept d'origine si possible
+    assert [v["concept"] for v in FreeTopics.preferred(fake, valid, ["santé"])] == ["abonnements", "paiement_fractionne"]

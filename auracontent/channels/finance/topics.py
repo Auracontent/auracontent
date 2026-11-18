@@ -236,7 +236,21 @@ class FreeTopics:
         print(f"   {len(valid)} candidat(s) valide(s), dont {in_drawn} dans les domaines du run.")
         if not valid:
             return None
-        return self.choose_free(valid)
+        return self.choose_free(self.preferred(valid, drawn))
+
+    def preferred(self, valid: list[dict], drawn: list[str]) -> list[dict]:
+        """Variété : les candidats des domaines tirés pour ce run passent en priorité, puis les calculs du
+        quotidien avant les concepts d'origine (inflation, intérêts composés…), puis les sujets inventés avant ceux
+        repris de la liste d'exemples : le LLM choisit trop souvent les sujets classiques."""
+        pool = [v for v in valid if v.get("domain") in drawn] or valid
+        originals = set(self._brain().get("concepts") or {})
+        daily = [v for v in pool if v["concept"] not in originals]
+        pool = daily or pool
+        fresh = [v for v in pool if not v.get("from_example")]          # inventés plutôt que repris d'un exemple
+        pool = fresh or pool
+        if len(pool) < len(valid):
+            print(f"   🎯 Choix limité à {len(pool)} candidat(s) : domaines du run et calculs du quotidien en priorité.")
+        return pool
 
     def drop_doubtful(self, valid: list[dict], doubts: list[tuple[int, str, str]]) -> list[dict]:
         """Paires douteuses (même concept, mots-clés proches) : un seul appel au LLM ; « même scène » = écarté."""

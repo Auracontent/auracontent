@@ -137,10 +137,14 @@ class LengthIssue(str):
         return obj
 
 
+_NO_GLYPH = "→←⇒⇐➜➔➝▸►↗↘⟶⟹"
+
+
 def spaced_units(text: str, limit: int = 20) -> str:
     """Ajoute l'espace insécable fine qui manque entre un nombre et « € » ou « % » (« 200€/MOIS » ->
     « 200 €/MOIS ») ; les espaces déjà présents ne changent pas ; jamais au-delà de la limite d'un segment."""
     fixed = re.sub(r"(\d)([€%])", "\\1\u202f\\2", text)          # seulement quand l'espace manque
+    fixed = re.sub(f"[{_NO_GLYPH}]", "»", fixed)                    # flèches absentes de Poppins (sinon un carré)
     return fixed if len(fixed.strip()) <= limit else text
 
 
