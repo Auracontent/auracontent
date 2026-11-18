@@ -516,7 +516,7 @@ SPECS: dict[str, dict] = {
     "regle_72": {"label": "règle des 72", "params": {
         "rate": ("premier taux", "%", 1, 8), "rate_b": ("second taux", "%", 1.5, 12)}},
     "depenses_repetees": {"label": "petite dépense répétée", "params": {
-        "amount": ("prix de la dépense", "€", 0.5, 50), "per_week": ("fois par semaine", "", 1, 14),
+        "amount": ("prix de la dépense", "€", 0.5, 80), "per_week": ("fois par semaine", "", 1, 14),
         "years": ("horizon", "ans", 2, 20)}},
     "abonnements": {"label": "abonnements cumulés", "params": {
         "sub_1": ("abonnement 1", "€", 1, 80), "sub_2": ("abonnement 2", "€", 0, 80),
@@ -556,6 +556,28 @@ SPECS: dict[str, dict] = {
         "monthly": ("loyer mensuel", "€", 50, 1_000), "years": ("durée", "ans", 2, 6),
         "rate": ("rendement annuel de l'épargne", "%", 1, 6)}},
 }
+
+# Horizon trop court remonté au minimum au lieu d'écarter le sujet : le total sur 1 an est déjà montré
+LIFT_TO_MIN = {("depenses_repetees", "years"), ("abonnements", "years")}
+# Montant unitaire qui, cité dans l'accroche, doit dire sa fréquence (« 50 € par semaine », pas « un trajet de 50 € »)
+UNIT_AMOUNTS = {"depenses_repetees": ("amount",), "abonnements": ("sub_1", "sub_2", "sub_3", "sub_4")}
+FREQUENCY = re.compile(r"\b(par|chaque|tous les|toutes les)\s+(jour|semaine|mois|matin|soir|an|année)s?\b|"
+                       r"/\s*(jour|semaine|mois|an)\b|\bfois par\b|\bmensuel|\bhebdo|\bquotidien", re.I)
+
+
+def frequency_problem(concept: str, params: dict, text: str) -> str | None:
+    """Accroche qui cite un montant récurrent sans sa fréquence : chiffre exact mais sens trompeur."""
+    flat = re.sub(r"[\s\u202f\u00a0]", "", text)
+    for name in UNIT_AMOUNTS.get(concept, ()):
+        v = params.get(name)
+        if not v:
+            continue
+        amount = re.sub(r"[\s\u202f\u00a0]", "", money_text(v))[:-1]      # « 50 », « 2,50 »
+        if re.search(rf"(?<![\d,]){re.escape(amount)}(?![\d,])", flat) and not FREQUENCY.search(text):
+            return (f"le montant {money_text(v)} est récurrent : dis sa fréquence (« par semaine », « par mois », "
+                    "« chaque matin »), sinon on croit à une seule dépense")
+    return None
+
 
 # Hypothèse affichée à l'écran (jamais reformulée par le LLM) : conventions du calcul, chiffres du sujet
 HYPOTHESES: dict[str, str] = {
@@ -637,6 +659,8 @@ def check_params(concept: str, params: dict) -> tuple[dict | None, str]:
             value = float(re.sub(r"\s", "", str(params[name])).replace(",", "."))
         except ValueError:
             return None, f"paramètre non numérique : {label} = {params[name]!r}"
+        if (concept, name) in LIFT_TO_MIN and 0 < value < lo:   # « sur 1 an » est déjà un résultat affiché
+            value = float(lo)
         if not lo <= value <= hi:
             return None, f"{label} hors plage réaliste : {fmt_number(value)} {unit} (de {fmt_number(lo)} à {fmt_number(hi)})"
         out[name] = int(value) if value.is_integer() else value

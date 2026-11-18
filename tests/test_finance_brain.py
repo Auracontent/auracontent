@@ -234,3 +234,27 @@ def test_legende_mention_fixe_sur_plusieurs_lignes_acceptee():
     footer = cfg["publish"]["caption_footer"]
     caption = "Tu sais combien coûte ton trajet chaque semaine ?\n\n" + footer + "\n\n#budget #argent"
     assert not [i for i in brain.caption_issues({}, caption) if "interdit" in i]
+
+
+def test_accroche_montant_recurrent_doit_dire_sa_frequence():
+    """Run du 18/11 : « Un trajet de 50 € coûte 5 200 € en 2 ans » laisse croire à un seul trajet."""
+    from auracontent.channels.finance import calc as fcalc
+    p = {"amount": 50, "per_week": 1, "years": 2}
+    assert fcalc.frequency_problem("depenses_repetees", p, "Un trajet de 50 € coûte 5 200 € en 2 ans, tu sais?")
+    assert not fcalc.frequency_problem("depenses_repetees", p, "50 € par semaine de train : 5 200 € en 2 ans.")
+    assert not fcalc.frequency_problem("depenses_repetees", p, "Ton train coûte 5 200 € en 2 ans.")
+    assert not fcalc.frequency_problem("depenses_repetees", {"amount": 2.5, "per_week": 5, "years": 3},
+                                       "Un café à 2,50 € chaque matin : 1 950 € en 3 ans.")
+    assert fcalc.frequency_problem("abonnements", {"sub_1": 15, "years": 3}, "Netflix à 15 € te coûte 540 € en 3 ans.")
+
+
+def test_horizon_d_un_an_remonte_au_minimum():
+    """Run du 18/11 : sujets écartés pour « horizon 1 ans (de 2 à 10) » ; le total sur 1 an est déjà affiché."""
+    from auracontent.channels.finance import calc as fcalc
+    p, why = fcalc.check_params("depenses_repetees", {"amount": 1.5, "per_week": 5, "years": 1})
+    assert p and p["years"] == 2, why
+    p, why = fcalc.check_params("abonnements", {"sub_1": 25, "years": 1})
+    assert p and p["years"] == 2, why
+    p, _ = fcalc.check_params("depenses_repetees", {"amount": 60, "per_week": 1, "years": 3})   # courses : 60 €
+    assert p
+    assert fcalc.check_params("credit_amortissable", {"amount": 5000, "rate": 5, "years": 0.5})[0] is None

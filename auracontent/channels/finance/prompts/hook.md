@@ -20,7 +20,7 @@ Règles :
 6. Aucun nom de produit financier, d'établissement ni de marque ; aucune promesse de résultat ; tu ne dis jamais au spectateur quoi faire de son argent.
 7. Une phrase complète, avec un verbe conjugué.
 8. Mesuré et factuel : aucun mot absolu ou alarmiste, aucune exagération. Le chiffre suffit à surprendre.
-9. Un versement mensuel s'écrit toujours avec « par mois ».
+9. Un versement mensuel s'écrit toujours avec « par mois ». Plus généralement, un montant qui revient (une dépense, un abonnement) dit toujours sa fréquence : « 50 € par semaine », « 2 € chaque matin », jamais « un trajet de 50 € » qui fait croire à une seule dépense.
 
 Pour chaque accroche, donne un 'pattern' parmi : "contradiction", "question", "chiffre", "erreur", "paradoxe", et une note 'score' de 1 à 10 (clarté sans contexte et envie de rester).
 

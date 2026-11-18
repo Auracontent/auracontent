@@ -776,6 +776,11 @@ class FinanceBrain(FreeTopics, BaseBrain):
         if comparable(text) == comparable(topic):
             issues.append("identique au sujet")
         issues += self.text_issues(text, "l'accroche")
+        pick = self.last_pick or {}
+        if pick.get("concept") and isinstance(pick.get("params"), dict):
+            problem = fcalc.frequency_problem(pick["concept"], pick["params"], text)
+            if problem:
+                issues.append(problem)
         return issues
 
     def generate_hook_variants(self, topic, n=5, previous_stats_list=None):
