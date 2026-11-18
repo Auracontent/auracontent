@@ -677,6 +677,22 @@ class FinanceBrain(FreeTopics, BaseBrain):
                 texts.setdefault(key, f"{fcalc.fmt_number(value)} {unit if unit == '%' else ''}".strip())
         return texts
 
+    def editorial(self) -> str:
+        """Format et astuce du sujet (ligne éditoriale), pour les prompts d'accroche et de script."""
+        pick = self.last_pick or {}
+        fmt, astuce = pick.get("format"), pick.get("astuce")
+        formats = dict(((self._brain().get("free_topics") or {}).get("formats")) or {})
+        lines = []
+        if fmt and fmt in formats:
+            lines.append(f"FORMAT : {formats[fmt]}")
+            if fmt == "peu_savent":
+                lines.append("L'accroche peut commencer par « Peu de gens savent que… » (jamais « secret »).")
+            elif fmt == "histoire":
+                lines.append("Raconte la situation de Léa et Hugo comme une petite histoire, avec deux choix.")
+        if astuce:
+            lines.append(f"ASTUCE (la valeur apportée au spectateur, dite dans la scène « à retenir ») : {astuce}")
+        return "\n".join(lines)
+
     def wording(self) -> str:
         """Formulations interdites et autorisées du concept, avec ses vrais chiffres (prompt, premier appel)."""
         _, _, spec = self._pick()
@@ -767,7 +783,7 @@ class FinanceBrain(FreeTopics, BaseBrain):
         sections = self.read_sections("hook.md")
         cfg = self.style_cfg()
         values = dict(topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""), n=n,
-                      wording=self.wording(), max_hook_words=cfg["max_hook_words"],
+                      wording=self.wording(), editorial=self.editorial(), max_hook_words=cfg["max_hook_words"],
                       target_hook_words=cfg["target_hook_words"],
                       numbers_block=self.numbers_block(), hook_example=self.hook_example())
         valid = []
@@ -798,7 +814,7 @@ class FinanceBrain(FreeTopics, BaseBrain):
         sections = self.read_sections("script.md")
         values = dict(
             topic=topic, concept_label=spec.get("label", concept), idea=spec.get("idea", ""),
-            wording=self.wording(),
+            wording=self.wording(), editorial=self.editorial(),
             hypothesis=self.hypothesis(concept, params),
             params_block="\n".join(f"- {self.param_label(k)} : {_fmt(v)}" for k, v in params.items()),
             results_block="\n".join(f"- {v.label} : {v.text}" for v in self.calc().values.values()),

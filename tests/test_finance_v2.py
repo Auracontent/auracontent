@@ -262,3 +262,58 @@ def test_priorite_domaines_quotidien_et_sujets_inventes():
     assert [v["concept"] for v in pool] == ["abonnements"]
     # aucun candidat dans les domaines : on garde le reste, toujours sans concept d'origine si possible
     assert [v["concept"] for v in FreeTopics.preferred(fake, valid, ["santé"])] == ["abonnements", "paiement_fractionne"]
+
+
+# ---------- Ligne éditoriale : astuces, histoires, ce que peu de gens savent ----------
+def _free(history=()):
+    """Faux cerveau minimal pour les règles éditoriales de FreeTopics (config réelle du YAML finance)."""
+    from types import SimpleNamespace
+
+    import yaml
+    from auracontent.channels.finance.topics import FreeTopics
+    cfg = yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "channels" / "finance.yaml")
+                         .read_text(encoding="utf-8"))["brain"]
+    ns = SimpleNamespace(_brain=lambda: cfg, free_cfg=lambda: cfg["free_topics"], ABANDONED="abandonné",
+                         history_window=lambda n: list(history)[:n], run_format="astuce",
+                         wording_problem=lambda text, what, cta=False: "")
+    for name in ("formats", "draw_format", "originals", "recent_original", "check_editorial", "astuce_problem"):
+        setattr(ns, name, getattr(FreeTopics, name).__get__(ns))
+    return ns
+
+
+def test_astuce_valable_gardee_et_astuce_financiere_retiree():
+    ft = _free()
+    assert ft.check_editorial({"format": "astuce", "astuce": "Fais le tri de tes abonnements."}) == \
+        ("astuce", "Fais le tri de tes abonnements.")
+    assert ft.check_editorial({"format": "astuce", "astuce": "Place ton argent sur un livret."})[1] == ""
+    assert ft.check_editorial({"format": "astuce", "astuce": "Garde 50 € par mois."})[1] == ""     # pas de chiffre
+
+
+def test_format_jamais_deux_fois_de_suite():
+    import random
+    ft = _free([{"format": "astuce", "ago": 1}])
+    assert {ft.draw_format(random.Random(i)) for i in range(20)} <= {"histoire", "peu_savent"}
+
+
+def test_concept_d_origine_au_plus_une_fois_sur_la_fenetre():
+    ft = _free([{"concept": "abonnements", "ago": 1}, {"concept": "inflation", "ago": 2}])
+    assert ft.recent_original() == 2
+    assert _free([{"concept": "abonnements", "ago": 1}]).recent_original() is None
+
+
+def test_tous_les_exemples_ont_une_astuce_valable():
+    import yaml
+    cfg = yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "channels" / "finance.yaml").read_text(encoding="utf-8"))
+    ft = cfg["brain"]["free_topics"]
+    assert set(ft["formats"]) == {"astuce", "histoire", "peu_savent"}
+    for e in ft["examples"]:
+        assert e.get("astuce") and len(e["astuce"].split()) <= ft["astuce_max_words"]
+        assert not any(ch.isdigit() for ch in e["astuce"])
+
+
+def test_carte_de_fin_promet_la_suite():
+    from auracontent.channels.finance import visuals as fvis
+    p = _params("abonnements")
+    layers = fvis.scene_layers("abonnements", p, {"role": "cta", "template": "carte_fin"}, 4.0, question="Et toi ?")
+    texts = " ".join(str(lay.get("text", "")) for lay in layers)
+    assert fvis.PROMISE in texts and fvis.SUBSCRIBE in texts

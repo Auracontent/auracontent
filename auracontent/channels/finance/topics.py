@@ -77,6 +77,31 @@ class FreeTopics:
         n = min(len(domains), int(self.free_cfg().get("domains_per_run", 2)))
         return rng.sample(domains, n)
 
+    def formats(self) -> dict[str, str]:
+        return dict(self.free_cfg().get("formats") or {})
+
+    def draw_format(self, rng: random.Random) -> str | None:
+        """Format éditorial du run, jamais celui de la vidéo précédente (s'il y en a plusieurs)."""
+        names = list(self.formats())
+        if not names:
+            return None
+        last = next((e.get("format") for e in self.history_window(1) if e.get("status") != self.ABANDONED), None)
+        pool = [n for n in names if n != last] or names
+        return rng.choice(pool)
+
+    def originals(self) -> set[str]:
+        return set(self._brain().get("concepts") or {})
+
+    def recent_original(self) -> int | None:
+        """Il y a combien de vidéos un concept d'origine a été traité, dans brain.free_topics.originals_window."""
+        window = int(self.free_cfg().get("originals_window", 0) or 0)
+        if window <= 0:
+            return None
+        for e in self.history_window(window):
+            if e.get("status") != self.ABANDONED and (e.get("concept") or e.get("category")) in self.originals():
+                return e["ago"]
+        return None
+
     def shown_examples(self, rng: random.Random) -> list[dict]:
         examples = list(self.free_cfg().get("examples") or [])
         return rng.sample(examples, min(len(examples), int(self.free_cfg().get("examples_shown", 3))))
@@ -117,14 +142,18 @@ class FreeTopics:
     def candidates_messages(self, rng: random.Random, forced: str | None = None) -> tuple[list[dict], list[str]]:
         cfg = self.free_cfg()
         drawn = self.draw_domains(rng)
+        self.run_format = self.draw_format(rng)
         count = int(cfg.get("candidates", 8))
         examples = "\n".join(
-            "- " + str({"situation": e["situation"], "calcul": e["calcul"], "question_spectateur": e["question_spectateur"]})
+            "- " + str({"situation": e["situation"], "calcul": e["calcul"], "question_spectateur": e["question_spectateur"],
+                        **({"astuce": e["astuce"]} if e.get("astuce") else {})})
             for e in self.shown_examples(rng))
         forced_line = (f"\nSUJET IMPOSÉ : tous les sujets utilisent le calcul « {forced} ».\n" if forced else "")
         values = {"count": count, "half": (count + 1) // 2, "domains": ", ".join(cfg.get("domains") or []),
                   "drawn": ", ".join(drawn), "calcs": self.calcs_block(forced), "recent": self.recent_topics_text(10),
-                  "forced": forced_line, "examples": examples, "max_examples": int(cfg.get("max_from_examples", 1))}
+                  "forced": forced_line, "examples": examples, "max_examples": int(cfg.get("max_from_examples", 1)),
+                  "formats": "\n".join(f"- {k} : {v}" for k, v in self.formats().items()) or "- (aucun)",
+                  "run_format": self.run_format or "au choix", "astuce_max_words": int(cfg.get("astuce_max_words", 14))}
         sections = self.read_sections("candidates.md")
         # rien de ce qui part au LLM ne contient un mot interdit (historique ancien compris)
         return ([{"role": "system", "content": self.mask_forbidden(self.fill(sections["system"], **values))},
@@ -170,10 +199,46 @@ class FreeTopics:
         kw = self.situation_keywords(situation)
         if len(kw) < 2:
             return None, "situation trop vague pour être reconnue"
+        fmt, astuce = self.check_editorial(cand)
         return {"category": concept, "concept": concept, "params": params,
                 "topic_key": self.topic_key(concept, params), "situation": situation,
                 "situation_keywords": sorted(kw), "question": question,
-                "domain": str(cand.get("domaine") or ""), "source": "libre"}, ""
+                "domain": str(cand.get("domaine") or ""), "source": "libre", "format": fmt, "astuce": astuce}, ""
+
+    def check_editorial(self, cand: dict) -> tuple[str, str]:
+        """(format, astuce). Une astuce absente ou hors des règles est retirée (le candidat reste valable mais
+        passe après ceux qui en ont une) ; le motif est journalisé. Sans formats dans le YAML : rien d'exigé."""
+        formats = self.formats()
+        if not formats:
+            return "", ""
+        run_format = getattr(self, "run_format", None)
+        fmt = str(cand.get("format") or "").strip()
+        if fmt not in formats:
+            fmt = run_format or next(iter(formats))
+        astuce = " ".join(str(cand.get("astuce") or "").split())
+        problem = self.astuce_problem(astuce)
+        if problem:
+            if astuce:
+                print(f"      ↳ astuce retirée ({problem}) : « {astuce} »")
+            astuce = ""
+        return fmt, astuce
+
+    def astuce_problem(self, astuce: str) -> str:
+        if not astuce:
+            return "pas d'astuce"
+        limit = int(self.free_cfg().get("astuce_max_words", 14))
+        if len(astuce.split()) > limit:
+            return f"{len(astuce.split())} mots, {limit} au plus"
+        if re.search(r"\d", astuce):
+            return "un chiffre (les chiffres viennent du calcul)"
+        problem = self.wording_problem(astuce, "l'astuce")
+        if problem:
+            return problem
+        from auracontent.channels.finance.brain import _fold_keep
+        banned = [_fold_keep(w) for w in self._brain().get("style", {}).get("imperatives") or []]
+        if _fold_keep(astuce.split()[0]) in banned:
+            return "ordre financier (placement, achat de produit, emprunt)"
+        return ""
 
     # ---------- Choix ----------
     def free_pick(self, forced: str | None = None) -> dict | None:
@@ -182,7 +247,8 @@ class FreeTopics:
         rng = self.run_rng()
         messages, drawn = self.candidates_messages(rng, forced)
         print(f"🌱 Génération libre : {cfg.get('candidates', 8)} candidats demandés, domaines du run : "
-              f"{', '.join(drawn)}" + (f" ; concept imposé : {forced}" if forced else ""))
+              f"{', '.join(drawn)}" + (f" ; format : {self.run_format}" if getattr(self, "run_format", None) else "")
+              + (f" ; concept imposé : {forced}" if forced else ""))
         try:
             data = self.llm.call_json_with_retry(messages, temperature=0.9, max_completion_tokens=3500,
                                                  **self.simple_routing())
@@ -197,6 +263,7 @@ class FreeTopics:
                        for e in cfg.get("examples") or []]
         max_examples = int(cfg.get("max_from_examples", 1))
         valid, doubts, from_examples = [], [], 0
+        original_ago = self.recent_original()
         for i, cand in enumerate(raw, 1):
             label = str(cand.get("situation") or "?")[:90]
             pick, why = self.check_candidate(cand, forced)
@@ -204,6 +271,10 @@ class FreeTopics:
                 print(f"   ✖ {i}. {label} : {why}")
                 continue
             concept, kw = pick["concept"], frozenset(pick["situation_keywords"])
+            if not forced and concept in self.originals() and original_ago is not None:
+                print(f"   ✖ {i}. {label} : concept d'origine « {concept} » ; un concept d'origine a déjà été traité "
+                      f"il y a {original_ago} vidéo(s) (1 sur {self.free_cfg().get('originals_window')} au plus)")
+                continue
             if concept in recent_concepts:
                 ago, status = recent_concepts[concept]
                 print(f"   ✖ {i}. {label} : concept « {concept} » {'abandonné' if status == self.ABANDONED else 'traité'} "
@@ -230,7 +301,8 @@ class FreeTopics:
             pick["from_example"] = bool(is_example)
             doubts += [(len(valid), pick["situation"], e["situation"]) for e, v in verdicts if v is None]
             valid.append(pick)
-            print(f"   ✔ {i}. {label} -> {concept}" + (" (repris d'un exemple)" if is_example else ""))
+            print(f"   ✔ {i}. {label} -> {concept}" + (f" [{pick['format']}]" if pick.get("format") else "")
+                  + (" (repris d'un exemple)" if is_example else ""))
         valid = self.drop_doubtful(valid, doubts)
         in_drawn = sum(1 for v in valid if v.get("domain") in drawn)
         print(f"   {len(valid)} candidat(s) valide(s), dont {in_drawn} dans les domaines du run.")
@@ -246,8 +318,13 @@ class FreeTopics:
         originals = set(self._brain().get("concepts") or {})
         daily = [v for v in pool if v["concept"] not in originals]
         pool = daily or pool
+        run_format = getattr(self, "run_format", None)
+        same_format = [v for v in pool if run_format and v.get("format") == run_format]
+        pool = same_format or pool
         fresh = [v for v in pool if not v.get("from_example")]          # inventés plutôt que repris d'un exemple
         pool = fresh or pool
+        useful = [v for v in pool if v.get("astuce")]                     # une astuce = une valeur pour le spectateur
+        pool = useful or pool
         if len(pool) < len(valid):
             print(f"   🎯 Choix limité à {len(pool)} candidat(s) : domaines du run et calculs du quotidien en priorité.")
         return pool

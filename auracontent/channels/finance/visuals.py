@@ -19,6 +19,8 @@ ASSET_DIRS = [ASSETS / "characters", ASSETS / "props", ASSETS / "images"]
 FONTS = {"hand": ASSETS / "fonts" / "Caveat.ttf", "ui": ASSETS / "fonts" / "Poppins-Bold.ttf"}
 NAME, BASELINE = "Capital Simple", "Les chiffres, sans jargon."
 MENTION = "Contenu pédagogique, pas un conseil en investissement."
+PROMISE = "Une astuce chiffrée par jour."           # carte de fin : la valeur promise, pour donner envie de suivre
+SUBSCRIBE = "Abonne-toi pour la prochaine."
 T, K, G = tpl.TURQUOISE, tpl.INK, tpl.GRAY      # turquoise, encre, gris
 fmt = fcalc.fmt_number
 
@@ -315,7 +317,12 @@ def scene_layers(concept: str, params: dict, scene: dict, duration: float, *, hy
     if concept in GENERIC and template in ("deux_arbres", "deux_courbes", "barres", "personnages"):
         return _generic_layers(concept, params, c, template, variant, duration, hypothesis)
     if role == "cta":
-        return tpl.end_card(resolve=resolve, name=NAME, baseline=BASELINE, question=question, duration=duration)
+        layers = tpl.end_card(resolve=resolve, name=NAME, baseline=PROMISE, question=question, duration=duration)
+        f = tpl.Frame()
+        y = f.top + 20 + 230 + 20 + 95 + 90 + (210 if question else 0)
+        layers.append(tpl.text("abonne", SUBSCRIBE, f.left, y, 64, f, color=tpl.TURQUOISE, start=1.4,
+                               w_px=f.right - f.left))
+        return layers
     if template == "carte_fin":
         return tpl.end_card(resolve=resolve, name=NAME, baseline=BASELINE, hypothesis=hypothesis, mention=MENTION,
                             duration=duration)

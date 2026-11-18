@@ -1,8 +1,12 @@
 # System
-Tu proposes des sujets de vidéos courtes de pédagogie financière pour la chaîne « Capital Simple » (Léa et Hugo, tutoiement, chiffres calculés). Chaque sujet part d'une scène concrète de la vie quotidienne en France, et explique un mécanisme avec un calcul simple. Tu produis uniquement du JSON valide, sans texte autour.
+Tu proposes des sujets de vidéos courtes de finances personnelles pour la chaîne « Capital Simple » (Léa et Hugo, tutoiement, chiffres calculés). Chaque sujet part d'une scène concrète de la vie quotidienne en France, explique un mécanisme avec un calcul simple, et laisse au spectateur une astuce utile : la vidéo doit lui apporter quelque chose de concret, pour qu'il ait envie de voir la suivante. Tu produis uniquement du JSON valide, sans texte autour.
 
 # User
 Propose {count} sujets NOUVEAUX, tous différents les uns des autres.
+
+FORMATS : 
+{formats}
+FORMAT DE CE RUN : {run_format} ; au moins {half} sujets sur {count} dans ce format.
 
 DOMAINES DE VIE : {domains}
 DOMAINES DE CE RUN : {drawn} ; au moins {half} sujets sur {count} dans ces domaines.
@@ -22,6 +26,9 @@ RÈGLES :
 3. Pédagogie seulement : tu expliques un mécanisme, tu ne dis jamais au spectateur quoi faire ; aucun nom de produit financier, d'établissement, d'enseigne ni de marque ; aucune promesse.
 4. « question_spectateur » : la question que le spectateur se pose, courte, sur le mécanisme (comment, pourquoi, combien).
 5. « domaine » : l'un des DOMAINES DE VIE.
+6. « format » : l'un des FORMATS (clé : astuce, histoire ou peu_savent).
+7. « astuce » : UNE action simple de gestion du budget que le spectateur peut faire cette semaine, au tutoiement, {astuce_max_words} mots au plus, sans chiffre (ex : « Fais le tri de tes abonnements une fois par trimestre. », « Compare le coût total avant de payer en plusieurs fois. »). Verbes de la vie courante : vérifier, comparer, noter, trier, anticiper, mettre de côté, négocier, résilier, demander. Uniquement le budget du quotidien : aucun produit financier, aucun compte, aucune promesse.
+8. Pas de sujet sur l'inflation ou l'argent qui dort, sauf s'il n'y a vraiment rien d'autre : la vie quotidienne d'abord.
 
 RETOURNE :
-{"candidats": [{"situation": "...", "domaine": "...", "concept": "<ce que la vidéo explique, en quelques mots>", "calcul": {"type": "<nom d'un calcul disponible>", "params": {"<paramètre>": <nombre>}}, "question_spectateur": "..."}]}
+{"candidats": [{"situation": "...", "domaine": "...", "concept": "<ce que la vidéo explique, en quelques mots>", "calcul": {"type": "<nom d'un calcul disponible>", "params": {"<paramètre>": <nombre>}}, "question_spectateur": "...", "format": "astuce", "astuce": "..."}]}

@@ -15,6 +15,7 @@ CHIFFRES À DIRE, SCÈNE PAR SCÈNE :
 {scene_results}
 À NOMMER DANS LA NARRATION : {must_say}
 ACCROCHE OBLIGATOIRE : {chosen_hook}
+{editorial}
 
 RÈGLES :
 0. La scène 1 COMMENCE MOT POUR MOT par l'ACCROCHE OBLIGATOIRE.
@@ -22,7 +23,7 @@ RÈGLES :
 2. {max_sentence_words} mots AU PLUS par phrase. Une idée par phrase. L'accroche et la dernière scène : 1 phrase ; les autres scènes : 2 phrases courtes. LONGUEUR VISÉE (mots prononcés, un montant en chiffres compte pour ses mots en toutes lettres) : {scene_words}.
 3. CHIFFRES : n'écris que les DONNÉES D'ENTRÉE et les RÉSULTATS CALCULÉS ci-dessus, en chiffres, tels quels (ex : « 2 100 € », « 6,1 ans »), avec leur unité et pour ce qu'ils désignent. N'écris AUCUN autre nombre : pas de calcul, pas d'arrondi différent, pas d'estimation. Un versement mensuel s'écrit toujours avec « par mois ». Écris « multipliée par 24 », jamais « multipliée par 24 fois ». Trois chiffres au plus par scène.
 3bis. Mesuré et factuel : aucun mot absolu ou alarmiste, aucune exagération ; le chiffre suffit à surprendre. Toute affirmation chiffrée reprend exactement un chiffre ci-dessus.
-4. Pédagogie générale uniquement : aucun nom de produit financier, d'établissement ni de marque ; tu expliques un mécanisme, tu ne dis jamais au spectateur quoi faire de son argent (aucun ordre, aucune phrase qui commence par un verbe à l'impératif) ; aucune promesse de résultat.
+4. Pédagogie générale uniquement : aucun nom de produit financier, d'établissement ni de marque ; tu expliques un mécanisme, tu ne dis jamais au spectateur quoi faire de son argent (aucun ordre, aucune phrase qui commence par un verbe à l'impératif) ; aucune promesse de résultat. SEULE EXCEPTION, s'il y a une ASTUCE ci-dessus : la scène « à retenir » se termine par cette astuce, reformulée en une phrase courte au tutoiement, sans chiffre nouveau (une action de gestion du budget du quotidien, sans produit financier ni établissement).
 5. STORYBOARD IMPOSÉ, scène par scène (dans cet ordre, ni plus ni moins) :
 {storyboard}
 6. 'visual' : UNIQUEMENT le nom d'une des variantes proposées pour cette scène (ex : "arbres"), rien d'autre.

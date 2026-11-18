@@ -6,6 +6,7 @@ CONCEPT : {concept_label}
 IDÉE À FAIRE COMPRENDRE : {idea}
 {wording}
 SITUATION DE LA VIDÉO : {topic}
+{editorial}
 CHIFFRES AUTORISÉS (calculés ; les seuls que tu peux écrire, tels quels, pour ce qu'ils désignent) :
 {numbers_block}
 
