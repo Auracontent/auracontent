@@ -108,3 +108,17 @@ def test_prompts_contiennent_le_bloc_quand_il_existe(monkeypatch):
     assert "{trends}" in text
     src = (ROOT / "auracontent" / "channels" / "mystery" / "brain.py").read_text(encoding="utf-8")
     assert "youtube_trends.trends_block(self.config.get(\"trends\"))" in src
+
+
+@pytest.mark.parametrize("title,ok", [
+    ("How much is my monthly expenses? #budget #expense #fyp #explore #housewife", False),
+    ("# #budget #économies #astuces #astucesargent #economiser", False),
+    ("Saving money #fyp", False),
+    ("On a dit économie !", True),
+    ("Un ami te demande de l’argent ? Ne mens pas, fais ça à la place", True),
+    ("Elle va me changer la vie 😳 #bonplan #tips #budget", True),
+])
+def test_titres_inutiles_ecartes(title, ok):
+    """Vrais titres du run du 18/11 : hashtags seuls ou anglais écartés, titres français gardés."""
+    assert youtube.useful_title(title) is ok
+    assert "#" not in youtube.clean_title(title)

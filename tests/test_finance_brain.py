@@ -219,3 +219,18 @@ def test_script_with_style_warnings_is_never_returned(finance_state):
     brain.chosen_hook_text = None
     with pytest.raises(RuntimeError):
         brain.generate_script_with_target("sujet", scene_count=7)
+
+
+def test_legende_mention_fixe_sur_plusieurs_lignes_acceptee():
+    """Run du 18/11 : la mention fixe (2 lignes) recopiée par le LLM ne doit pas faire refuser la légende."""
+    from pathlib import Path
+
+    import yaml
+    from auracontent.channels.finance.brain import FinanceBrain
+    root = Path(__file__).resolve().parents[1]
+    cfg = yaml.safe_load((root / "config" / "channels" / "finance.yaml").read_text(encoding="utf-8"))
+    brain = FinanceBrain.__new__(FinanceBrain)
+    brain.config, brain.last_pick = cfg, None
+    footer = cfg["publish"]["caption_footer"]
+    caption = "Tu sais combien coûte ton trajet chaque semaine ?\n\n" + footer + "\n\n#budget #argent"
+    assert not [i for i in brain.caption_issues({}, caption) if "interdit" in i]

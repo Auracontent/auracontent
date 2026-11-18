@@ -35,7 +35,13 @@ DEFAULTS = {
     "per_channel": 1,
     "top": 8,
     "usage": "",
+    "min_words": 3,              # titre utile : au moins 3 mots hors hashtags
 }
+# mots courants : un titre sans aucun d'eux n'est pas en français (« Saving money #fyp »)
+_FR = {"le", "la", "les", "un", "une", "des", "du", "de", "d", "l", "ton", "ta", "tes", "mon", "ma", "mes", "ce",
+       "ces", "cette", "et", "ou", "à", "au", "aux", "en", "pour", "pas", "ne", "est", "c", "qui", "que", "qu",
+       "comment", "pourquoi", "combien", "avec", "sans", "sur", "dans", "par", "tu", "te", "je", "j", "on", "il",
+       "elle", "ils", "fais", "faire", "ça", "plus", "moins", "argent", "mois", "jour", "histoire", "vrai", "vraie"}
 _CACHE: dict[tuple, list] = {}   # une seule interrogation par run et par configuration
 
 
@@ -64,6 +70,19 @@ def _duration_s(iso: str) -> int:
         return 0
     h, mi, s = (int(x or 0) for x in m.groups())
     return h * 3600 + mi * 60 + s
+
+
+def clean_title(title: str) -> str:
+    """Titre sans hashtags ni espaces superflus."""
+    return re.sub(r"\s+", " ", re.sub(r"#\S*", " ", title or "")).strip(" -|·")
+
+
+def useful_title(title: str, language: str = "fr", min_words: int = 3) -> bool:
+    """Assez de mots hors hashtags et, en français, au moins un mot courant de la langue."""
+    words = re.findall(r"[^\W\d_]+", clean_title(title).lower())
+    if len(words) < min_words:
+        return False
+    return language != "fr" or any(w in _FR for w in words)
 
 
 def _get(session, path: str, params: dict) -> dict:
@@ -118,9 +137,11 @@ def fetch(cfg: dict | None, api_key: str | None = None, session=None, now: datet
         if _duration_s(v.get("contentDetails", {}).get("duration", "")) > int(s["max_duration_s"]):
             continue
         sn = v["snippet"]
+        if not useful_title(sn.get("title", ""), s["language"], int(s["min_words"])):
+            continue
         n_subs = subs.get(sn["channelId"], 0)
         score = views / max(n_subs, int(s["subscriber_floor"]))
-        out.append(TrendVideo(sn.get("title", "").strip(), sn.get("channelTitle", ""), views, n_subs,
+        out.append(TrendVideo(clean_title(sn.get("title", "")), sn.get("channelTitle", ""), views, n_subs,
                               sn.get("publishedAt", "")[:10], v["id"], round(score, 1)))
     out.sort(key=lambda t: (-t.score, -t.views))
     kept, per_chan = [], {}

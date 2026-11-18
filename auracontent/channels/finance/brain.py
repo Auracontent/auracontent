@@ -1145,8 +1145,9 @@ class FinanceBrain(FreeTopics, BaseBrain):
         if pick.get("concept"):
             self.last_pick = dict(pick)
         footer = str((self.config.get("publish") or {}).get("caption_footer") or "")
+        fixed = {line.strip() for line in footer.splitlines() if line.strip()}   # mention fixe, ligne par ligne
         body = "\n".join(line for line in str(caption).splitlines()
-                         if not line.strip().startswith("#") and (not footer or line.strip() != footer.strip()))
+                         if not line.strip().startswith("#") and line.strip() not in fixed)
         # sans sujet (script incomplet) : seuls les contrôles qui n'ont pas besoin des chiffres de calc.py
         issues = self.text_issues(body, "la légende") if self.last_pick else self.hype_issues(body, "la légende")
         if re.search(r"[\U0001F600-\U0001F64F\U0001F910-\U0001F92F]", body):       # visages (😱, 🤯...)
