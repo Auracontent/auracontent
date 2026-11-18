@@ -18,6 +18,7 @@ import re
 import unicodedata
 
 from auracontent.channels.finance import calc as fcalc
+from auracontent.services.trends import youtube as youtube_trends
 
 # Mots sans valeur pour reconnaître une scène de vie (articles, prépositions, verbes courants, prénoms)
 STOPWORDS = frozenset("""
@@ -153,7 +154,8 @@ class FreeTopics:
                   "drawn": ", ".join(drawn), "calcs": self.calcs_block(forced), "recent": self.recent_topics_text(10),
                   "forced": forced_line, "examples": examples, "max_examples": int(cfg.get("max_from_examples", 1)),
                   "formats": "\n".join(f"- {k} : {v}" for k, v in self.formats().items()) or "- (aucun)",
-                  "run_format": self.run_format or "au choix", "astuce_max_words": int(cfg.get("astuce_max_words", 14))}
+                  "run_format": self.run_format or "au choix", "astuce_max_words": int(cfg.get("astuce_max_words", 14)),
+                  "trends": youtube_trends.trends_block(self.config.get("trends"))}
         sections = self.read_sections("candidates.md")
         # rien de ce qui part au LLM ne contient un mot interdit (historique ancien compris)
         return ([{"role": "system", "content": self.mask_forbidden(self.fill(sections["system"], **values))},

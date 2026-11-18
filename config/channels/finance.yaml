@@ -393,3 +393,16 @@ publish:
   fallback_hashtags: "#finance #epargne #argent #capitalsimple"
   brand_hashtag: "#capitalsimple"
   caption_footer: "Une astuce chiffrée par jour sur Capital Simple.\nContenu pédagogique, pas un conseil en investissement."
+
+# Tendances YouTube Shorts de la niche (service partagé, secret YOUTUBE_API_KEY ; sans clé : rien ne change).
+# Elles inspirent les sujets de la génération libre ; les chiffres viennent toujours de calc.py.
+trends:
+  enabled: true
+  queries: ["astuce argent", "économiser argent", "budget mois", "abonnements économiser", "crédit coût caché", "épargne astuce"]
+  language: fr
+  region: FR
+  max_age_days: 30
+  top: 8
+  usage: >-
+    Propose des situations du quotidien PROCHES de ces thèmes, racontées avec Léa et Hugo et calculables par la
+    liste des calculs ; jamais de titre, d'astuce ni de chiffre repris tel quel.

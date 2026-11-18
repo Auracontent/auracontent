@@ -296,3 +296,16 @@ publish:
   fallback_hashtags: "#histoire #patrimoine #france #cestarriveici"
   brand_hashtag: "#cestarriveici"     # ajouté à la légende s'il manque
   banned_hashtags: ["#minutemystere"]   # ancien nom, retiré de la légende (casse et accents ignorés)
+
+# Tendances YouTube Shorts de la niche (service partagé, secret YOUTUBE_API_KEY ; sans clé : rien ne change).
+# Elles inspirent l'angle et le style du titre ; le fait raconté reste celui de la source Wikipédia.
+trends:
+  enabled: true
+  queries: ["histoire vraie France", "mystère village France", "lieu abandonné histoire", "légende française", "château histoire incroyable", "anecdote histoire France"]
+  language: fr
+  region: FR
+  max_age_days: 30
+  top: 6
+  usage: >-
+    Inspire-toi des types d'angles et de titres qui attirent (curiosité, retournement, lieu précis) ; ton titre
+    reste fidèle à la source et n'invente aucun fait, chiffre ni date.

@@ -9,6 +9,8 @@ FORMATS :
 FORMAT DE CE RUN : {run_format} ; au moins {half} sujets sur {count} dans ce format.
 
 DOMAINES DE VIE : {domains}
+
+{trends}
 DOMAINES DE CE RUN : {drawn} ; au moins {half} sujets sur {count} dans ces domaines.
 
 CALCULS DISPONIBLES (un sujet doit utiliser l'un d'eux, avec TOUS ses paramètres, dans les plages indiquées) :
