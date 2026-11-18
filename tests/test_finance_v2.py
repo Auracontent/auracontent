@@ -209,3 +209,27 @@ def test_accroche_montre_le_resultat_principal_pas_l_idee_fausse(tmp_path):
     shot, _ = scenes.scene_shot("remises_successives", p, hook, 5.0, hypothesis="", question="", pdir=tmp_path)
     big = next(lay for lay in shot.layers if lay.get("id") == "chiffre")
     assert c.values[c.headline].text.replace(" ", " ") in big["text"].replace(" ", " ")
+
+
+def test_jauge_des_calculs_du_quotidien_rendue_en_v2(tmp_path):
+    """Le LLM peut demander « jauge » : elle n'existe que pour les 5 concepts d'origine, la V2 s'applique."""
+    from auracontent.channels.finance.v2 import scenes
+    p = _params("epargne_age")
+    hook = {"id": 1, "role": "hook", "template": "barres", "visual": "jauge", "text": "x"}
+    assert scenes.scene_shot("epargne_age", p, hook, 5.0, hypothesis="", question="", pdir=tmp_path)[1] == "v2"
+
+
+def test_accroche_visible_des_la_premiere_image(tmp_path):
+    from auracontent.channels.finance.v2 import scenes
+    p = _params("abonnements")
+    hook = {"id": 1, "role": "hook", "template": "barres", "visual": "", "text": "x"}
+    shot, _ = scenes.scene_shot("abonnements", p, hook, 5.0, hypothesis="", question="", pdir=tmp_path)
+    big = next(lay for lay in shot.layers if lay.get("id") == "chiffre")
+    assert director.key_state(big, 0.0).get("alpha", 1) == 1 and big["from"] == 0
+
+
+def test_bandeau_espace_avant_euro_et_pourcent():
+    from auracontent.channels.finance.brain import spaced_units
+    assert spaced_units("200€/MOIS") == "200 €/MOIS"
+    assert spaced_units("+3%") == "+3 %"
+    assert spaced_units("X" * 19 + "5€") == "X" * 19 + "5€"      # ne dépasse jamais 20 caractères

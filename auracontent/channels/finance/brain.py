@@ -137,6 +137,13 @@ class LengthIssue(str):
         return obj
 
 
+def spaced_units(text: str, limit: int = 20) -> str:
+    """Ajoute l'espace insécable fine qui manque entre un nombre et « € » ou « % » (« 200€/MOIS » ->
+    « 200 €/MOIS ») ; les espaces déjà présents ne changent pas ; jamais au-delà de la limite d'un segment."""
+    fixed = re.sub(r"(\d)([€%])", "\\1\u202f\\2", text)          # seulement quand l'espace manque
+    return fixed if len(fixed.strip()) <= limit else text
+
+
 _FIELD_WHAT = {"le bandeau": "on_screen_title", "la question finale": "closing_cta", "le titre": "title"}
 
 
@@ -836,7 +843,7 @@ class FinanceBrain(FreeTopics, BaseBrain):
         too_long = [p for p in parts if len(p) > 20]
         if too_long:
             raise ValueError(f"segment du bandeau de plus de 20 caractères : « {too_long[0]} ».")
-        data["on_screen_title"] = self.checked_bandeau(" | ".join(parts))
+        data["on_screen_title"] = self.checked_bandeau(" | ".join(spaced_units(p) for p in parts))
         data["hypothesis"] = self.hypothesis(concept, params)          # jamais reformulée par le LLM
         data["calc"] = self.calc().to_dict()                           # chiffres et courbes des gabarits
         if not str(data.get("closing_cta", "")).strip():

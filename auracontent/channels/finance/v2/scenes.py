@@ -90,9 +90,10 @@ def hook_layers(items: list[tpl.Item], icons: list[str], duration: float, c: fca
     else:
         v = c.values[c.headline]
         best = tpl.Item(v.label, v.value, v.text, T, "")
-    t_num = 0.35
+    t_num = 0.0                      # le résultat est visible dès la première image (rétention des 2 premières s)
+    start = [{"t": 0, "alpha": 1, "scaleX": 0.8, "scaleY": 0.8}, {"t": 0.45, "scaleX": 1, "scaleY": 1, "ease": "back"}]
     L = [{"type": "image", "id": "eclat", "role": "decor", "path": props.ensure("burst", Path(icons[0]).parent),
-          "x": d(205), "y": d(600), "w": d(560), "from": t_num - 0.1, "keys": _pop(t_num - 0.1, "back", 0.5)}]
+          "x": d(205), "y": d(600), "w": d(560), "from": 0, "keys": start}]
     n = len(icons)
     for i, p in enumerate(icons):
         x = 120 + i * (640 / max(1, n - 1)) if n > 1 else 400
@@ -104,11 +105,11 @@ def hook_layers(items: list[tpl.Item], icons: list[str], duration: float, c: fca
     while size > 90 and props._font(size, "ui").getlength(value_text(best)) > 740:
         size -= 10
     L.append({"type": "text", "id": "chiffre", "role": "value", "text": value_text(best), "font": "ui", "size": d(size),
-              "x": d(130), "y": d(780), "w": d(790), "color": INK, "from": t_num, "keys": _pop(t_num, "back", 0.45),
-              "sfx": [{"at": t_num, "file": "chime.wav", "gain": 0.4}]})
+              "x": d(130), "y": d(780), "w": d(790), "color": INK, "from": 0, "keys": list(start),
+              "sfx": [{"at": 0.05, "file": "chime.wav", "gain": 0.4}]})
     L.append({"type": "text", "id": "libelle", "role": "text", "text": best.label, "font": "hand", "size": d(84),
-              "x": d(140), "y": d(1040), "w": d(780), "color": INK, "from": t_num + 0.4,
-              "keys": [{"t": t_num + 0.4, "alpha": 0}, {"t": t_num + 0.7, "alpha": 1}]})
+              "x": d(140), "y": d(1040), "w": d(780), "color": INK, "from": 0,
+              "keys": [{"t": 0, "alpha": 0.6}, {"t": 0.35, "alpha": 1}]})
     return L, t_num
 
 
@@ -189,7 +190,8 @@ def scene_shot(concept: str, params: dict, scene: dict, duration: float, *, hypo
     icons = _icons(concept, pdir)
     focus = None
     layers = None
-    if template == "barres" and variant != "jauge":
+    # La jauge n'existe que pour les 5 concepts d'origine ; pour les calculs du quotidien, « jauge » = barres.
+    if template == "barres" and (variant != "jauge" or concept in fvis.GENERIC):
         items = _items(concept, params, c, role)
         if items:
             if role == "hook":
