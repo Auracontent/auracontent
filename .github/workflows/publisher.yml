@@ -41,6 +41,10 @@ jobs:
           ZERNIO_API_KEY_MYSTERY: ${{ secrets.ZERNIO_API_KEY_MYSTERY }}
           TIKTOK_ACCOUNT_ID_MYSTERY: ${{ secrets.TIKTOK_ACCOUNT_ID_MYSTERY }}
           YOUTUBE_ACCOUNT_ID_MYSTERY: ${{ secrets.YOUTUBE_ACCOUNT_ID_MYSTERY }}
+          # finance (Capital Simple)
+          ZERNIO_API_KEY_FINANCE: ${{ secrets.ZERNIO_API_KEY_FINANCE }}
+          TIKTOK_ACCOUNT_ID_FINANCE: ${{ secrets.TIKTOK_ACCOUNT_ID_FINANCE }}
+          YOUTUBE_ACCOUNT_ID_FINANCE: ${{ secrets.YOUTUBE_ACCOUNT_ID_FINANCE }}
         run: uv run python -m auracontent.cli.publish $CHANNELS
 
       - name: 💾 Sauvegarder les rapports de loudness

@@ -1,7 +1,7 @@
 channel_name: "finance"
-# Désactivée sur main : les générations planifiées ne la produisent pas. Les tests passent par
-# workflow_dispatch sur la branche feat/finance-video (où elle est activée).
-enabled: false
+# Activée : produite et publiée seulement quand un déclenchement la nomme (client_payload.channel = finance,
+# ou « finance » dans les chaînes du Publisher). Les déclenchements de mystery ne la lancent pas.
+enabled: true
 description: "Capital Simple : les chiffres, sans jargon. Épargne, intérêts composés, inflation : un mécanisme, des chiffres calculés, en moins d'une minute."
 
 # Historiques propres à la chaîne (assets/shared/state/finance/, meta/finance/ sur Hugging Face) :
