@@ -6,14 +6,14 @@ on:
       channels:
         description: "Chaînes à publier, séparées par des espaces (ex : mystery finance)"
         required: false
-        default: "mystery"
+        default: "mystery finance"
 
 jobs:
   publier_video:
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     env:
-      CHANNELS: ${{ github.event.inputs.channels || 'mystery' }}
+      CHANNELS: ${{ github.event.inputs.channels || 'mystery finance' }}
     steps:
       - name: 📥 Récupérer le code
         uses: actions/checkout@v7
