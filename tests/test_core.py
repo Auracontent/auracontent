@@ -385,7 +385,7 @@ def test_map_target_disabled_by_default():
 
     script = {"pick": {"lat": 49.25, "lon": 4.03}}
     scenes = [{"id": 1, "location_name": "Reims"}, {"id": 2}]
-    assert map_settings({})["enabled"] is False                  # finance, kids : pas de section map_scene
+    assert map_settings({})["enabled"] is False                  # finance : pas de section map_scene
     assert pick_map_target(script, scenes, map_settings({})) is None
 
 
@@ -1634,7 +1634,7 @@ def test_mascot_is_off_unless_configured():
     from auracontent.services.visuals.mascot import mascot_files, mascot_settings
 
     assert mascot_settings(None)["enabled"] is False and mascot_files(mascot_settings({}), "mystery") == {}
-    for channel in ("finance", "kids"):                      # autres chaînes : pas de section `mascot`
+    for channel in ("finance",):                             # autres chaînes : pas de section `mascot`
         assert mascot_settings((load_channel_config(channel) or {}).get("mascot"))["enabled"] is False
     cfg = mascot_settings(load_channel_config("mystery")["mascot"])
     assert cfg["enabled"] and set(mascot_files(cfg, "mystery")) == {"curieux", "surpris", "clin"}
