@@ -2,7 +2,7 @@
 
 Un short d'archives est **réalisé**, pas assemblé : une histoire forte, une archive choisie pour chaque phrase,
 une caméra qui va vers ce dont parle la voix, des tampons posés sur le mot, une voix dirigée avec de vrais silences.
-Le réalisateur (Claude, dans le workflow `director.yml`) écrit `plan.json` ; le moteur `auracontent/archive` fait le reste.
+Le réalisateur (Claude, dans la tâche `direct` du workflow `generator_video.yml`) écrit `plan.json` ; le moteur `auracontent/archive` fait le reste.
 
 ```
 episodes/archive/<AAAA-MM-JJ>-<slug>/
