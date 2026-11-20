@@ -4,7 +4,7 @@
 # Dependency and tooling configuration for AI Video Generator
 #
 # Install with uv:
-#   uv sync --group default --group ai --group media --group ui --group dev
+#   uv sync --group default --group media --group dev
 # =============================================================================
 
 [project]
@@ -28,30 +28,15 @@ default = [
     "pillow>=10.0.0",       # image de secours (scraping_helpers)
 ]
 
-# ---- AI & LLMs ------------------------------------------------------------
-
-# Non utilisés par la v2 (héritage v1 : kokoro TTS, gradio...). Installés uniquement à la demande.
-ai = [
-    "google-generativeai",
-    "google-genai",
-    "huggingface_hub>=0.24.0",
-    "kokoro>=0.9.4",
-    "transformers>=4.38.0",
-    "gradio_client>=1.4.0",
-]
-
 # ---- Media Processing (Audio / Video) -------------------------------------
 
 media = [
     "edge-tts>=7.0.2",
+    "numpy>=1.26",
+    "opencv-python-headless>=4.9",
+    "global-land-mask>=1.0.0",   # cartes des shorts d'archives
     "ffmpeg-python>=0.2.0",
     "mutagen>=1.47.0",
-]
-
-# ---- UI & Dashboard -------------------------------------------------------
-
-ui = [
-    "streamlit>=1.38.0",
 ]
 
 # ---- Development -----------------------------------------------------------
@@ -82,7 +67,7 @@ line-length = 120
 target-version = "py312"
 
 src = [
-    "modules",
+    "auracontent",
     "tests",
 ]
 
@@ -107,7 +92,7 @@ ignore = [
 [tool.ruff.lint.isort]
 
 known-first-party = [
-    "modules",
+    "auracontent",
 ]
 
 # ---------------------------------------------------------------------------
