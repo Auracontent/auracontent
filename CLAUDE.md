@@ -11,7 +11,7 @@ et `finance` (« Capital Simple »). Voir README.md pour l'architecture.
 - Ne jamais lancer `auracontent.cli.publish` hors du workflow `publisher.yml` : il publie publiquement.
 
 ## Shorts d'archives réalisés (chaîne mystery)
-Quand on te demande de réaliser un short (workflow `director.yml` ou à la main), suis **docs/archive_shorts.md** à la lettre :
+Quand on te demande de réaliser un short (tâche `direct` du workflow `generator_video.yml`, ou à la main), suis **docs/archive_shorts.md** à la lettre :
 choix de l'affaire, vérification des faits, voix dirigée, archives Commons, plans, habillage, musique, contrôle de la planche.
 Modèle : `episodes/archive/_exemple/plan.json`. Moteur : `auracontent/archive/` (CLI `python -m auracontent.archive.cli`).
 

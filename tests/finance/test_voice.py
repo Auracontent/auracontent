@@ -133,18 +133,114 @@ def test_workflow_uses_finance_gemini_key_only_for_finance():
     assert not any("publish" in s.get("run", "") for s in job["steps"])
 
 
-def test_archive_mode_hands_mystery_to_the_director():
+def _workflow():
     from pathlib import Path
 
     import yaml
 
-    gen = yaml.safe_load(Path(".github/workflows/generator_video.yml").read_text(encoding="utf-8"))["jobs"]["generate"]
+    return yaml.safe_load(Path(".github/workflows/generator_video.yml").read_text(encoding="utf-8"))
+
+
+def _gh_eval(expr: str, ctx: dict):
+    """Évalue une expression GitHub Actions simple (||, &&, !, ==, !=, chaînes, true/false, contextes pointés),
+    pour vérifier les conditions RÉELLES du workflow ; un contexte absent vaut None (comme sur GitHub)."""
+    import re
+
+    body = expr.strip()
+    if body.startswith("${{"):
+        body = body[3:-2]
+    body = " ".join(body.split())
+
+    def lookup(path: str):
+        cur = ctx
+        for part in path.split("."):
+            cur = cur.get(part) if isinstance(cur, dict) else None
+        return cur
+
+    names = {}
+
+    def ident(m):
+        word = m.group(0)
+        if word in ("true", "false"):
+            return "True" if word == "true" else "False"
+        key = f"_v{len(names)}"
+        names[key] = lookup(word)
+        return key
+
+    out, i = [], 0
+    for m in re.finditer(r"'(?:[^']|'')*'", body):                 # chaînes protégées, le reste traduit
+        code = body[i:m.start()]
+        code = re.sub(r"[A-Za-z_][A-Za-z0-9_\-]*(?:\.[A-Za-z_][A-Za-z0-9_\-]*)*", ident, code)
+        out.append(code.replace("||", " or ").replace("&&", " and ").replace("!=", " _NE_ ")
+                   .replace("!", " not ").replace(" _NE_ ", " != "))
+        out.append(repr(m.group(0)[1:-1].replace("''", "'")))
+        i = m.end()
+    code = body[i:]
+    code = re.sub(r"[A-Za-z_][A-Za-z0-9_\-]*(?:\.[A-Za-z_][A-Za-z0-9_\-]*)*", ident, code)
+    out.append(code.replace("||", " or ").replace("&&", " and ").replace("!=", " _NE_ ")
+               .replace("!", " not ").replace(" _NE_ ", " != "))
+    return eval("".join(out), {"__builtins__": {}}, names)      # noqa: S307 (expression du workflow du dépôt)
+
+
+def _ctx(event, channel=None, archive_var=False, archive_box=None, upload_box=None, payload_channel=None):
+    inputs = {}
+    if event == "workflow_dispatch":                              # GitHub applique les valeurs par défaut
+        inputs = {"channel": channel or "all", "mystery_archive": bool(archive_box),
+                  "archive_upload": True if upload_box is None else upload_box}
+    return {"github": {"event_name": event,
+                       "event": {"inputs": {k: str(v).lower() if isinstance(v, bool) else v for k, v in inputs.items()}
+                                 if inputs else None,
+                                 "client_payload": {"channel": payload_channel} if payload_channel else None}},
+            "inputs": inputs, "vars": {"MYSTERY_MODE": "archive" if archive_var else ""}}
+
+
+@pytest.mark.parametrize("ctx, generate, direct", [
+    # le cron : workflow_dispatch sans option
+    (_ctx("workflow_dispatch"), True, False),
+    (_ctx("workflow_dispatch", archive_var=True), True, True),
+    # lancements manuels
+    (_ctx("workflow_dispatch", "all", archive_box=True), True, True),
+    (_ctx("workflow_dispatch", "mystery", archive_box=True), False, True),
+    (_ctx("workflow_dispatch", "mystery", archive_var=True), True, False),      # ancien mode, en secours
+    (_ctx("workflow_dispatch", "mystery"), True, False),
+    (_ctx("workflow_dispatch", "finance", archive_var=True), True, False),
+    (_ctx("workflow_dispatch", "finance", archive_box=True), True, False),
+    # signal trigger-videos
+    (_ctx("repository_dispatch"), True, False),
+    (_ctx("repository_dispatch", archive_var=True), True, True),
+    (_ctx("repository_dispatch", payload_channel="finance", archive_var=True), True, False),
+])
+def test_workflow_unique_lance_le_bon_moteur_pour_mystery(ctx, generate, direct):
+    jobs = _workflow()["jobs"]
+    assert bool(_gh_eval(jobs["generate"]["if"], ctx)) is generate
+    assert bool(_gh_eval(jobs["direct"]["if"], ctx)) is direct
+    if direct and generate:                                       # les deux tournent : generate saute mystery
+        assert _gh_eval(jobs["generate"]["env"]["MYSTERY_MODE"], ctx) == "archive"
+
+
+@pytest.mark.parametrize("ctx, upload", [
+    (_ctx("workflow_dispatch", archive_var=True), True),                       # le cron dépose toujours
+    (_ctx("repository_dispatch", archive_var=True), True),
+    (_ctx("workflow_dispatch", "mystery", archive_box=True, upload_box=False), False),   # essai manuel
+    (_ctx("workflow_dispatch", "mystery", archive_box=True, upload_box=True), True),
+])
+def test_short_d_archives_depose_sauf_essai_manuel(ctx, upload):
+    step = next(s for s in _workflow()["jobs"]["direct"]["steps"] if s.get("name") == "Déposer sur Hugging Face")
+    assert bool(_gh_eval(step["if"], ctx)) is upload
+
+
+def test_archive_mode_hands_mystery_to_the_director():
+    from pathlib import Path
+
+    wf = _workflow()
+    assert not Path(".github/workflows/director.yml").exists()                # un seul workflow pour le cron
+    assert "trigger-videos" in wf[True]["repository_dispatch"]["types"]        # `on:` lu comme True par PyYAML
+    gen, direct = wf["jobs"]["generate"], wf["jobs"]["direct"]
     run = next(s for s in gen["steps"] if s.get("name", "").startswith("🎬"))["run"]
-    assert gen["env"]["MYSTERY_MODE"] == "${{ vars.MYSTERY_MODE }}"
+    assert "vars.MYSTERY_MODE" in gen["env"]["MYSTERY_MODE"]
     assert '"$MYSTERY_MODE" = "archive"' in run and 'CHANNELS="finance"' in run
-    director = yaml.safe_load(Path(".github/workflows/director.yml").read_text(encoding="utf-8"))
-    assert "trigger-videos" in director[True]["repository_dispatch"]["types"]          # `on:` lu comme True par PyYAML
-    assert "vars.MYSTERY_MODE == 'archive'" in director["jobs"]["direct"]["if"]
+    assert gen["concurrency"]["group"] != direct["concurrency"]["group"]      # le Réalisateur (75 min) ne bloque pas
+    assert "concurrency" not in wf                                             # pas de file commune aux deux tâches
 
 
 # ---------- Même voix réessayée 3 fois, jamais une autre ----------

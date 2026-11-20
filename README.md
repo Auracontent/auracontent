@@ -207,8 +207,7 @@ Outputs are written to `output/` and `temp/` (both git-ignored).
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `generator_video.yml` | manual, `repository_dispatch` (`trigger-videos`) | doctor → generate → upload to HF (mystery skipped when `MYSTERY_MODE=archive`) |
-| `director.yml` | manual, `repository_dispatch` (`trigger-videos`) if `MYSTERY_MODE=archive` | Claude directs an archive short for mystery → render → upload to HF |
+| `generator_video.yml` | manual / cron (`workflow_dispatch`), `repository_dispatch` (`trigger-videos`) | job `generate`: doctor → generate → upload to HF (finance, and mystery unless archive mode); job `direct`: Claude directs an archive short for mystery → render → upload to HF (when `MYSTERY_MODE=archive` or the `mystery_archive` box is ticked) |
 | `publisher.yml` | manual | publishes the latest video via Zernio |
 | `tests.yml` | push / PR | ruff + pytest |
 | `release.yml` | push to `main` / `pre-release` | semantic-release: version, `CHANGELOG.md`, GitHub release |
@@ -258,7 +257,9 @@ story, verifies it, writes a `plan.json` (directed Gemini voice with real pauses
 sentence, camera moves, stamps, map, score) and the `auracontent/archive` engine renders it. Method:
 [`docs/archive_shorts.md`](docs/archive_shorts.md); example: [`episodes/archive/_exemple/plan.json`](episodes/archive/_exemple/plan.json).
 Turn it on with the repository variable **`MYSTERY_MODE=archive`** (Settings → Secrets and variables → Actions → Variables);
-remove it to go back to the automatic generator.
+remove it to go back to the automatic generator. Both run from the same workflow (`generator_video.yml`, job `direct`),
+so the cron that starts the generator also starts the director. For a one-off manual test, run the workflow with
+`channel=mystery`, tick `mystery_archive` and untick `archive_upload` (the video stays in the run's artifact).
 
 ```bash
 uv run python -m auracontent.archive.cli episodes/archive/<episode> all      # fetch + voice + stills + render

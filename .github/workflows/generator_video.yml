@@ -27,17 +27,37 @@ on:
         description: "finance : calcul imposé (ex : remises_successives) ; vide = sujet libre du quotidien"
         required: false
         default: ""
+      mystery_archive:
+        description: "mystery : short d'archives réalisé par Claude (même sans la variable MYSTERY_MODE=archive)"
+        type: boolean
+        default: false
+      archive_upload:
+        description: "Short d'archives : déposer sur Hugging Face pour le Publisher (décocher pour un essai)"
+        type: boolean
+        default: true
   repository_dispatch:
     types: [trigger-videos]
 
-# L'historique (sujets, hooks) est un état partagé sur HF : deux runs en parallèle
-# s'écraseraient. Les runs sont donc mis en file d'attente, sans annuler celui en cours.
-concurrency:
-  group: auracontent-state
-  cancel-in-progress: false
+# Un seul workflow pour les deux chaînes, lancé par le cron (workflow_dispatch) ou par `trigger-videos` :
+# - generate : finance, et mystery en mode automatique ;
+# - direct   : mystery en short d'archives réalisé par Claude (docs/archive_shorts.md), quand la variable de dépôt
+#              MYSTERY_MODE vaut `archive` (ou la case « mystery_archive » est cochée) ; generate saute alors mystery.
+#
+#  channel   | archive (variable ou case) | generate              | direct
+#  all       | non                        | mystery + finance     | -
+#  all       | oui                        | finance               | mystery
+#  mystery   | case cochée                | -                     | mystery
+#  mystery   | variable seule             | mystery (ancien mode, secours) | -
+#  finance   | -                          | finance               | -
 
 jobs:
   generate:
+    if: ${{ !((github.event.inputs.channel || github.event.client_payload.channel || 'all') == 'mystery' && inputs.mystery_archive == true) }}
+    # L'historique (sujets, hooks) est un état partagé sur HF : deux runs en parallèle
+    # s'écraseraient. Les runs sont donc mis en file d'attente, sans annuler celui en cours.
+    concurrency:
+      group: auracontent-state
+      cancel-in-progress: false
     permissions:
       contents: read
       models: read   # GitHub Models
@@ -69,7 +89,7 @@ jobs:
       VIDEO_DURATION: ${{ github.event.inputs.duration || '45' }}
       REFINE_ANGLE: ${{ github.event.inputs.refine_angle || 'true' }}
       USE_HOOK_VARIANTS: ${{ github.event.inputs.use_hook_variants || 'true' }}
-      MYSTERY_MODE: ${{ vars.MYSTERY_MODE }}   # `archive` : mystery est réalisé par director.yml (shorts d'archives)
+      MYSTERY_MODE: ${{ inputs.mystery_archive == true && 'archive' || vars.MYSTERY_MODE }}   # `archive` : mystery est réalisé par la tâche direct
 
     steps:
       - name: 📥 Cloner le dépôt
@@ -100,8 +120,8 @@ jobs:
       - name: 🎬 Générer les vidéos (${{ env.CHANNEL }})
         run: |
           if [ "$CHANNEL" = "all" ] && [ "$MYSTERY_MODE" = "archive" ]; then
-            CHANNELS="finance"   # mystery : director.yml (lancer channel=mystery à la main pour l'ancien mode, en secours)
-            echo "mystery est réalisé par le workflow Réalisateur (MYSTERY_MODE=archive)."
+            CHANNELS="finance"   # mystery : tâche direct (lancer channel=mystery à la main pour l'ancien mode, en secours)
+            echo "mystery est réalisé par la tâche Réalisateur (MYSTERY_MODE=archive)."
           elif [ "$CHANNEL" = "all" ]; then
             CHANNELS="mystery finance"
           else
@@ -149,4 +169,106 @@ jobs:
         with:
           name: Output-${{ env.CHANNEL }}-${{ github.run_id }}
           path: output/
+          if-no-files-found: warn
+
+  # Réalisateur : Claude réalise un short d'archives mystery de bout en bout (docs/archive_shorts.md), puis la vidéo est
+  # rendue et déposée sur Hugging Face ; le Publisher la publie comme d'habitude. Ex-workflow director.yml.
+  direct:
+    if: >-
+      ${{ ((github.event.inputs.channel || github.event.client_payload.channel || 'all') == 'all'
+           && (vars.MYSTERY_MODE == 'archive' || inputs.mystery_archive == true))
+       || ((github.event.inputs.channel || github.event.client_payload.channel || 'all') == 'mystery'
+           && inputs.mystery_archive == true) }}
+    concurrency:
+      group: director-mystery
+      cancel-in-progress: false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 75
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      WIKIMEDIA_CONTACT: ${{ secrets.WIKIMEDIA_CONTACT }}
+      TOPIC: ${{ github.event.inputs.topic || '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Paquets système et Python
+        run: |
+          sudo apt-get update -qq
+          grep -vE '^\s*(#|$)' packages.txt | xargs sudo apt-get install -y -qq
+      - uses: astral-sh/setup-uv@v10.1.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - run: uv python install 3.12 && uv sync --locked --group default --group media
+
+      - name: Dossier de l'épisode
+        id: ep
+        run: |
+          D=$(date -u +%Y-%m-%d)
+          echo "dir=episodes/archive/$D-a-nommer" >> "$GITHUB_OUTPUT"
+          echo "date=$D" >> "$GITHUB_OUTPUT"
+          if [ -z "$GEMINI_API_KEY" ]; then echo "::error::Secret GEMINI_API_KEY absent : pas de voix."; exit 1; fi
+
+      - name: Claude réalise le short
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "github-actions,github-actions[bot]"
+          claude_args: "--max-turns 250 --allowedTools Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch"
+          prompt: |
+            Tu es le réalisateur de la chaîne « C'est arrivé ici ». Lis CLAUDE.md puis docs/archive_shorts.md en entier,
+            et le modèle episodes/archive/_exemple/plan.json.
+            ${{ github.event.inputs.topic != '' && format('Affaire imposée : « {0} ».', github.event.inputs.topic) || 'Choisis toi-même l''affaire (section 1), sans reprendre un sujet de episodes/archive/.' }}
+
+            Crée le dossier episodes/archive/${{ steps.ep.outputs.date }}-<slug court>/ et réalise le short :
+            recherche et vérification des faits (WebSearch, WebFetch), plan.json complet (voix, archives Commons, plans,
+            habillage, musique, légende), puis dans l'ordre :
+              uv run python -m auracontent.archive.cli <dossier> fetch
+              (regarde chaque image avec Read pour placer les cadrages)
+              uv run python -m auracontent.archive.cli <dossier> voice      (UNE seule fois si elle réussit : quota Gemini)
+              uv run python -m auracontent.archive.cli <dossier> stills
+            Lis stills.jpg, corrige plan.json et relance stills jusqu'à ce que la planche soit propre (section 9).
+            Ne relance « voice » que si tu as changé le texte d'une phrase.
+            Ne lance PAS « render » ni « upload » : l'étape suivante du workflow s'en charge.
+            Termine par : git add <dossier> ; git commit -m "feat(mystery): short d'archives <slug>" ; git pull --rebase ; git push.
+            Si quelque chose bloque, écris <dossier>/PROBLEME.md, commite-le et arrête-toi.
+
+      - name: Retrouver l'épisode réalisé
+        id: done
+        run: |
+          git pull -q --rebase || git pull -q
+          E=$(ls -d episodes/archive/${{ steps.ep.outputs.date }}-*/ 2>/dev/null | sort | tail -n 1)
+          E=${E%/}
+          [ -n "$E" ] || { echo "::error::Aucun épisode créé aujourd'hui."; exit 1; }
+          if [ -f "$E/PROBLEME.md" ]; then echo "::error::Le réalisateur s'est arrêté :"; cat "$E/PROBLEME.md"; exit 1; fi
+          for f in plan.json stills.jpg voice/timing.json voice/voice.wav; do
+            [ -f "$E/$f" ] || { echo "::error::manque $E/$f"; exit 1; }
+          done
+          echo "dir=$E" >> "$GITHUB_OUTPUT"
+
+      - name: Rendu
+        run: uv run python -m auracontent.archive.cli "${{ steps.done.outputs.dir }}" render
+
+      - name: Vérifier le niveau sonore
+        run: |
+          V=$(ls "${{ steps.done.outputs.dir }}"/out/*.mp4 | head -n 1)
+          ffmpeg -i "$V" -af ebur128 -f null - 2>&1 | grep -A1 "Integrated" | tail -n 1
+
+      # Dépôt sauf essai manuel (case archive_upload décochée) ; le cron et `trigger-videos` déposent toujours
+      - name: Déposer sur Hugging Face
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.archive_upload != false }}
+        run: uv run python -m auracontent.archive.cli "${{ steps.done.outputs.dir }}" upload --channel mystery
+
+      - name: Sauvegarder la vidéo
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: short-archive-${{ github.run_id }}
+          path: |
+            episodes/archive/*/out/*.mp4
+            episodes/archive/*/stills.jpg
           if-no-files-found: warn
