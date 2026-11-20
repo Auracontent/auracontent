@@ -1,0 +1,446 @@
+{
+ "slug": "tour-eiffel-condamnee",
+ "title": "La tour Eiffel devait être démolie en 1909 : une antenne l'a sauvée",
+ "caption": "Permis de 20 ans, artistes hostiles, démolition programmée : la tour Eiffel n'avait pas d'avenir. Jusqu'à ce que la radio la rende indispensable. #histoire #france #toureiffel #paris #patrimoine",
+ "sources": [
+  "https://fr.wikipedia.org/wiki/Tour_Eiffel",
+  "https://en.wikipedia.org/wiki/Eiffel_Tower",
+  "https://www.toureiffel.paris/en/news/130-years/how-did-radio-save-tower",
+  "https://commons.wikimedia.org/wiki/File:Collectif_-_Protestation_des_artistes_contre_la_tour_de_M._Eiffel,_paru_dans_Le_Temps,_14_f%C3%A9vrier_1887.djvu"
+ ],
+ "voice": {
+  "name": "Orus",
+  "style": "French documentary narrator, firm and a little ironic, telling how a doomed monument escaped its death sentence. Measured pace, slow on the dates, a real silence before 'Sauf que', relieved and quietly triumphant at the end. IMPORTANT: leave a long, completely silent pause (one to two seconds) after EVERY numbered line, even the very short ones such as line 2 and line 9; never run two lines together.",
+  "pause": 0.35
+ },
+ "lines": [
+  {
+   "text": "La tour Eiffel devait disparaître en 1909.",
+   "pause": 0.5
+  },
+  {
+   "text": "Son permis ne durait que 20 ans.",
+   "pause": 0.35,
+   "say": "Son permis ne durait que vingt ans."
+  },
+  {
+   "text": "Bâtie pour l'Exposition universelle de 1889, elle n'était qu'une attraction provisoire.",
+   "pause": 0.35
+  },
+  {
+   "text": "Ses détracteurs jugent ces 300 mètres de fer inutiles et laids.",
+   "pause": 0.35,
+   "say": "Ses détracteurs jugent ces trois cents mètres de fer inutiles et laids."
+  },
+  {
+   "text": "Dès 1887, des artistes protestent déjà, dans Le Temps.",
+   "pause": 0.4
+  },
+  {
+   "text": "Après 1909, la Ville de Paris pourra la démonter.",
+   "pause": 0.8,
+   "direction": "Slow and heavy, like a sentence being pronounced."
+  },
+  {
+   "text": "Eiffel finance alors des expériences à son sommet : météo, résistance de l'air.",
+   "pause": 0.35
+  },
+  {
+   "text": "En 1903, le capitaine Ferrié y teste la télégraphie sans fil.",
+   "pause": 0.7
+  },
+  {
+   "text": "Sauf que…",
+   "pause": 0.8,
+   "direction": "Almost whispered, a pause full of promise."
+  },
+  {
+   "text": "Cette antenne géante porte à des milliers de kilomètres.",
+   "pause": 0.35
+  },
+  {
+   "text": "En 1910, elle envoie l'heure aux navires, à 5 000 kilomètres.",
+   "pause": 0.35,
+   "say": "En mille neuf cent dix, elle envoie l'heure aux navires, à cinq mille kilomètres."
+  },
+  {
+   "text": "En 1914, ses ondes brouillent les communications allemandes.",
+   "pause": 0.4
+  },
+  {
+   "text": "L'armée ne peut plus se passer de la tour.",
+   "pause": 0.35
+  },
+  {
+   "text": "Sa concession est prolongée de 70 ans.",
+   "pause": 0.7,
+   "say": "Sa concession est prolongée de soixante-dix ans."
+  },
+  {
+   "text": "Condamnée pour sa laideur, sauvée par une antenne.",
+   "pause": 0.4,
+   "direction": "Quiet, final, a little amused."
+  }
+ ],
+ "keywords": [
+  "tour",
+  "eiffel",
+  "1909",
+  "permis",
+  "démolition",
+  "artistes",
+  "temps",
+  "ferrié",
+  "télégraphie",
+  "antenne",
+  "1903",
+  "1914",
+  "1910",
+  "navires",
+  "concession",
+  "sauvée",
+  "condamnée"
+ ],
+ "hook": [
+  "ELLE DEVAIT ÊTRE",
+  "DÉMONTÉE EN 1909…",
+  "SAUVÉE PAR UNE ANTENNE"
+ ],
+ "header": "LA TOUR EIFFEL · 1909",
+ "end_title": "LA TOUR EIFFEL",
+ "images": {
+  "tower": "File:Louis-Emile Durandelle, The Eiffel Tower - State of the Construction, 1888.jpg",
+  "tower2": "File:Paris, Tour Eiffel by Neurdein, 1888.jpg",
+  "post": "File:Carte postale - Paris La Tour Eiffel.jpg",
+  "protest": "File:Lettre de protestation des artistes.JPG",
+  "eiffel": "File:Gustave Eiffel en octobre 1909.jpg",
+  "ferrie": "File:Gustave Ferrié.jpg",
+  "ant04": "File:Antenne tour Eiffel 1904.jpg",
+  "ant14": "File:Antenne tour Eiffel 1914.jpg",
+  "guard": "File:Guard at Eiffel Tower -- Wireless Station (LOC).jpg"
+ },
+ "shots": [
+  {
+   "from": 0,
+   "to": "L1",
+   "image": "tower",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.8,
+     0.9
+    ],
+    [
+     1,
+     0.5,
+     0.3,
+     0.5
+    ]
+   ]
+  },
+  {
+   "from": "L1",
+   "to": "L2",
+   "image": "post",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.62,
+     1
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     0.6
+    ]
+   ]
+  },
+  {
+   "from": "L2",
+   "to": "L3",
+   "image": "tower2",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     1
+    ],
+    [
+     1,
+     0.5,
+     0.4,
+     0.7
+    ]
+   ]
+  },
+  {
+   "from": "L3",
+   "to": "L5",
+   "image": "protest",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.2,
+     0.6
+    ],
+    [
+     0.5,
+     0.5,
+     0.4,
+     0.6
+    ],
+    [
+     1,
+     0.5,
+     0.55,
+     0.6
+    ]
+   ]
+  },
+  {
+   "from": "L5",
+   "to": "L6",
+   "type": "card",
+   "title": "31 DÉC. 1909",
+   "sub": "fin du permis"
+  },
+  {
+   "from": "L6",
+   "to": "L7",
+   "image": "eiffel",
+   "keys": [
+    [
+     0,
+     0.68,
+     0.45,
+     1
+    ],
+    [
+     1,
+     0.68,
+     0.4,
+     0.9
+    ]
+   ]
+  },
+  {
+   "from": "L7",
+   "to": "L8",
+   "image": "ferrie",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.4,
+     1
+    ],
+    [
+     1,
+     0.5,
+     0.35,
+     0.85
+    ]
+   ]
+  },
+  {
+   "from": "L8",
+   "to": "L10",
+   "image": "ant04",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.7,
+     1
+    ],
+    [
+     1,
+     0.5,
+     0.25,
+     0.75
+    ]
+   ]
+  },
+  {
+   "from": "L10",
+   "to": "L11",
+   "image": "ant14",
+   "keys": [
+    [
+     0,
+     0.3,
+     0.1,
+     0.7
+    ],
+    [
+     1,
+     0.5,
+     0.45,
+     1
+    ]
+   ]
+  },
+  {
+   "from": "L11",
+   "to": "L13",
+   "image": "guard",
+   "keys": [
+    [
+     0,
+     0.3,
+     0.3,
+     0.9
+    ],
+    [
+     0.5,
+     0.3,
+     0.55,
+     0.65
+    ],
+    [
+     1,
+     0.5,
+     0.4,
+     0.8
+    ]
+   ]
+  },
+  {
+   "from": "L13",
+   "to": "L14",
+   "type": "card",
+   "title": "+ 70 ANS",
+   "sub": "concession prolongée dès 1910"
+  },
+  {
+   "from": "L14",
+   "to": "fin",
+   "image": "tower",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.3,
+     0.5
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     1
+    ]
+   ]
+  }
+ ],
+ "stamps": [
+  {
+   "text": "CONDAMNÉE",
+   "at": 0,
+   "until": "L1",
+   "size": 120,
+   "y": 1000
+  },
+  {
+   "text": "SAUVÉE",
+   "at": "w:sauvée@L14",
+   "size": 130,
+   "y": 1000,
+   "until": "L14.end"
+  }
+ ],
+ "labels": [
+  {
+   "text": "1888 · LA TOUR EN CHANTIER",
+   "from": "L2+0.3",
+   "to": "L3-0.2"
+  },
+  {
+   "text": "LE TEMPS · 14 FÉVRIER 1887",
+   "from": "L4+0.2",
+   "to": "L5-0.2"
+  },
+  {
+   "text": "GUSTAVE EIFFEL",
+   "from": "L6+0.3",
+   "to": "L7-0.2"
+  },
+  {
+   "text": "CAPITAINE FERRIÉ · 1903",
+   "from": "L7+0.3",
+   "to": "L8-0.2"
+  },
+  {
+   "text": "LES ANTENNES DE TSF",
+   "from": "L9+0.2",
+   "to": "L10-0.2"
+  },
+  {
+   "text": "L'HEURE PAR RADIO · 1910",
+   "from": "L10+0.3",
+   "to": "L11-0.2"
+  },
+  {
+   "text": "LE POSTE DE TSF · CHAMP-DE-MARS",
+   "from": "L11+0.3",
+   "to": "L12+2"
+  }
+ ],
+ "flash": [
+  "L8"
+ ],
+ "music": {
+  "sections": [
+   [
+    0,
+    "L8",
+    "Dm",
+    4.0
+   ],
+   [
+    "L9",
+    "fin",
+    "Dmaj",
+    3.5
+   ]
+  ],
+  "pulse": [
+   [
+    "L5",
+    "L8",
+    0.9,
+    33
+   ]
+  ],
+  "rise": [
+   [
+    "L5",
+    "L8"
+   ]
+  ],
+  "drone": [
+   [
+    0,
+    "L2"
+   ],
+   [
+    "L6",
+    "L8+0.5"
+   ]
+  ],
+  "hits": [
+   [
+    "L8-0.03",
+    0.9
+   ],
+   [
+    "w:sauvée@L14",
+    0.8
+   ]
+  ]
+ }
+}

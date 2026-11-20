@@ -1,0 +1,56 @@
+{
+ "tower": {
+  "title": "File:Louis-Emile Durandelle, The Eiffel Tower - State of the Construction, 1888.jpg",
+  "author": "Louis-Emile Durandelle",
+  "license": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File:Louis-Emile_Durandelle,_The_Eiffel_Tower_-_State_of_the_Construction,_1888.jpg"
+ },
+ "tower2": {
+  "title": "File:Paris, Tour Eiffel by Neurdein, 1888.jpg",
+  "author": "Neurdein",
+  "license": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File:Paris,_Tour_Eiffel_by_Neurdein,_1888.jpg"
+ },
+ "post": {
+  "title": "File:Carte postale - Paris La Tour Eiffel.jpg",
+  "author": "CM",
+  "license": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File:Carte_postale_-_Paris_La_Tour_Eiffel.jpg"
+ },
+ "protest": {
+  "title": "File:Lettre de protestation des artistes.JPG",
+  "author": "",
+  "license": "CC BY-SA 3.0",
+  "page": "https://commons.wikimedia.org/wiki/File:Lettre_de_protestation_des_artistes.JPG"
+ },
+ "eiffel": {
+  "title": "File:Gustave Eiffel en octobre 1909.jpg",
+  "author": "La Vie au grand air",
+  "license": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File:Gustave_Eiffel_en_octobre_1909.jpg"
+ },
+ "ferrie": {
+  "title": "File:Gustave Ferrié.jpg",
+  "author": "",
+  "license": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File:Gustave_Ferri%C3%A9.jpg"
+ },
+ "ant04": {
+  "title": "File:Antenne tour Eiffel 1904.jpg",
+  "author": "Unknown",
+  "license": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File:Antenne_tour_Eiffel_1904.jpg"
+ },
+ "ant14": {
+  "title": "File:Antenne tour Eiffel 1914.jpg",
+  "author": "Unknown",
+  "license": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File:Antenne_tour_Eiffel_1914.jpg"
+ },
+ "guard": {
+  "title": "File:Guard at Eiffel Tower -- Wireless Station (LOC).jpg",
+  "author": "Bain News Service",
+  "license": "Public domain",
+  "page": "https://commons.wikimedia.org/wiki/File:Guard_at_Eiffel_Tower_--_Wireless_Station_(LOC).jpg"
+ }
+}
