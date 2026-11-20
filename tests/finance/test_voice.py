@@ -125,12 +125,15 @@ def test_workflow_uses_finance_gemini_key_only_for_finance():
     job = wf["jobs"]["generate"]
     assert job["env"]["GEMINI_API_KEY_FINANCE"] == "${{ secrets.GEMINI_API_KEY_FINANCE }}"
     assert job["env"]["GEMINI_API_KEY"] == "${{ secrets.GEMINI_API_KEY }}"          # mystery inchangée
-    names = [s.get("name", "") for s in job["steps"]]
-    key_step = next(s for s in job["steps"] if "Clé Gemini" in s.get("name", ""))
-    assert names.index(key_step["name"]) < next(i for i, n in enumerate(names) if "Diagnostic" in n)
-    assert 'GEMINI_API_KEY=$GEMINI_API_KEY_FINANCE' in key_step["run"] and "exit 1" in key_step["run"]
+    # La clé est choisie dans l'étape de génération, chaîne par chaîne : finance prend SA clé (arrêt si le
+    # secret manque), mystery garde la sienne ; jamais la clé de mystery pour finance.
     generate = next(s for s in job["steps"] if s.get("name", "").startswith("🎬"))
-    assert "--upload --sync-state" in generate["run"]                    # Hugging Face, pas de publication
+    run = generate["run"]
+    finance_branch = run[run.index('if [ "$CH" = "finance" ]'):run.index("else", run.index('if [ "$CH" = "finance" ]'))]
+    assert '-z "$GEMINI_API_KEY_FINANCE"' in finance_branch and "exit 1" in finance_branch
+    assert 'ACTIVE_GEMINI="$GEMINI_API_KEY_FINANCE"' in finance_branch
+    assert 'GEMINI_API_KEY="$ACTIVE_GEMINI"' in run
+    assert "--upload --sync-state" in run                                 # Hugging Face, pas de publication
     assert not any("publish" in s.get("run", "") for s in job["steps"])
 
 
