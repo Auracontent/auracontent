@@ -1,0 +1,443 @@
+{
+ "slug": "oiseau-blanc-cris-brouillard",
+ "title": "Des cris au secours dans le brouillard… sur une île française",
+ "caption": "9 mai 1927 : un avion blanc tourne dans la brume de Terre-Neuve, puis des cris au large de Saint-Pierre-et-Miquelon. L'Oiseau Blanc s'est-il écrasé sur une île française ? #histoire #mystère #oiseaublanc #saintpierreetmiquelon #france",
+ "sources": [
+  "https://fr.wikipedia.org/wiki/L%27Oiseau_blanc",
+  "https://fr.wikipedia.org/wiki/Charles_Nungesser",
+  "https://fr.wikipedia.org/wiki/Fran%C3%A7ois_Coli"
+ ],
+ "voice": {
+  "name": "Charon",
+  "style": "French documentary narrator telling a disappearance. Deep, calm, intimate; slow down on dates and places; a real silence before 'Rien'.",
+  "pause": 0.35
+ },
+ "lines": [
+  {
+   "text": "Nungesser et Coli ne sont jamais arrivés.",
+   "pause": 0.4
+  },
+  {
+   "text": "Mais d'autres témoignages vont tout remettre en question.",
+   "pause": 0.35
+  },
+  {
+   "text": "Le neuf mai, au soir, des habitants de Harbour Grace, à Terre-Neuve, racontent avoir vu un avion blanc tourner dans la brume.",
+   "pause": 0.35
+  },
+  {
+   "text": "Un peu plus au sud, sur l'archipel français de Saint-Pierre-et-Miquelon, un pêcheur note dans son journal, ce même neuf mai, des bruits violents et des cris d'appel au secours, perdus dans le brouillard.",
+   "pause": 0.4
+  },
+  {
+   "text": "Un Français, Bernard Decré, y a consacré des années de sa vie. Pour lui, l'Oiseau Blanc a bien traversé l'Atlantique… avant de s'écraser au large de l'archipel, à court de carburant.",
+   "pause": 0.4
+  },
+  {
+   "text": "Des équipes ont fouillé ces forêts. Des plongeurs ont sondé la mer. Des détecteurs ont balayé les fonds.",
+   "pause": 0.3
+  },
+  {
+   "text": "Rien.",
+   "pause": 0.7,
+   "direction": "Almost whispered, one word, final."
+  },
+  {
+   "text": "L'énigme reste entière.",
+   "pause": 0.35
+  }
+ ],
+ "keywords": [
+  "jamais",
+  "témoignages",
+  "harbour",
+  "grace",
+  "terre-neuve",
+  "brume",
+  "saint-pierre-et-miquelon",
+  "bruits",
+  "violents",
+  "cris",
+  "secours",
+  "brouillard",
+  "decré",
+  "l'atlantique…",
+  "carburant",
+  "forêts",
+  "mer",
+  "fonds",
+  "rien",
+  "l'énigme",
+  "entière",
+  "nungesser",
+  "coli",
+  "neuf",
+  "mai"
+ ],
+ "hook": [
+  "DES CRIS AU SECOURS",
+  "DANS LE BROUILLARD…",
+  "SUR UNE ÎLE FRANÇAISE"
+ ],
+ "header": "L'OISEAU BLANC · 1927",
+ "end_title": "L'OISEAU BLANC",
+ "images": {
+  "duo": "File:Coli and Nungesser.jpg",
+  "plane": "File:Carte postale-Oiseau blanc-1927.jpg",
+  "chart": "File:Admiralty Chart No 297 Harbour Grace, Published 1825.jpg",
+  "postcard": "File:Carte postale-Nungesser et Coli-1927.jpg"
+ },
+ "shots": [
+  {
+   "from": 0,
+   "to": "L1",
+   "image": "duo",
+   "keys": [
+    [
+     0,
+     0.47,
+     0.3,
+     0.7
+    ],
+    [
+     1,
+     0.47,
+     0.2,
+     0.45
+    ]
+   ]
+  },
+  {
+   "from": "L1",
+   "to": "L2",
+   "image": "plane",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.62,
+     0.9
+    ],
+    [
+     1,
+     0.5,
+     0.62,
+     0.6
+    ]
+   ],
+   "fx": {
+    "gray": 1
+   }
+  },
+  {
+   "from": "L2",
+   "to": "L2@0.45",
+   "image": "chart",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     1.0
+    ],
+    [
+     1,
+     0.42,
+     0.45,
+     0.75
+    ]
+   ]
+  },
+  {
+   "bbox": [
+    -59.5,
+    -51.0,
+    44.6,
+    50.4
+   ],
+   "names": [
+    {
+     "text": "TERRE-NEUVE",
+     "lon": -55.6,
+     "lat": 49.3,
+     "size": 64
+    },
+    {
+     "text": "OCÉAN ATLANTIQUE",
+     "lon": -54.0,
+     "lat": 45.6,
+     "size": 52
+    }
+   ],
+   "from": "L2@0.45",
+   "to": "L3",
+   "type": "map",
+   "cam": [
+    [
+     0,
+     0.62,
+     0.48,
+     0.8
+    ],
+    [
+     1,
+     0.68,
+     0.48,
+     0.45
+    ]
+   ],
+   "pins": [
+    {
+     "lon": -53.22,
+     "lat": 47.7,
+     "label": "HARBOUR GRACE",
+     "at": "L2@0.5"
+    }
+   ],
+   "fog": [
+    0.25,
+    0.6
+   ]
+  },
+  {
+   "bbox": [
+    -59.5,
+    -51.0,
+    44.6,
+    50.4
+   ],
+   "names": [
+    {
+     "text": "TERRE-NEUVE",
+     "lon": -55.6,
+     "lat": 49.3,
+     "size": 64
+    },
+    {
+     "text": "OCÉAN ATLANTIQUE",
+     "lon": -54.0,
+     "lat": 45.6,
+     "size": 52
+    }
+   ],
+   "from": "L3",
+   "to": "L4",
+   "type": "map",
+   "cam": [
+    [
+     0,
+     0.68,
+     0.48,
+     0.45
+    ],
+    [
+     0.6,
+     0.38235294117647056,
+     0.6120689655172409,
+     0.3
+    ],
+    [
+     1,
+     0.38235294117647056,
+     0.6120689655172409,
+     0.28
+    ]
+   ],
+   "pins": [
+    {
+     "lon": -56.25,
+     "lat": 46.85,
+     "label": "SAINT-PIERRE-ET-MIQUELON",
+     "at": "L3@0.25"
+    }
+   ],
+   "fog": [
+    0.15,
+    0.6
+   ]
+  },
+  {
+   "bbox": [
+    -59.5,
+    -51.0,
+    44.6,
+    50.4
+   ],
+   "names": [
+    {
+     "text": "TERRE-NEUVE",
+     "lon": -55.6,
+     "lat": 49.3,
+     "size": 64
+    },
+    {
+     "text": "OCÉAN ATLANTIQUE",
+     "lon": -54.0,
+     "lat": 45.6,
+     "size": 52
+    }
+   ],
+   "from": "L4",
+   "to": "L5",
+   "type": "map",
+   "cam": [
+    [
+     0,
+     0.55,
+     0.55,
+     0.95
+    ]
+   ],
+   "pins": [
+    {
+     "lon": -56.25,
+     "lat": 46.85,
+     "label": "SAINT-PIERRE-ET-MIQUELON",
+     "at": "L4"
+    }
+   ],
+   "route": {
+    "from": [
+     -50.6,
+     46.8
+    ],
+    "to": [
+     -56.25,
+     46.85
+    ],
+    "at": "L4",
+    "until": "L4@0.75",
+    "cross": true
+   }
+  },
+  {
+   "from": "L5",
+   "to": "L6",
+   "image": "chart",
+   "keys": [
+    [
+     0,
+     0.3,
+     0.55,
+     0.6
+    ],
+    [
+     1,
+     0.65,
+     0.5,
+     0.55
+    ]
+   ],
+   "fx": {
+    "gray": 1,
+    "dark": 0.2
+   }
+  },
+  {
+   "from": "L6",
+   "to": "L7",
+   "type": "fog"
+  },
+  {
+   "from": "L7",
+   "to": "fin",
+   "image": "postcard",
+   "keys": [
+    [
+     0,
+     0.15,
+     0.25,
+     0.5
+    ],
+    [
+     0.5,
+     0.85,
+     0.25,
+     0.5
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     1.0
+    ]
+   ]
+  }
+ ],
+ "stamps": [
+  {
+   "text": "AUCUNE ÉPAVE",
+   "at": "L6",
+   "until": "L7",
+   "size": 130,
+   "y": 900
+  }
+ ],
+ "labels": [
+  {
+   "text": "9 MAI 1927 · TERRE-NEUVE",
+   "from": "L2+0.3",
+   "to": "L3-0.2"
+  },
+  {
+   "text": "ARCHIPEL FRANÇAIS",
+   "from": "L3+3",
+   "to": "L4-0.2"
+  },
+  {
+   "text": "LA PISTE DE BERNARD DECRÉ",
+   "from": "L4+0.3",
+   "to": "L5-0.2"
+  }
+ ],
+ "music": {
+  "sections": [
+   [
+    0,
+    "L6",
+    "Am",
+    4.5
+   ],
+   [
+    "L7",
+    "fin",
+    "Dm",
+    3.5
+   ]
+  ],
+  "pulse": [
+   [
+    "L3",
+    "L5",
+    0.9,
+    33
+   ]
+  ],
+  "rise": [
+   [
+    "L3",
+    "L6"
+   ]
+  ],
+  "drone": [
+   [
+    0,
+    "L2+1"
+   ],
+   [
+    "L5",
+    "L7+1"
+   ]
+  ],
+  "hits": [
+   [
+    "w:secours@L3-0.05",
+    0.6
+   ],
+   [
+    "L6-0.03",
+    0.9
+   ]
+  ]
+ }
+}

@@ -109,12 +109,15 @@ auracontent_v2/
 │   ├── cli/            # entry points: generate, publish, doctor
 │   ├── core/           # pipeline + brain (LLM client, script generation)
 │   ├── channels/       # one Brain per channel + registry
+│   ├── archive/        # directed archive shorts (plan.json -> voice, Commons, render, score)
 │   ├── services/       # audio, visuals, scraping, video, publishing
 │   └── utils/          # subtitles, trackers, helpers
 ├── config/
 │   ├── settings.py
 │   └── channels/       # one YAML per channel (mystery, finance)
-├── assets/             # fonts, music, SFX, fallback images (per channel + shared)
+├── assets/             # fonts, music, SFX, images (per channel + shared)
+├── docs/               # archive_shorts.md : the director's method
+├── episodes/archive/   # one folder per directed short (plan.json, stills.jpg, credits)
 ├── scripts/            # standalone helpers (e.g. render_scene.py)
 ├── tests/
 ├── .github/workflows/  # generation, publishing, tests, release
@@ -148,8 +151,6 @@ uv sync --group default --group media          # add --group dev for tests/linte
 ```
 
 On an **Onyxia** service, `bash init.sh` does all of the above.
-
-> The `ai` and `ui` groups are v1 leftovers and are not needed by the v2 pipeline.
 
 ---
 
@@ -206,11 +207,14 @@ Outputs are written to `output/` and `temp/` (both git-ignored).
 
 | Workflow | Trigger | What it does |
 |---|---|---|
-| `generator_video.yml` | manual, `repository_dispatch` (`trigger-videos`) | doctor → generate → upload to HF |
+| `generator_video.yml` | manual, `repository_dispatch` (`trigger-videos`) | doctor → generate → upload to HF (mystery skipped when `MYSTERY_MODE=archive`) |
+| `director.yml` | manual, `repository_dispatch` (`trigger-videos`) if `MYSTERY_MODE=archive` | Claude directs an archive short for mystery → render → upload to HF |
 | `publisher.yml` | manual | publishes the latest video via Zernio |
 | `tests.yml` | push / PR | ruff + pytest |
 | `release.yml` | push to `main` / `pre-release` | semantic-release: version, `CHANGELOG.md`, GitHub release |
 | `test_zernio_con.yml` | manual | Zernio API connectivity check |
+
+The director needs the `CLAUDE_CODE_OAUTH_TOKEN` secret (from `claude setup-token`; it uses your Claude subscription quota).
 
 Add the variables from `.env.example` as **repository secrets** (Settings → Secrets and variables → Actions). `GITHUB_TOKEN` is provided automatically; `RELEASE_TOKEN` is a personal access token used by the release workflow.
 
@@ -249,6 +253,17 @@ French-language Shorts and TikToks. The channel was renamed in 2026 because more
 | `video_composer.watermark_*` | 10 | Watermark file, width, opacity |
 | `publish.fallback_hashtags`, `brand_hashtag`, `banned_hashtags` | 10 | Hashtags: fallback set, brand tag added if missing, old tags removed |
 
+**Archive shorts (directed).** Since 2026-11 the channel can switch to *directed archive shorts*: Claude picks a strong
+story, verifies it, writes a `plan.json` (directed Gemini voice with real pauses, one public-domain Commons archive per
+sentence, camera moves, stamps, map, score) and the `auracontent/archive` engine renders it. Method:
+[`docs/archive_shorts.md`](docs/archive_shorts.md); example: [`episodes/archive/_exemple/plan.json`](episodes/archive/_exemple/plan.json).
+Turn it on with the repository variable **`MYSTERY_MODE=archive`** (Settings → Secrets and variables → Actions → Variables);
+remove it to go back to the automatic generator.
+
+```bash
+uv run python -m auracontent.archive.cli episodes/archive/<episode> all      # fetch + voice + stills + render
+```
+
 **Visual check offline:** `uv run python -m scripts.render_scene --map` renders the map scene with the headline, subtitles, credit and watermark, and saves frames to `output/map_preview/`.
 
 ---
@@ -260,7 +275,7 @@ French-language Shorts and TikToks. The channel was renamed in 2026 because more
 3. Register it in `auracontent/channels/registry.py`.
 4. Add its assets under `assets/<name>/`.
 
-Currently registered: **`mystery`** and **`finance`** (« Capital Simple », in progress). `kids` is not ported to v2.
+Currently registered: **`mystery`** and **`finance`** (« Capital Simple », in progress).
 
 A channel can keep its own history files on Hugging Face (`meta/<channel>/`) with `state: {isolated: true}` in its YAML; channels without it keep the shared files.
 

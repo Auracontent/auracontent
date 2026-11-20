@@ -35,3 +35,10 @@ __pycache__/
 
 # Clés locales (jamais commitées)
 .gemini_key*
+
+# Shorts d'archives : seuls plan.json, stills.jpg, img/credits.json et voice/timing.json sont versionnés
+episodes/archive/*/img/*.jpg
+episodes/archive/*/voice/*.wav
+episodes/archive/*/voice/lines/
+episodes/archive/*/build/
+episodes/archive/*/out/
