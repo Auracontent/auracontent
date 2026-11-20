@@ -43,7 +43,9 @@ uv run ruff check --select F821,F811,F823 --exclude auracontent/channels/kids/le
 uv run pytest -q
 ```
 
-Add or update tests in `tests/` when you change pipeline logic.
+Add or update tests in `tests/` when you change pipeline logic. Channel-specific tests live in
+`tests/<channel>/` (for example `tests/finance/`, `tests/mystery/`); tests shared by several channels
+stay at the root of `tests/`. Run one channel with `uv run pytest tests/finance -q`.
 
 ## 📝 Commit Messages
 

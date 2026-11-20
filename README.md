@@ -116,7 +116,7 @@ auracontent_v2/
 │   └── channels/       # one YAML per channel (mystery, finance)
 ├── assets/             # fonts, music, SFX, fallback images (per channel + shared)
 ├── scripts/            # standalone helpers (e.g. render_scene.py)
-├── tests/
+├── tests/              # one folder per channel (finance/, mystery/) + shared tests at the root
 ├── .github/workflows/  # generation, publishing, tests, release
 ├── init.sh             # Onyxia service bootstrap
 ├── packages.txt        # system packages (ffmpeg, fonts)

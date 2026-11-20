@@ -191,7 +191,7 @@ def test_render_scenes_v2_produit_un_clip_par_scene(tmp_path):
 
 def test_option_v2_finance_seulement():
     import yaml
-    root = Path(__file__).resolve().parents[1] / "config" / "channels"
+    root = Path(__file__).resolve().parents[2] / "config" / "channels"
     fin = yaml.safe_load((root / "finance.yaml").read_text(encoding="utf-8"))
     mys = yaml.safe_load((root / "mystery.yaml").read_text(encoding="utf-8"))
     assert fin["visuals"]["linework"]["engine"] == "v2"
@@ -271,7 +271,7 @@ def _free(history=()):
 
     import yaml
     from auracontent.channels.finance.topics import FreeTopics
-    cfg = yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "channels" / "finance.yaml")
+    cfg = yaml.safe_load((Path(__file__).resolve().parents[2] / "config" / "channels" / "finance.yaml")
                          .read_text(encoding="utf-8"))["brain"]
     ns = SimpleNamespace(_brain=lambda: cfg, free_cfg=lambda: cfg["free_topics"], ABANDONED="abandonné",
                          history_window=lambda n: list(history)[:n], run_format="astuce",
@@ -303,7 +303,7 @@ def test_concept_d_origine_au_plus_une_fois_sur_la_fenetre():
 
 def test_tous_les_exemples_ont_une_astuce_valable():
     import yaml
-    cfg = yaml.safe_load((Path(__file__).resolve().parents[1] / "config" / "channels" / "finance.yaml").read_text(encoding="utf-8"))
+    cfg = yaml.safe_load((Path(__file__).resolve().parents[2] / "config" / "channels" / "finance.yaml").read_text(encoding="utf-8"))
     ft = cfg["brain"]["free_topics"]
     assert set(ft["formats"]) == {"astuce", "histoire", "peu_savent"}
     for e in ft["examples"]:

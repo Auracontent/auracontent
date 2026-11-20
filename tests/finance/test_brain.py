@@ -227,7 +227,7 @@ def test_legende_mention_fixe_sur_plusieurs_lignes_acceptee():
 
     import yaml
     from auracontent.channels.finance.brain import FinanceBrain
-    root = Path(__file__).resolve().parents[1]
+    root = Path(__file__).resolve().parents[2]
     cfg = yaml.safe_load((root / "config" / "channels" / "finance.yaml").read_text(encoding="utf-8"))
     brain = FinanceBrain.__new__(FinanceBrain)
     brain.config, brain.last_pick = cfg, None
