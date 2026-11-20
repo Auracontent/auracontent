@@ -22,7 +22,10 @@ Règles :
 8. Mesuré et factuel : aucun mot absolu ou alarmiste, aucune exagération. Le chiffre suffit à surprendre.
 9. Un versement mensuel s'écrit toujours avec « par mois ». Plus généralement, un montant qui revient (une dépense, un abonnement) dit toujours sa fréquence : « 50 € par semaine », « 2 € chaque matin », jamais « un trajet de 50 € » qui fait croire à une seule dépense.
 
-Pour chaque accroche, donne un 'pattern' parmi : "contradiction", "question", "chiffre", "erreur", "paradoxe", et une note 'score' de 1 à 10 (clarté sans contexte et envie de rester).
+10. Les premiers mots portent déjà la tension : le chiffre, le contraste ou la question, pas une introduction (« Aujourd'hui », « Savais-tu que », « Dans cette vidéo »). Le spectateur doit sentir un écart entre ce qu'il croit et ce que dit le chiffre, sans que la phrase promette ni dramatise.
+11. Varie la construction d'une accroche à l'autre (contraste, question, comparaison de deux personnes, chiffre seul) : pas deux accroches qui commencent par les mêmes mots.
+
+Pour chaque accroche, donne un 'pattern' parmi : "contradiction", "question", "chiffre", "erreur", "paradoxe", et une note 'score' de 1 à 10 (clarté sans contexte, écart entre l'intuition du spectateur et le chiffre, envie de rester). Une accroche qui commence par une introduction au lieu de la tension ne dépasse pas 5.
 
 RETOURNE :
 {"hooks": [{"text": "...", "pattern": "contradiction", "score": 8}]}

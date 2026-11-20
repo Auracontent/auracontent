@@ -11,7 +11,7 @@ from pathlib import Path
 
 from auracontent.channels.finance import calc as fcalc
 from auracontent.services.visuals.linework import templates as tpl
-from auracontent.services.visuals.linework.engine import Scene, render_mp4
+from auracontent.services.visuals.linework.engine import LINE_HEIGHT, Scene, render_mp4
 from auracontent.services.visuals.linework.layout import Zones, check_layout
 
 ASSETS = Path(__file__).resolve().parents[3] / "assets" / "finance"
@@ -30,6 +30,101 @@ def resolve(name: str) -> Path:
         if (base / name).exists():
             return base / name
     raise FileNotFoundError(f"sprite finance introuvable : {name}")
+
+
+# ---------- Carte de fin : la mascotte célèbre, l'abonnement est un bouton ----------
+MASCOT_END = "mascotte_content.png"     # assets/finance/images : la mascotte bras levés
+SUBSCRIBE_SIZE = 72                     # taille du texte du bouton (plan de conception)
+
+
+QUESTION_SIZE = 84                      # question finale (plan de conception), comme tpl.end_card
+
+
+def _text_height(lines: int, size: float, k: float) -> float:
+    """Hauteur en pixels de sortie d'un texte de `lines` lignes (même calcul que le moteur)."""
+    return (lines * size * LINE_HEIGHT + size * 0.4) / k
+
+
+MASCOT_SWAY = 0.05                      # balancement de la mascotte (radians, ~3°), pieds au sol
+
+
+def mascot_keys(t0: float, duration: float) -> list[dict]:
+    """Animation de la mascotte de la carte de fin : elle surgit en grossissant (rebond « back »), puis se
+    balance doucement de gauche à droite, pieds au sol (pivot en bas), jusqu'à la fin de la carte ; un petit
+    saut de joie à chaque aller-retour. Mouvement discret : l'œil reste sur la question et le bouton."""
+    keys = [{"t": t0, "alpha": 0, "scaleX": 0.5, "scaleY": 0.5, "angle": 0},
+            {"t": t0 + 0.15, "alpha": 1},
+            {"t": t0 + 0.45, "scaleX": 1, "scaleY": 1, "ease": "back"}]
+    t, side, step = t0 + 0.45, 1, 0.55
+    while t + step <= duration - 0.05:
+        t += step
+        keys.append({"t": round(t, 3), "angle": MASCOT_SWAY * side, "ease": "smooth"})
+        if side < 0:                                     # saut de joie : écrasement puis étirement, une fois sur deux
+            keys.append({"t": round(t - step / 2, 3), "scaleY": 1.04, "scaleX": 0.98, "ease": "smooth"})
+            keys.append({"t": round(t, 3), "scaleY": 1, "scaleX": 1, "ease": "smooth"})
+        side = -side
+    return keys
+
+
+def cta_layers(question: str, duration: float) -> list[dict]:
+    """Carte de fin, placée d'après la hauteur RÉELLE de la question finale (jusqu'à 14 mots, soit 3 lignes :
+    l'ancienne carte à hauteurs fixes faisait alors chevaucher question et abonnement, mise en page refusée) :
+    - logo (230 px ; 150 px si la question tient sur 3 lignes), nom, promesse « une astuce chiffrée par jour » ;
+    - la mascotte de la chaîne, bras levés, à droite du logo et du nom, au-dessus de la question ; rôle
+      « character » : le contrôle de mise en page refuse un texte qui la touche ;
+    - la question finale ;
+    - « Abonne-toi pour la prochaine. » dans un bouton doré, encre sur or comme la punchline du bandeau.
+    Mascotte absente des assets : carte sans elle (jamais d'erreur)."""
+    f = tpl.Frame()
+    k = f.k
+    width = f.right - f.left
+    lines = tpl.lines_of(question, QUESTION_SIZE, width) if question else 0
+    logo = 230 if lines <= 2 else 150
+    cx = (f.left + f.right) / 2
+    y = f.top + 20
+    layers: list[dict] = [{"type": "image", "role": "prop", "id": "logo", "path": "capital_simple_watermark.png",
+                           "x": (cx - logo / 2) * k, "y": y * k, "w": logo * k, "h": logo * k,
+                           "pivotX": logo / 2 * k, "pivotY": logo / 2 * k, "sfx": tpl._sfx(0.15, "pop.wav", 0.3),
+                           "keys": [{"t": 0.15, "alpha": 0, "scaleX": 0.6, "scaleY": 0.6},
+                                    {"t": 0.55, "alpha": 1, "scaleX": 1, "scaleY": 1}],
+                           "motion": "le logo apparaît"}]
+    y += logo + 20
+    layers.append(tpl.text("nom", NAME, f.left, y, 84, f, font="ui", start=0.5, w_px=width))
+    y += 95
+    layers.append(tpl.text("baseline", PROMISE, f.left, y, 60, f, color=tpl.TURQUOISE, start=0.7, w_px=width))
+    y += 90
+    question_top = y
+    if question:
+        layers.append(tpl.text("question", question, f.left, y, QUESTION_SIZE, f, role="value", start=1.0,
+                               w_px=width, sfx=tpl._sfx(1.0, "paper.wav", 0.3)))
+        y += _text_height(lines, QUESTION_SIZE, k) + 16
+    # Mascotte : bas posé 14 px au-dessus de la question, à droite du logo (x 690..920, le logo s'arrête à 612)
+    path = ASSETS / "images" / MASCOT_END
+    if path.exists():
+        from PIL import Image
+        with Image.open(path) as im:
+            ratio = im.height / im.width
+        mh = min(271.0, question_top - 14 - (f.top + 20))
+        mw = mh / ratio
+        mx, my = 905 - mw, question_top - 14 - mh       # 25 px de marge : le balancement reste avant x = 930
+        layers.append({"type": "image", "role": "character", "id": "mascotte", "path": MASCOT_END,
+                       "x": mx * k, "y": my * k, "w": mw * k, "pivotX": mw / 2 * k, "pivotY": mh * k,
+                       "from": 0.6, "keys": mascot_keys(0.6, duration),
+                       "sfx": tpl._sfx(0.65, "pop.wav", 0.3), "motion": "la mascotte lève les bras"})
+    # Bouton d'abonnement sous la question ; texte réduit s'il ne tient pas au-dessus des sous-titres
+    size = SUBSCRIBE_SIZE
+    while size > 52 and y + 12 + _text_height(1, size, k) > f.bottom:
+        size -= 4
+    tw = tpl.text_width(SUBSCRIBE, size, f.width)
+    pad_x, pad_y = 30, 12
+    th = size / k * 1.25
+    bw = min(width, tw + 2 * pad_x)
+    layers.append({"type": "box", "role": "decor", "id": "bouton", "x": f.left * k, "y": y * k,
+                   "w": bw * k, "h": (th + 2 * pad_y) * k, "fill": tpl.GOLD, "outline": tpl.INK, "lineWidth": 4,
+                   "from": 1.3, "keys": [{"t": 1.3, "alpha": 0}, {"t": 1.5, "alpha": 1}]})
+    layers.append(tpl.text("abonne", SUBSCRIBE, f.left + pad_x, y + pad_y, size, f, color=tpl.INK, start=1.4,
+                           w_px=bw - pad_x, sfx=tpl._sfx(1.4, "pop.wav", 0.3)))
+    return layers
 
 
 def make_scene(layers: list[dict], duration: float, cfg: dict | None = None) -> Scene:
@@ -317,12 +412,7 @@ def scene_layers(concept: str, params: dict, scene: dict, duration: float, *, hy
     if concept in GENERIC and template in ("deux_arbres", "deux_courbes", "barres", "personnages"):
         return _generic_layers(concept, params, c, template, variant, duration, hypothesis)
     if role == "cta":
-        layers = tpl.end_card(resolve=resolve, name=NAME, baseline=PROMISE, question=question, duration=duration)
-        f = tpl.Frame()
-        y = f.top + 20 + 230 + 20 + 95 + 90 + (210 if question else 0)
-        layers.append(tpl.text("abonne", SUBSCRIBE, f.left, y, 64, f, color=tpl.TURQUOISE, start=1.4,
-                               w_px=f.right - f.left))
-        return layers
+        return cta_layers(question, duration)
     if template == "carte_fin":
         return tpl.end_card(resolve=resolve, name=NAME, baseline=BASELINE, hypothesis=hypothesis, mention=MENTION,
                             duration=duration)

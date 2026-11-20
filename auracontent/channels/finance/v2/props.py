@@ -167,6 +167,24 @@ def burst(seed: str = "burst", color: str = GOLD) -> Image.Image:
     return img
 
 
+BURST_WIDE = (960, 540)
+
+
+def burst_wide(seed: str = "burst-wide", color: str = GOLD) -> Image.Image:
+    """Éclat large (ovale) derrière le gros chiffre de l'accroche : un montant comme « 23 245 € » y tient en
+    entier, alors qu'il débordait de l'éclat rond."""
+    w, h = BURST_WIDE
+    img, d = _canvas(w, h)
+    cx, cy, n = w / 2, h / 2, 30
+    pts = []
+    for k in range(n):
+        rx, ry = (470, 262) if k % 2 == 0 else (400, 214)
+        a = math.pi * 2 * k / n
+        pts.append((cx + rx * math.cos(a), cy + ry * math.sin(a)))
+    _poly(d, pts, seed, fill=color, width=6)
+    return img
+
+
 def cup(seed: str = "cup") -> Image.Image:
     """Tasse de café fumante."""
     img, d = _canvas(260, 260)
@@ -231,6 +249,7 @@ BUILDERS = {
     "phone": lambda: phone(),
     "piggy": lambda: piggy(),
     "burst": lambda: burst(),
+    "burst-wide": lambda: burst_wide(),
     "cup": lambda: cup(),
     "card": lambda: card(),
     "car": lambda: car(),

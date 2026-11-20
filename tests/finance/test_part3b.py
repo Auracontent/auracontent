@@ -297,7 +297,7 @@ def test_describe_uses_the_situation():
                                      "credit_amortissable", "decouvert_agios", "forfait_appareil", "carte_fidelite",
                                      "epargne_age", "salaire_vs_prix", "taux_reel", "leasing_epargne"])
 def test_each_daily_concept_has_a_valid_hook_example(concept):
-    from tests.test_finance_part3a import NEW
+    from tests.finance.test_part3a import NEW
 
     raw = NEW.get(concept, {"monthly": 300, "years": 4, "rate": 3})
     brain = _daily(concept, raw)

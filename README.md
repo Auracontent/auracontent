@@ -119,7 +119,7 @@ auracontent_v2/
 ├── docs/               # archive_shorts.md : the director's method
 ├── episodes/archive/   # one folder per directed short (plan.json, stills.jpg, credits)
 ├── scripts/            # standalone helpers (e.g. render_scene.py)
-├── tests/
+├── tests/              # one folder per channel (finance/, mystery/) + shared tests at the root
 ├── .github/workflows/  # generation, publishing, tests, release
 ├── init.sh             # Onyxia service bootstrap
 ├── packages.txt        # system packages (ffmpeg, fonts)

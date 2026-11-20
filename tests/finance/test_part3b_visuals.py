@@ -6,7 +6,8 @@ import pytest
 from auracontent.channels.finance import calc as fcalc
 from auracontent.channels.finance import visuals
 from auracontent.services.visuals.linework import templates as tpl
-from tests.test_finance_part3a import NEW
+
+from tests.finance.test_part3a import NEW
 
 PARAMS = {**NEW, "leasing_epargne": {"monthly": 300, "years": 4, "rate": 3}}
 SCENES = {"deux_montants": {"role": "reveal", "template": "deux_arbres", "visual": "piles"},

@@ -27,6 +27,8 @@ from .director import Shot
 INK, T, GOLD, GRAY = props.INK, props.TURQUOISE, props.GOLD, props.GRAY
 S = 1280 / 1080
 REVEAL_ROLES = ("reveal", "example")
+HOOK_BURST_W, HOOK_BURST_Y = 860, 560        # éclat de l'accroche (pixels de sortie) : x 110..970, y 560..1044
+HOOK_NUMBER_MAX_W = 640                      # largeur du gros chiffre : tient dans l'ovale intérieur de l'éclat
 
 
 def d(px: float) -> float:
@@ -93,8 +95,12 @@ def hook_layers(items: list[tpl.Item], icons: list[str], duration: float, c: fca
         best = tpl.Item(v.label, v.value, v.text, T, "")
     t_num = 0.0                      # le résultat est visible dès la première image (rétention des 2 premières s)
     start = [{"t": 0, "alpha": 1, "scaleX": 0.8, "scaleY": 0.8}, {"t": 0.45, "scaleX": 1, "scaleY": 1, "ease": "back"}]
-    L = [{"type": "image", "id": "eclat", "role": "decor", "path": props.ensure("burst", Path(icons[0]).parent),
-          "x": d(205), "y": d(600), "w": d(560), "from": 0, "keys": start}]
+    # Éclat ovale centré, assez large pour le chiffre entier (l'éclat rond de 560 px laissait déborder
+    # « 23 » et « € ») ; il grossit depuis son centre. Bas de l'éclat à y = 560 + 484 = 1044.
+    bw, bx, by = HOOK_BURST_W, (1080 - HOOK_BURST_W) / 2, HOOK_BURST_Y
+    bh = bw * props.BURST_WIDE[1] / props.BURST_WIDE[0]
+    L = [{"type": "image", "id": "eclat", "role": "decor", "path": props.ensure("burst-wide", Path(icons[0]).parent),
+          "x": d(bx), "y": d(by), "w": d(bw), "pivotX": d(bw / 2), "pivotY": d(bh / 2), "from": 0, "keys": start}]
     n = len(icons)
     for i, p in enumerate(icons):
         x = 120 + i * (640 / max(1, n - 1)) if n > 1 else 400
@@ -102,15 +108,24 @@ def hook_layers(items: list[tpl.Item], icons: list[str], duration: float, c: fca
                   "keys": [{"t": 0.05 + i * 0.18, "y": d(470), "alpha": 0}, {"t": 0.12 + i * 0.18, "alpha": 1},
                            {"t": 0.7 + i * 0.18, "y": d(480 + (i % 2) * 20), "ease": "bounce"}],
                   "sfx": [{"at": 0.6 + i * 0.18, "file": "pop.wav", "gain": 0.28}]})
-    size = 170                                   # gros chiffre sur une ligne (mesuré en Poppins, sa police)
-    while size > 90 and props._font(size, "ui").getlength(value_text(best)) > 740:
+    # Gros chiffre sur une ligne, centré dans l'ovale intérieur de l'éclat (mesuré en Poppins, sa police)
+    shown_value = value_text(best)
+    size = 170
+    while size > 90 and props._font(size, "ui").getlength(shown_value) > HOOK_NUMBER_MAX_W:
         size -= 10
-    L.append({"type": "text", "id": "chiffre", "role": "value", "text": value_text(best), "font": "ui", "size": d(size),
-              "x": d(130), "y": d(780), "w": d(790), "color": INK, "from": 0, "keys": list(start),
-              "sfx": [{"at": 0.05, "file": "chime.wav", "gain": 0.4}]})
-    L.append({"type": "text", "id": "libelle", "role": "text", "text": best.label, "font": "hand", "size": d(84),
-              "x": d(140), "y": d(1040), "w": d(780), "color": INK, "from": 0,
-              "keys": [{"t": 0, "alpha": 0.6}, {"t": 0.35, "alpha": 1}]})
+    tw = props._font(size, "ui").getlength(shown_value)
+    ny = by + bh / 2 - 0.66 * size                # centre visuel des chiffres sur le centre de l'éclat
+    L.append({"type": "text", "id": "chiffre", "role": "value", "text": shown_value, "font": "ui", "size": d(size),
+              "x": d(540 - tw / 2), "y": d(ny), "w": d(tw + 40), "pivotX": d(tw / 2), "pivotY": d(0.66 * size),
+              "color": INK, "from": 0, "keys": list(start), "sfx": [{"at": 0.05, "file": "chime.wav", "gain": 0.4}]})
+    # Libellé sous l'éclat (il passait sur ses pointes), centré ; plus petit s'il tient sur deux lignes
+    # Centré sous le chiffre quand il tient, toujours dans la zone sûre x 70..910 (droite masquée par l'interface)
+    label_size = 84 if tpl.lines_of(best.label, d(84), 820) <= 1 else 64
+    lw = min(820.0, props._font(label_size, "hand").getlength(best.label))
+    lx = max(70.0, min(540 - lw / 2, 910 - lw - 20))
+    L.append({"type": "text", "id": "libelle", "role": "text", "text": best.label, "font": "hand",
+              "size": d(label_size), "x": d(lx), "y": d(by + bh + 14), "w": d(lw + 20), "color": INK,
+              "from": 0, "keys": [{"t": 0, "alpha": 0.6}, {"t": 0.35, "alpha": 1}]})
     return L, t_num
 
 
@@ -158,10 +173,17 @@ def tag_layers(items: list[tpl.Item], words: list[captions.Word], duration: floa
 
 
 # ---------- Personnages : objets du sujet autour ----------
-def with_icons(layers: list[dict], icons: list[str], duration: float) -> list[dict]:
+def with_icons(layers: list[dict], icons: list[str], duration: float,
+               words: list[captions.Word] | None = None) -> list[dict]:
+    """Objets du sujet autour du personnage. Avec `words` (minutage de la voix de la scène), chaque objet
+    apparaît pendant que la voix parle, réparti sur la phrase ; sans eux, instants fixes (comportement d'origine)."""
     out = list(layers)
-    for i, p in enumerate(icons[:3]):
+    shown = icons[:3]
+    for i, p in enumerate(shown):
         t = 0.5 + i * 0.3
+        if words:
+            k = min(len(words) - 1, int((i + 1) * len(words) / (len(shown) + 1)))
+            t = min(max(0.3, words[k].start), max(0.3, duration - 0.9))
         y = 640 + i * 170
         out.append({"type": "image", "id": f"objet-{i}", "role": "prop", "path": p, "x": d(760), "y": d(y), "w": d(140),
                     "from": t, "keys": _pop(t, "back", 0.35) + [{"t": t + 0.35, "angle": 0},
@@ -172,13 +194,36 @@ def with_icons(layers: list[dict], icons: list[str], duration: float) -> list[di
 
 
 # ---------- Caméra ----------
-def camera(role: str, duration: float, focus_t: float | None, focus_y: float = 860) -> list[dict]:
-    if role in REVEAL_ROLES and focus_t is not None:
-        return [{"t": 0, "zoom": 1.0}, {"t": focus_t, "zoom": 1.0},
-                {"t": min(duration, focus_t + 0.5), "zoom": 1.1, "cx": 500, "cy": focus_y, "ease": "back"}]
+def _scene_index(scene: dict) -> int:
+    """Rang de la scène (pour alterner le sens de la dérive de caméra) ; 0 si l'identifiant n'est pas un entier."""
+    try:
+        return int(scene.get("id", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def camera(role: str, duration: float, focus_t: float | None, focus_y: float = 860, index: int = 0) -> list[dict]:
+    """Caméra d'une scène. Reste dans la zone sûre : au plus 1,10 de zoom, et un centre horizontal qui garde la
+    zone sûre x 60..930 (layout.Zones) entièrement visible (le cadrage est appliqué après le contrôle de mise en page).
+    - accroche : coup de zoom net sur le gros chiffre (1,0 -> 1,06), puis lente avancée ;
+    - révélation : élan sur le chiffre clé au moment où la voix le dit, puis léger retour (rebond) ;
+    - autres scènes : travelling lent dont le sens alterne d'une scène à l'autre ;
+    - question finale et mention : plan fixe."""
     if role in ("disclaimer", "cta"):
         return []
-    return [{"t": 0, "zoom": 1.0}, {"t": duration, "zoom": 1.04, "cx": 500, "cy": 860, "ease": "linear"}]
+    even = index % 2 == 0
+    if role == "hook" and duration > 0.6:
+        return [{"t": 0, "zoom": 1.0}, {"t": 0.45, "zoom": 1.06, "cx": 540, "cy": 900, "ease": "back"},
+                {"t": duration, "zoom": 1.08, "cx": 540, "cy": 900, "ease": "linear"}]
+    if role in REVEAL_ROLES and focus_t is not None:
+        keys = [{"t": 0, "zoom": 1.0}, {"t": focus_t, "zoom": 1.0},
+                {"t": min(duration, focus_t + 0.5), "zoom": 1.1, "cx": 500 if even else 540, "cy": focus_y,
+                 "ease": "back"}]
+        if focus_t + 1.2 < duration - 0.05:
+            keys.append({"t": focus_t + 1.2, "zoom": 1.07, "ease": "smooth"})   # rebond : léger retour après l'élan
+        return keys
+    return [{"t": 0, "zoom": 1.0},
+            {"t": duration, "zoom": 1.04, "cx": 500 if even else 560, "cy": 860 if even else 960, "ease": "linear"}]
 
 
 # ---------- Une scène ----------
@@ -201,12 +246,13 @@ def scene_shot(concept: str, params: dict, scene: dict, duration: float, *, hypo
                 layers, focus = tag_layers(items, words, duration, pdir, hypothesis, c)
     elif template == "personnages":
         base = fvis.scene_layers(concept, params, scene, duration, hypothesis=hypothesis, question=question)
-        layers = with_icons(base, icons, duration)
+        layers = with_icons(base, icons, duration, words)
+    idx = _scene_index(scene)
     if layers is None:
         base = fvis.scene_layers(concept, params, scene, duration, hypothesis=hypothesis, question=question)
         focus = duration * 0.55 if role in REVEAL_ROLES else None
-        return Shot(base, duration, camera(role, duration, focus)), "v1"
-    return Shot(layers, duration, camera(role, duration, focus)), "v2"
+        return Shot(base, duration, camera(role, duration, focus, index=idx)), "v1"
+    return Shot(layers, duration, camera(role, duration, focus, index=idx)), "v2"
 
 
 def _scene_kwargs(cfg: dict) -> dict:
@@ -235,7 +281,8 @@ def render_scenes(script: dict, scenes: list[dict], work_dir: Path, cfg: dict | 
             except LayoutError as e:
                 print(f"     ↩️ Scène {scene['id']} : mise en page V2 refusée ({str(e)[:160]}), rendu actuel utilisé")
                 base = fvis.scene_layers(concept, params, scene, duration, hypothesis=hyp, question=question)
-                shot, engine = Shot(base, duration, camera(scene.get("role"), duration, None)), "v1"
+                shot, engine = Shot(base, duration, camera(scene.get("role"), duration, None,
+                                                           index=_scene_index(scene))), "v1"
         if engine == "v1":
             check_layout(Scene(layers=shot.layers, duration=duration, **kwargs), zones)
         scene["sfx_cues"] = tpl.cues(shot.layers, duration - 0.25)
