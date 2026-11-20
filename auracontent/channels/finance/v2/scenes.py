@@ -27,6 +27,8 @@ from .director import Shot
 INK, T, GOLD, GRAY = props.INK, props.TURQUOISE, props.GOLD, props.GRAY
 S = 1280 / 1080
 REVEAL_ROLES = ("reveal", "example")
+HOOK_BURST_W, HOOK_BURST_Y = 860, 560        # éclat de l'accroche (pixels de sortie) : x 110..970, y 560..1044
+HOOK_NUMBER_MAX_W = 640                      # largeur du gros chiffre : tient dans l'ovale intérieur de l'éclat
 
 
 def d(px: float) -> float:
@@ -93,8 +95,12 @@ def hook_layers(items: list[tpl.Item], icons: list[str], duration: float, c: fca
         best = tpl.Item(v.label, v.value, v.text, T, "")
     t_num = 0.0                      # le résultat est visible dès la première image (rétention des 2 premières s)
     start = [{"t": 0, "alpha": 1, "scaleX": 0.8, "scaleY": 0.8}, {"t": 0.45, "scaleX": 1, "scaleY": 1, "ease": "back"}]
-    L = [{"type": "image", "id": "eclat", "role": "decor", "path": props.ensure("burst", Path(icons[0]).parent),
-          "x": d(205), "y": d(600), "w": d(560), "from": 0, "keys": start}]
+    # Éclat ovale centré, assez large pour le chiffre entier (l'éclat rond de 560 px laissait déborder
+    # « 23 » et « € ») ; il grossit depuis son centre. Bas de l'éclat à y = 560 + 484 = 1044.
+    bw, bx, by = HOOK_BURST_W, (1080 - HOOK_BURST_W) / 2, HOOK_BURST_Y
+    bh = bw * props.BURST_WIDE[1] / props.BURST_WIDE[0]
+    L = [{"type": "image", "id": "eclat", "role": "decor", "path": props.ensure("burst-wide", Path(icons[0]).parent),
+          "x": d(bx), "y": d(by), "w": d(bw), "pivotX": d(bw / 2), "pivotY": d(bh / 2), "from": 0, "keys": start}]
     n = len(icons)
     for i, p in enumerate(icons):
         x = 120 + i * (640 / max(1, n - 1)) if n > 1 else 400
@@ -102,15 +108,24 @@ def hook_layers(items: list[tpl.Item], icons: list[str], duration: float, c: fca
                   "keys": [{"t": 0.05 + i * 0.18, "y": d(470), "alpha": 0}, {"t": 0.12 + i * 0.18, "alpha": 1},
                            {"t": 0.7 + i * 0.18, "y": d(480 + (i % 2) * 20), "ease": "bounce"}],
                   "sfx": [{"at": 0.6 + i * 0.18, "file": "pop.wav", "gain": 0.28}]})
-    size = 170                                   # gros chiffre sur une ligne (mesuré en Poppins, sa police)
-    while size > 90 and props._font(size, "ui").getlength(value_text(best)) > 740:
+    # Gros chiffre sur une ligne, centré dans l'ovale intérieur de l'éclat (mesuré en Poppins, sa police)
+    shown_value = value_text(best)
+    size = 170
+    while size > 90 and props._font(size, "ui").getlength(shown_value) > HOOK_NUMBER_MAX_W:
         size -= 10
-    L.append({"type": "text", "id": "chiffre", "role": "value", "text": value_text(best), "font": "ui", "size": d(size),
-              "x": d(130), "y": d(780), "w": d(790), "color": INK, "from": 0, "keys": list(start),
-              "sfx": [{"at": 0.05, "file": "chime.wav", "gain": 0.4}]})
-    L.append({"type": "text", "id": "libelle", "role": "text", "text": best.label, "font": "hand", "size": d(84),
-              "x": d(140), "y": d(1040), "w": d(780), "color": INK, "from": 0,
-              "keys": [{"t": 0, "alpha": 0.6}, {"t": 0.35, "alpha": 1}]})
+    tw = props._font(size, "ui").getlength(shown_value)
+    ny = by + bh / 2 - 0.66 * size                # centre visuel des chiffres sur le centre de l'éclat
+    L.append({"type": "text", "id": "chiffre", "role": "value", "text": shown_value, "font": "ui", "size": d(size),
+              "x": d(540 - tw / 2), "y": d(ny), "w": d(tw + 40), "pivotX": d(tw / 2), "pivotY": d(0.66 * size),
+              "color": INK, "from": 0, "keys": list(start), "sfx": [{"at": 0.05, "file": "chime.wav", "gain": 0.4}]})
+    # Libellé sous l'éclat (il passait sur ses pointes), centré ; plus petit s'il tient sur deux lignes
+    # Centré sous le chiffre quand il tient, toujours dans la zone sûre x 70..910 (droite masquée par l'interface)
+    label_size = 84 if tpl.lines_of(best.label, d(84), 820) <= 1 else 64
+    lw = min(820.0, props._font(label_size, "hand").getlength(best.label))
+    lx = max(70.0, min(540 - lw / 2, 910 - lw - 20))
+    L.append({"type": "text", "id": "libelle", "role": "text", "text": best.label, "font": "hand",
+              "size": d(label_size), "x": d(lx), "y": d(by + bh + 14), "w": d(lw + 20), "color": INK,
+              "from": 0, "keys": [{"t": 0, "alpha": 0.6}, {"t": 0.35, "alpha": 1}]})
     return L, t_num
 
 

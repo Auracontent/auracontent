@@ -389,3 +389,75 @@ def test_objets_restent_dans_la_scene_courte():
     out = scenes.with_icons([], ["a.png", "b.png", "c.png"], 2.0, words)
     assert all(layer["from"] <= 2.0 - 0.9 + 1e-9 for layer in out)
 
+
+
+# ---------- Accroche lisible et carte de fin qui pousse à s'abonner ----------
+def _hook(concept, tmp_path):
+    p = _params(concept)
+    sc = {"id": 1, "role": "hook", "template": "barres", "visual": "jauge", "text": "x"}
+    shot, engine = scenes.scene_shot(concept, p, sc, 3.0, hypothesis="h", question="", pdir=tmp_path)
+    assert engine == "v2"
+    return {lay["id"]: lay for lay in shot.layers if lay.get("id")}
+
+
+@pytest.mark.parametrize("concept", ["inflation", "abonnements", "credit_amortissable", "interets_composes"])
+def test_accroche_chiffre_dans_l_eclat_et_libelle_dessous(concept, tmp_path):
+    by_id = _hook(concept, tmp_path)
+    eclat, chiffre, libelle = by_id["eclat"], by_id["chiffre"], by_id["libelle"]
+    size = chiffre["size"] / scenes.S
+    width = props._font(round(size), "ui").getlength(chiffre["text"])
+    x0 = chiffre["x"] / scenes.S
+    assert width <= scenes.HOOK_NUMBER_MAX_W + 1                     # tient dans l'ovale intérieur
+    assert abs((x0 + width / 2) - 540) < 2                           # centré sur l'éclat
+    bottom = (eclat["y"] + eclat["w"] * props.BURST_WIDE[1] / props.BURST_WIDE[0]) / scenes.S
+    assert libelle["y"] / scenes.S > bottom                          # libellé sous l'éclat, plus sur ses pointes
+
+
+def test_eclat_large_dessine():
+    img = props.burst_wide()
+    assert img.size == props.BURST_WIDE and img.getbbox() is not None
+
+
+def _cta(question="Pourquoi ce chiffre baisse-t-il ?"):
+    from auracontent.channels.finance import visuals as fvis
+    return fvis, fvis.scene_layers("inflation", _params("inflation"), {"role": "cta", "template": "carte_fin"}, 4.0,
+                                   question=question)
+
+
+def test_carte_de_fin_mascotte_et_bouton_abonnement():
+    fvis, layers = _cta()
+    by_id = {lay["id"]: lay for lay in layers if lay.get("id")}
+    assert by_id["mascotte"]["path"] == fvis.MASCOT_END and by_id["mascotte"]["role"] == "character"
+    assert by_id["bouton"]["type"] == "box" and by_id["abonne"]["text"] == fvis.SUBSCRIBE
+    assert by_id["bouton"]["from"] < by_id["abonne"]["from"]            # le bouton apparaît sous le texte
+
+
+@pytest.mark.parametrize("question", ["Pourquoi ce chiffre baisse-t-il ?",
+                                      "Pourquoi ton argent achète-t-il moins chaque année sans que tu le voies ?", ""])
+def test_carte_de_fin_passe_le_controle_de_mise_en_page(question):
+    from auracontent.services.visuals.linework.layout import Zones, check_layout
+    fvis, layers = _cta(question)
+    zones = Zones.from_config({"safe": [60, 200, 930, 1440],
+                               "reserved": {"bandeau": [0, 200, 1080, 470], "sous-titres": [0, 1240, 1080, 1440]}})
+    check_layout(fvis.make_scene(layers, 4.0), zones)                  # lève LayoutError en cas de problème
+
+
+def test_carte_de_fin_sans_mascotte_dans_les_assets(monkeypatch, tmp_path):
+    from auracontent.channels.finance import visuals as fvis
+    monkeypatch.setattr(fvis, "ASSETS", tmp_path)                       # mascotte absente : carte sans elle
+    layers = fvis.cta_layers("Et toi ?", 4.0)
+    ids = {lay.get("id") for lay in layers}
+    assert "mascotte" not in ids and "abonne" in ids
+
+
+def test_mascotte_se_balance_jusqu_a_la_fin_de_la_carte():
+    from auracontent.channels.finance import visuals as fvis
+    from auracontent.services.visuals.linework.engine import key_state
+    keys = fvis.mascot_keys(0.6, 4.0)
+    for prop in ("angle", "scaleX", "scaleY", "alpha"):                # images clés croissantes, propriété par propriété
+        ts = [k["t"] for k in keys if prop in k]
+        assert ts == sorted(ts) and len(set(ts)) == len(ts)
+    angles = [key_state({"keys": keys}, t / 20).get("angle", 0) for t in range(22, 80)]
+    assert max(angles) > 0.03 and min(angles) < -0.03                   # elle bouge des deux côtés
+    assert max(abs(a) for a in angles) <= fvis.MASCOT_SWAY + 1e-9       # sans dépasser ~3°
+    assert all(k["t"] <= 4.0 for k in keys)
