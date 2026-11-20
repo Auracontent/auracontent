@@ -1,0 +1,442 @@
+{
+ "slug": "pont-avignon-sous-le-pont",
+ "title": "Sur le pont d'Avignon, on n'y danse pas : il s'arrête en plein Rhône",
+ "caption": "Il fait moins de cinq mètres de large et s'arrête au milieu du fleuve. Le vrai pont d'Avignon n'a jamais été fait pour danser. #histoire #france #avignon #pontdavignon #patrimoine",
+ "sources": [
+  "https://fr.wikipedia.org/wiki/Pont_Saint-B%C3%A9n%C3%A9zet",
+  "https://en.wikipedia.org/wiki/Pont_Saint-B%C3%A9n%C3%A9zet",
+  "https://fr.wikipedia.org/wiki/Sur_le_pont_d%27Avignon",
+  "https://provence-alpes-cotedazur.com/que-faire/culture-et-patrimoine/monuments/pont-saint-benezet/"
+ ],
+ "voice": {
+  "name": "Charon",
+  "style": "French documentary narrator, wry and quietly amused at first, then graver as the bridge is destroyed. Slow down on 'quatre arches'; a real silence before 'Sauf que'; last line light, almost a smile.",
+  "pause": 0.35
+ },
+ "lines": [
+  {
+   "text": "Tout le monde chante qu'on y danse, sur le pont d'Avignon.",
+   "pause": 0.5
+  },
+  {
+   "text": "Pourtant, il fait moins de cinq mètres de large.",
+   "pause": 0.35
+  },
+  {
+   "text": "Deux charrettes ne peuvent même pas s'y croiser.",
+   "pause": 0.4
+  },
+  {
+   "text": "On raconte qu'en 1177, un jeune berger, Bénézet, reçoit l'ordre de le bâtir.",
+   "pause": 0.4
+  },
+  {
+   "text": "Huit ans plus tard, 22 arches enjambent le Rhône, sur près de 900 mètres.",
+   "say": "Huit ans plus tard, vingt-deux arches enjambent le Rhône, sur près de neuf cents mètres.",
+   "pause": 0.4
+  },
+  {
+   "text": "Entre les terres du pape et le royaume de France, il devient un passage obligé.",
+   "pause": 0.5
+  },
+  {
+   "text": "Mais le Rhône ne pardonne pas.",
+   "pause": 0.4
+  },
+  {
+   "text": "Crue après crue, les arches s'effondrent.",
+   "pause": 0.5
+  },
+  {
+   "text": "En 1669, une dernière crue emporte presque tout.",
+   "pause": 0.6
+  },
+  {
+   "text": "Il n'en reste que quatre arches.",
+   "pause": 0.4
+  },
+  {
+   "text": "Le pont s'arrête au milieu du fleuve.",
+   "pause": 0.8,
+   "direction": "Slow, grave, almost sad."
+  },
+  {
+   "text": "Sauf que…",
+   "pause": 0.8
+  },
+  {
+   "text": "À l'origine, on dansait sur les berges, donc sous le pont.",
+   "pause": 0.45
+  },
+  {
+   "text": "En 1853, un opéra-comique d'Adolphe Adam fait de la chanson un succès.",
+   "pause": 0.5
+  },
+  {
+   "text": "Le pont s'est arrêté.",
+   "pause": 0.5
+  },
+  {
+   "text": "La chanson, non.",
+   "pause": 0.5,
+   "direction": "Light, almost a smile, final."
+  }
+ ],
+ "keywords": [
+  "pont",
+  "avignon",
+  "bénézet",
+  "rhône",
+  "crue",
+  "arches",
+  "quatre",
+  "berges",
+  "sous",
+  "adam",
+  "chanson",
+  "danse"
+ ],
+ "hook": [
+  "SUR LE PONT D'AVIGNON",
+  "ON N'Y DANSE PAS…",
+  "IL S'ARRÊTE EN PLEIN RHÔNE"
+ ],
+ "header": "LE PONT D'AVIGNON · 1185",
+ "end_title": "LE PONT D'AVIGNON",
+ "images": {
+  "mellan": "File:Bénézet Gravure Ph Mellan 1664 Bibliothèque nationale.jpg",
+  "hog": "File:Braun Hogenberg Avignon 1575 crop bridge.jpg",
+  "silv": "File:Silvestre 1660 Tour Phillipe-le-Bel.jpg",
+  "vld": "File:Pont.Avignon.png",
+  "pc98": "File:Flickr - …trialsanderrors - Pont Saint-Bénezet, Avignon, Provence, France, ca. 1898.jpg",
+  "btv": "File:Avignon, pont Saint-Bénezet - btv1b69269842.jpg",
+  "v1880": "File:Avignon vers 1880.jpg",
+  "loon": "File:Avenio vulgo Avignon (Atlas van Loon).jpg"
+ },
+ "shots": [
+  {
+   "from": 0,
+   "to": "L1",
+   "image": "pc98",
+   "keys": [
+    [
+     0,
+     0.55,
+     0.55,
+     0.8
+    ],
+    [
+     1,
+     0.7,
+     0.55,
+     0.45
+    ]
+   ]
+  },
+  {
+   "from": "L1",
+   "to": "L2",
+   "image": "btv",
+   "keys": [
+    [
+     0,
+     0.55,
+     0.45,
+     0.9
+    ],
+    [
+     1,
+     0.75,
+     0.3,
+     0.45
+    ]
+   ]
+  },
+  {
+   "from": "L2",
+   "to": "L3",
+   "image": "vld",
+   "keys": [
+    [
+     0,
+     0.4,
+     0.85,
+     0.5
+    ],
+    [
+     1,
+     0.6,
+     0.2,
+     0.45
+    ]
+   ]
+  },
+  {
+   "from": "L3",
+   "to": "L4",
+   "image": "mellan",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.4,
+     1.0
+    ],
+    [
+     1,
+     0.47,
+     0.3,
+     0.6
+    ]
+   ],
+   "fx": {
+    "gray": 1
+   }
+  },
+  {
+   "from": "L4",
+   "to": "L5",
+   "image": "hog",
+   "keys": [
+    [
+     0,
+     0.3,
+     0.5,
+     0.8
+    ],
+    [
+     1,
+     0.7,
+     0.5,
+     0.8
+    ]
+   ]
+  },
+  {
+   "from": "L5",
+   "to": "L6",
+   "image": "loon",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     1.0
+    ],
+    [
+     1,
+     0.2,
+     0.2,
+     0.45
+    ]
+   ]
+  },
+  {
+   "from": "L6",
+   "to": "L8",
+   "image": "silv",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     1.0
+    ],
+    [
+     1,
+     0.8,
+     0.65,
+     0.5
+    ]
+   ],
+   "fx": {
+    "dark": 0.2
+   }
+  },
+  {
+   "from": "L8",
+   "to": "L9",
+   "type": "fog"
+  },
+  {
+   "from": "L9",
+   "to": "L11",
+   "image": "pc98",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.55,
+     0.8
+    ],
+    [
+     1,
+     0.85,
+     0.55,
+     0.4
+    ]
+   ],
+   "fx": {
+    "shake": 0.3
+   }
+  },
+  {
+   "from": "L11",
+   "to": "L12",
+   "image": "v1880",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     1.0
+    ],
+    [
+     1,
+     0.5,
+     0.4,
+     0.6
+    ]
+   ],
+   "fx": {
+    "gray": 1
+   }
+  },
+  {
+   "from": "L12",
+   "to": "L13",
+   "image": "btv",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.7,
+     0.7
+    ],
+    [
+     1,
+     0.45,
+     0.85,
+     0.4
+    ]
+   ]
+  },
+  {
+   "from": "L13",
+   "to": "L14",
+   "image": "hog",
+   "keys": [
+    [
+     0,
+     0.85,
+     0.4,
+     0.5
+    ],
+    [
+     1,
+     0.2,
+     0.45,
+     0.6
+    ]
+   ]
+  },
+  {
+   "from": "L14",
+   "to": "fin",
+   "image": "pc98",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.55,
+     0.5
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     1.0
+    ]
+   ]
+  }
+ ],
+ "stamps": [
+  {
+   "text": "4 ARCHES",
+   "at": "w:quatre@L9",
+   "until": "L11",
+   "size": 130,
+   "y": 900
+  }
+ ],
+ "labels": [
+  {
+   "text": "AVIGNON · 1177-1185",
+   "from": "L3",
+   "to": "L4"
+  },
+  {
+   "text": "22 ARCHES · 900 M",
+   "from": "L4",
+   "to": "L5"
+  },
+  {
+   "text": "CRUE DE 1669",
+   "from": "L8",
+   "to": "L9"
+  }
+ ],
+ "flash": [
+  "L11"
+ ],
+ "music": {
+  "sections": [
+   [
+    0,
+    "L11",
+    "Am",
+    4.5
+   ],
+   [
+    "L11",
+    "fin",
+    "Dmaj",
+    3.5
+   ]
+  ],
+  "pulse": [
+   [
+    "L6",
+    "L11",
+    0.9,
+    33
+   ]
+  ],
+  "rise": [
+   [
+    "L6",
+    "L11"
+   ]
+  ],
+  "drone": [
+   [
+    0,
+    "L2"
+   ],
+   [
+    "L9",
+    "L11+1"
+   ]
+  ],
+  "hits": [
+   [
+    "L11-0.03",
+    0.9
+   ],
+   [
+    "w:quatre@L9",
+    0.6
+   ]
+  ]
+ }
+}
