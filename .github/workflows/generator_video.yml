@@ -69,6 +69,7 @@ jobs:
       VIDEO_DURATION: ${{ github.event.inputs.duration || '45' }}
       REFINE_ANGLE: ${{ github.event.inputs.refine_angle || 'true' }}
       USE_HOOK_VARIANTS: ${{ github.event.inputs.use_hook_variants || 'true' }}
+      MYSTERY_MODE: ${{ vars.MYSTERY_MODE }}   # `archive` : mystery est réalisé par director.yml (shorts d'archives)
 
     steps:
       - name: 📥 Cloner le dépôt
@@ -98,7 +99,10 @@ jobs:
       # Génère mystery puis finance (ou uniquement la chaîne demandée)
       - name: 🎬 Générer les vidéos (${{ env.CHANNEL }})
         run: |
-          if [ "$CHANNEL" = "all" ]; then
+          if [ "$CHANNEL" = "all" ] && [ "$MYSTERY_MODE" = "archive" ]; then
+            CHANNELS="finance"   # mystery : director.yml (lancer channel=mystery à la main pour l'ancien mode, en secours)
+            echo "mystery est réalisé par le workflow Réalisateur (MYSTERY_MODE=archive)."
+          elif [ "$CHANNEL" = "all" ]; then
             CHANNELS="mystery finance"
           else
             CHANNELS="$CHANNEL"

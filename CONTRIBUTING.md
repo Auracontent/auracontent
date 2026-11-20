@@ -39,7 +39,7 @@ Thanks for your interest! Bug fixes, new channels, new providers (LLM, TTS, visu
 Run the same checks as CI:
 
 ```bash
-uv run ruff check --select F821,F811,F823 --exclude auracontent/channels/kids/legacy .
+uv run ruff check --select F821,F811,F823 .
 uv run pytest -q
 ```
 

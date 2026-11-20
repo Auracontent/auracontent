@@ -125,16 +125,26 @@ def test_workflow_uses_finance_gemini_key_only_for_finance():
     job = wf["jobs"]["generate"]
     assert job["env"]["GEMINI_API_KEY_FINANCE"] == "${{ secrets.GEMINI_API_KEY_FINANCE }}"
     assert job["env"]["GEMINI_API_KEY"] == "${{ secrets.GEMINI_API_KEY }}"          # mystery inchangée
-    # La clé est choisie dans l'étape de génération, chaîne par chaîne : finance prend SA clé (arrêt si le
-    # secret manque), mystery garde la sienne ; jamais la clé de mystery pour finance.
     generate = next(s for s in job["steps"] if s.get("name", "").startswith("🎬"))
     run = generate["run"]
-    finance_branch = run[run.index('if [ "$CH" = "finance" ]'):run.index("else", run.index('if [ "$CH" = "finance" ]'))]
-    assert '-z "$GEMINI_API_KEY_FINANCE"' in finance_branch and "exit 1" in finance_branch
-    assert 'ACTIVE_GEMINI="$GEMINI_API_KEY_FINANCE"' in finance_branch
-    assert 'GEMINI_API_KEY="$ACTIVE_GEMINI"' in run
-    assert "--upload --sync-state" in run                                 # Hugging Face, pas de publication
+    assert 'ACTIVE_GEMINI="$GEMINI_API_KEY_FINANCE"' in run and 'GEMINI_API_KEY="$ACTIVE_GEMINI"' in run
+    assert "GEMINI_API_KEY_FINANCE absent" in run and "exit 1" in run          # jamais de repli sur la clé mystery
+    assert "--upload --sync-state" in run                                      # Hugging Face, pas de publication
     assert not any("publish" in s.get("run", "") for s in job["steps"])
+
+
+def test_archive_mode_hands_mystery_to_the_director():
+    from pathlib import Path
+
+    import yaml
+
+    gen = yaml.safe_load(Path(".github/workflows/generator_video.yml").read_text(encoding="utf-8"))["jobs"]["generate"]
+    run = next(s for s in gen["steps"] if s.get("name", "").startswith("🎬"))["run"]
+    assert gen["env"]["MYSTERY_MODE"] == "${{ vars.MYSTERY_MODE }}"
+    assert '"$MYSTERY_MODE" = "archive"' in run and 'CHANNELS="finance"' in run
+    director = yaml.safe_load(Path(".github/workflows/director.yml").read_text(encoding="utf-8"))
+    assert "trigger-videos" in director[True]["repository_dispatch"]["types"]          # `on:` lu comme True par PyYAML
+    assert "vars.MYSTERY_MODE == 'archive'" in director["jobs"]["direct"]["if"]
 
 
 # ---------- Même voix réessayée 3 fois, jamais une autre ----------
