@@ -158,10 +158,17 @@ def tag_layers(items: list[tpl.Item], words: list[captions.Word], duration: floa
 
 
 # ---------- Personnages : objets du sujet autour ----------
-def with_icons(layers: list[dict], icons: list[str], duration: float) -> list[dict]:
+def with_icons(layers: list[dict], icons: list[str], duration: float,
+               words: list[captions.Word] | None = None) -> list[dict]:
+    """Objets du sujet autour du personnage. Avec `words` (minutage de la voix de la scène), chaque objet
+    apparaît pendant que la voix parle, réparti sur la phrase ; sans eux, instants fixes (comportement d'origine)."""
     out = list(layers)
-    for i, p in enumerate(icons[:3]):
+    shown = icons[:3]
+    for i, p in enumerate(shown):
         t = 0.5 + i * 0.3
+        if words:
+            k = min(len(words) - 1, int((i + 1) * len(words) / (len(shown) + 1)))
+            t = min(max(0.3, words[k].start), max(0.3, duration - 0.9))
         y = 640 + i * 170
         out.append({"type": "image", "id": f"objet-{i}", "role": "prop", "path": p, "x": d(760), "y": d(y), "w": d(140),
                     "from": t, "keys": _pop(t, "back", 0.35) + [{"t": t + 0.35, "angle": 0},
@@ -172,13 +179,36 @@ def with_icons(layers: list[dict], icons: list[str], duration: float) -> list[di
 
 
 # ---------- Caméra ----------
-def camera(role: str, duration: float, focus_t: float | None, focus_y: float = 860) -> list[dict]:
-    if role in REVEAL_ROLES and focus_t is not None:
-        return [{"t": 0, "zoom": 1.0}, {"t": focus_t, "zoom": 1.0},
-                {"t": min(duration, focus_t + 0.5), "zoom": 1.1, "cx": 500, "cy": focus_y, "ease": "back"}]
+def _scene_index(scene: dict) -> int:
+    """Rang de la scène (pour alterner le sens de la dérive de caméra) ; 0 si l'identifiant n'est pas un entier."""
+    try:
+        return int(scene.get("id", 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def camera(role: str, duration: float, focus_t: float | None, focus_y: float = 860, index: int = 0) -> list[dict]:
+    """Caméra d'une scène. Reste dans la zone sûre : au plus 1,10 de zoom, et un centre horizontal qui garde la
+    zone sûre x 60..930 (layout.Zones) entièrement visible (le cadrage est appliqué après le contrôle de mise en page).
+    - accroche : coup de zoom net sur le gros chiffre (1,0 -> 1,06), puis lente avancée ;
+    - révélation : élan sur le chiffre clé au moment où la voix le dit, puis léger retour (rebond) ;
+    - autres scènes : travelling lent dont le sens alterne d'une scène à l'autre ;
+    - question finale et mention : plan fixe."""
     if role in ("disclaimer", "cta"):
         return []
-    return [{"t": 0, "zoom": 1.0}, {"t": duration, "zoom": 1.04, "cx": 500, "cy": 860, "ease": "linear"}]
+    even = index % 2 == 0
+    if role == "hook" and duration > 0.6:
+        return [{"t": 0, "zoom": 1.0}, {"t": 0.45, "zoom": 1.06, "cx": 540, "cy": 900, "ease": "back"},
+                {"t": duration, "zoom": 1.08, "cx": 540, "cy": 900, "ease": "linear"}]
+    if role in REVEAL_ROLES and focus_t is not None:
+        keys = [{"t": 0, "zoom": 1.0}, {"t": focus_t, "zoom": 1.0},
+                {"t": min(duration, focus_t + 0.5), "zoom": 1.1, "cx": 500 if even else 540, "cy": focus_y,
+                 "ease": "back"}]
+        if focus_t + 1.2 < duration - 0.05:
+            keys.append({"t": focus_t + 1.2, "zoom": 1.07, "ease": "smooth"})   # rebond : léger retour après l'élan
+        return keys
+    return [{"t": 0, "zoom": 1.0},
+            {"t": duration, "zoom": 1.04, "cx": 500 if even else 560, "cy": 860 if even else 960, "ease": "linear"}]
 
 
 # ---------- Une scène ----------
@@ -201,12 +231,13 @@ def scene_shot(concept: str, params: dict, scene: dict, duration: float, *, hypo
                 layers, focus = tag_layers(items, words, duration, pdir, hypothesis, c)
     elif template == "personnages":
         base = fvis.scene_layers(concept, params, scene, duration, hypothesis=hypothesis, question=question)
-        layers = with_icons(base, icons, duration)
+        layers = with_icons(base, icons, duration, words)
+    idx = _scene_index(scene)
     if layers is None:
         base = fvis.scene_layers(concept, params, scene, duration, hypothesis=hypothesis, question=question)
         focus = duration * 0.55 if role in REVEAL_ROLES else None
-        return Shot(base, duration, camera(role, duration, focus)), "v1"
-    return Shot(layers, duration, camera(role, duration, focus)), "v2"
+        return Shot(base, duration, camera(role, duration, focus, index=idx)), "v1"
+    return Shot(layers, duration, camera(role, duration, focus, index=idx)), "v2"
 
 
 def _scene_kwargs(cfg: dict) -> dict:
@@ -235,7 +266,8 @@ def render_scenes(script: dict, scenes: list[dict], work_dir: Path, cfg: dict | 
             except LayoutError as e:
                 print(f"     ↩️ Scène {scene['id']} : mise en page V2 refusée ({str(e)[:160]}), rendu actuel utilisé")
                 base = fvis.scene_layers(concept, params, scene, duration, hypothesis=hyp, question=question)
-                shot, engine = Shot(base, duration, camera(scene.get("role"), duration, None)), "v1"
+                shot, engine = Shot(base, duration, camera(scene.get("role"), duration, None,
+                                                           index=_scene_index(scene))), "v1"
         if engine == "v1":
             check_layout(Scene(layers=shot.layers, duration=duration, **kwargs), zones)
         scene["sfx_cues"] = tpl.cues(shot.layers, duration - 0.25)

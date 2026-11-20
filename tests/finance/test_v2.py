@@ -2,7 +2,7 @@
 from pathlib import Path
 
 import pytest
-from auracontent.channels.finance.v2 import captions, director, easing, props
+from auracontent.channels.finance.v2 import captions, director, easing, props, scenes
 from auracontent.channels.finance.v2.director import Shot
 
 
@@ -317,3 +317,75 @@ def test_carte_de_fin_promet_la_suite():
     layers = fvis.scene_layers("abonnements", p, {"role": "cta", "template": "carte_fin"}, 4.0, question="Et toi ?")
     texts = " ".join(str(lay.get("text", "")) for lay in layers)
     assert fvis.PROMISE in texts and fvis.SUBSCRIBE in texts
+
+
+# ---------- Caméra et objets synchronisés sur la voix ----------
+def _crop(keys, t):
+    """Fenêtre horizontale visible (x0, x1) sur 1080 px à l'instant t, comme V2Painter.frame."""
+    zoom, cx, _cy = director.camera_at(keys, t)
+    w = 1080 / zoom
+    x0 = min(max(cx - w / 2, 0), 1080 - w)
+    return x0, x0 + w
+
+
+def test_camera_accroche_coup_de_zoom_puis_avancee():
+    keys = scenes.camera("hook", 3.0, None)
+    assert director.camera_at(keys, 0.0)[0] == pytest.approx(1.0)
+    assert director.camera_at(keys, 0.45)[0] == pytest.approx(1.06)
+    assert director.camera_at(keys, 3.0)[0] == pytest.approx(1.08)
+
+
+def test_camera_plan_fixe_pour_question_finale_et_mention():
+    assert scenes.camera("cta", 3.0, None) == []
+    assert scenes.camera("disclaimer", 3.0, None) == []
+
+
+def test_camera_derive_alterne_d_une_scene_a_l_autre():
+    a = director.camera_at(scenes.camera("explain", 4.0, None, index=0), 4.0)
+    b = director.camera_at(scenes.camera("explain", 4.0, None, index=1), 4.0)
+    assert a[1] != b[1]
+
+
+def test_camera_revelation_elan_puis_rebond():
+    keys = scenes.camera("reveal", 5.0, 1.0)
+    peak = director.camera_at(keys, 1.5)[0]
+    assert peak == pytest.approx(1.1)
+    assert director.camera_at(keys, 4.9)[0] < peak                 # léger retour après l'élan
+    assert director.camera_at(keys, 4.9)[0] > 1.0                  # sans revenir au plan large
+
+
+def test_camera_revelation_courte_sans_rebond_hors_duree():
+    keys = scenes.camera("reveal", 1.4, 1.0)
+    assert all(k["t"] <= 1.4 for k in keys)
+
+
+@pytest.mark.parametrize("role", ["hook", "explain", "reveal", "example", "recap"])
+@pytest.mark.parametrize("index", [0, 1, 2, 3])
+def test_camera_garde_la_marge_gauche_et_le_zoom_borne(role, index):
+    keys = scenes.camera(role, 6.0, 2.0, index=index)
+    for i in range(61):
+        t = i / 10
+        assert director.camera_at(keys, t)[0] <= 1.11            # cible 1,10 ; la courbe « back » dépasse de ~0,3 %
+        x0, x1 = _crop(keys, t)
+        assert x0 <= 60.0 and x1 >= 930.0                          # zone sûre x 60..930 (layout.Zones) toujours visible
+
+
+def test_objets_apparaissent_pendant_la_voix():
+    words = captions.estimate("Léa met de côté une petite somme chaque mois, sans y penser.", 0.15, 5.0)
+    out = scenes.with_icons([], ["a.png", "b.png", "c.png"], 6.0, words)
+    starts = [layer["from"] for layer in out]
+    assert starts == sorted(starts) and len(set(starts)) == 3
+    assert all(0.3 <= t <= 6.0 - 0.9 for t in starts)
+    assert starts[0] >= words[0].start
+
+
+def test_objets_instants_d_origine_sans_minutage():
+    out = scenes.with_icons([], ["a.png", "b.png", "c.png"], 6.0)
+    assert [layer["from"] for layer in out] == pytest.approx([0.5, 0.8, 1.1])
+
+
+def test_objets_restent_dans_la_scene_courte():
+    words = captions.estimate("Cinq ans plus tard, tout change.", 0.15, 1.8)
+    out = scenes.with_icons([], ["a.png", "b.png", "c.png"], 2.0, words)
+    assert all(layer["from"] <= 2.0 - 0.9 + 1e-9 for layer in out)
+
