@@ -86,7 +86,7 @@ class Renderer:
         self.flashes = [tl.t(x) for x in self.plan.get("flash", [])]
         self.hook = self._hook(self.plan["hook"]); self.hook_end = float(self.plan.get("hook_seconds", 3.6))
         self.header = self._header(self.plan.get("header", ""))
-        self.endcard = self._endcard(self.plan.get("end_title", ""), self.plan.get("end_sub", ["LE DOCUMENTAIRE COMPLET", "SUR LA CHAÎNE"]))
+        self.endcard = self._endcard(self.plan.get("end_title", ""), self.plan.get("end_sub", ["ABONNE-TOI", "POUR LA PROCHAINE AFFAIRE"]))
         self.wm = self._watermark()
         self.caps: dict[int, np.ndarray] = {}
         self.maps: dict[int, tuple] = {}

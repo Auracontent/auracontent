@@ -105,7 +105,7 @@ Règles :
 - `"labels"` : noms, lieux, dates (30 caractères au plus), le temps du plan.
 - `"flash"` : flash blanc sur le retournement (`["L5"]`).
 - `"keywords"` : noms propres et mots forts, en jaune dans les sous-titres (les chiffres le sont d'office).
-- `"end_title"` : le nom de l'affaire sur le carton final (« le documentaire complet sur la chaîne »).
+- `"end_title"` : le nom de l'affaire sur le carton final (au-dessus de « abonne-toi pour la prochaine affaire »).
 - Zones sûres de la chaîne : rien d'important au-dessus de y = 200, sous y = 1440 ni à droite de x = 930. Le moteur les respecte
   (filigrane en haut à gauche, sous-titres à y = 1344).
 
