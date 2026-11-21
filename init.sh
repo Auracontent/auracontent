@@ -6,7 +6,7 @@
 set -euo pipefail
 
 REPO_URL="${AURACONTENT_REPO_URL:-}"   # optionnel : URL du dépôt à cloner s'il est absent
-REPO_DIR="${AURACONTENT_DIR:-/home/onyxia/work/auracontent_v2}"
+REPO_DIR="${AURACONTENT_DIR:-/home/onyxia/work/auracontent}"
 DEFAULT_PACKAGES="ffmpeg fonts-dejavu-core"
 
 # 1. Récupérer le dépôt si besoin
@@ -31,11 +31,27 @@ if [ -f "$REPO_DIR/pyproject.toml" ]; then
     uv sync --locked --group default --group media
 fi
 
+# 3b. Installation de Claude Code (CLI + Extension VS Code Server)
+if ! command -v claude &> /dev/null; then
+    echo "🤖 Installation du CLI Claude Code..."
+    if ! command -v npm &> /dev/null; then
+        sudo apt-get install -y -qq nodejs npm
+    fi
+    sudo npm install -g @anthropic-ai/claude-code
+fi
+
+if command -v code-server &> /dev/null; then
+    echo "🧩 Installation de l'extension VS Code Claude Code..."
+    code-server --install-extension anthropic.claude-code --force
+fi
+
+
 # 4. Vérification des secrets (injectés par Vault ou lus depuis .env)
 for var in GEMINI_API_KEY GROQ_API_KEY OPENROUTER_API_KEY PEXELS_API_KEY PIXABAY_API_KEY WIKIMEDIA_CONTACT; do
     if [ -z "${!var:-}" ]; then
         echo "⚠️  $var absent (ajoute-le dans Vault ou .env)"
     fi
 done
+
 
 echo "✅ Environnement prêt"
