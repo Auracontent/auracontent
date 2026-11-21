@@ -29,6 +29,37 @@ def audio_duration(path: str) -> float:
         return 0.0
 
 
+
+_PROVENANCE_MARKERS = (b"c2pa", b"jumb", b"Generative AI", b"trainedAlgorithmicMedia", b"SynthID")
+
+
+def _strip_provenance(pcm: bytes, sr: int = 24000) -> bytes:
+    """Gemini TTS appends its provenance metadata (C2PA / SynthID, « Created by Google Generative AI ») after the audio.
+    Written as PCM it plays as ~0.2 s of loud crackle at the end of every clip. Replace that block with silence
+    (same length, so timings do not move). Acts only when the markers are present and the end is a short loud block
+    after a silence: real speech is never touched."""
+    pcm = pcm[: len(pcm) // 2 * 2]
+    if not any(m in pcm[-65536:] for m in _PROVENANCE_MARKERS):
+        return pcm
+    import numpy as np
+    x = np.frombuffer(pcm, np.int16).astype(np.float32) / 32767
+    n = int(0.01 * sr); k = len(x) // n
+    if k < 30:
+        return pcm
+    env = 20 * np.log10(np.sqrt((x[len(x) - k * n:].reshape(k, n) ** 2).mean(1)) + 1e-9)
+    i, lim = k - 1, k - 50                                   # tail of at most 0.5 s
+    while i > lim and (env[i] > -35 or env[i] < -150):      # loud block, with runs of zero bytes inside
+        i -= 1
+    if i == k - 1 or i <= lim:
+        return pcm
+    j, gap = i, 0
+    while j > 0 and env[j] < -45:
+        gap += 1; j -= 1
+    if gap < 12:
+        return pcm
+    start = (len(x) - k * n + (i + 1) * n) * 2
+    return pcm[:start] + bytes(len(pcm) - start)
+
 class AudioEngine:
     GEMINI_MIN_INTERVAL = 12.0
 
@@ -106,9 +137,10 @@ class AudioEngine:
                     inline = next((p["inlineData"] for p in parts if "inlineData" in p), None)
                     if not inline:
                         raise RuntimeError("Gemini : pas de données audio")
+                    pcm = _strip_provenance(base64.b64decode(inline["data"]))
                     with wave.open(str(path), "wb") as wf:
                         wf.setnchannels(1); wf.setsampwidth(2); wf.setframerate(24000)
-                        wf.writeframes(base64.b64decode(inline["data"]))
+                        wf.writeframes(pcm)
                     return
                 last_error = f"Gemini {model} HTTP {r.status_code}: {r.text[:200]}"
                 if r.status_code == 429:
