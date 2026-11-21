@@ -121,7 +121,7 @@ auracontent_v2/
 ├── scripts/            # standalone helpers (e.g. render_scene.py)
 ├── tests/              # one folder per channel (finance/, mystery/) + shared tests at the root
 ├── .github/workflows/  # generation, publishing, tests, release
-├── init.sh             # Onyxia service bootstrap
+├── init.sh             # one-command setup (Linux, macOS, WSL, Onyxia)
 ├── packages.txt        # system packages (ffmpeg, fonts)
 └── pyproject.toml      # dependencies (uv dependency groups)
 ```
@@ -150,7 +150,7 @@ sudo apt-get install -y $(grep -vE '^\s*(#|$)' packages.txt)
 uv sync --group default --group media          # add --group dev for tests/linters
 ```
 
-On an **Onyxia** service, `bash init.sh` does all of the above.
+Or just `bash init.sh`: it does all of the above on Linux (apt/dnf), macOS (Homebrew), WSL, Onyxia or a container — installs uv and Python 3.12 if missing, creates `.env` from `.env.example`, and Claude Code (`SKIP_CLAUDE=1` to skip, `DEV=1` for the dev group). Without a clone: `curl -fsSL https://raw.githubusercontent.com/Auracontent/auracontent/main/init.sh | bash`.
 
 ---
 
