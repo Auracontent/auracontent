@@ -1,0 +1,484 @@
+{
+ "slug": "fort-boyard-inutile",
+ "title": "Fort Boyard : 8 millions de francs pour un fort devenu inutile",
+ "caption": "Rêvé par Bonaparte en 1801, terminé en 1857… et déjà dépassé. Le destin improbable du fort Boyard. #histoire #france #fortboyard #patrimoine #charentemaritime",
+ "sources": [
+  "https://fr.wikipedia.org/wiki/Fort_Boyard_(monument)",
+  "https://en.wikipedia.org/wiki/Fort_Boyard_(fortification)",
+  "https://www.revueconflits.com/fort-boyard-de-lechec-militaire-a-la-reussite-televisuelle/",
+  "https://www.rochefort-ocean.com/en/explore/the-story-of-fort-boyard"
+ ],
+ "voice": {
+  "name": "Charon",
+  "style": "French documentary narrator, dry and quietly amused by an absurd history. Measured pace, a hint of irony on the money and the dates; a real beat of silence before 'Sauf que'; the last line almost deadpan.",
+  "pause": 0.35
+ },
+ "lines": [
+  {
+   "text": "8 millions de francs pour un fort qui n'a presque jamais servi.",
+   "say": "Huit millions de francs pour un fort qui n'a presque jamais servi.",
+   "pause": 0.5
+  },
+  {
+   "text": "En 1801, Bonaparte approuve ce fort en pleine mer, pour protéger l'arsenal de Rochefort.",
+   "pause": 0.35
+  },
+  {
+   "text": "Vauban l'avait déjà jugée irréalisable.",
+   "pause": 0.35
+  },
+  {
+   "text": "Les travaux débutent en 1804, mais les tempêtes détruisent les fondations.",
+   "pause": 0.35
+  },
+  {
+   "text": "En 1809, les brûlots anglais attaquent la flotte française au large, et le chantier s'arrête.",
+   "pause": 0.5
+  },
+  {
+   "text": "Il dormira plus de 30 ans.",
+   "say": "Il dormira plus de trente ans.",
+   "pause": 0.4
+  },
+  {
+   "text": "Le chantier reprend en 1841, et le fort est terminé en 1857.",
+   "pause": 0.8
+  },
+  {
+   "text": "Sauf que…",
+   "pause": 0.6,
+   "direction": "Almost whispered, with a dry half-smile."
+  },
+  {
+   "text": "Entre-temps, l'artillerie a tellement progressé que le fort ne sert plus à rien.",
+   "pause": 0.6
+  },
+  {
+   "text": "Après 1870, il enferme des soldats prussiens, puis des communards.",
+   "pause": 0.4
+  },
+  {
+   "text": "En 1913, l'armée le quitte pour de bon.",
+   "pause": 0.4
+  },
+  {
+   "text": "En 1962, l'État le vend aux enchères, pour 28 000 francs.",
+   "say": "En mil neuf cent soixante-deux, l'État le vend aux enchères, pour vingt-huit mille francs.",
+   "pause": 0.5
+  },
+  {
+   "text": "Puis, en 1990, il devient le décor d'un jeu télévisé.",
+   "pause": 0.7
+  },
+  {
+   "text": "Inutile à la guerre, immortel à la télévision.",
+   "pause": 0.3,
+   "direction": "Slow, deadpan, final."
+  }
+ ],
+ "keywords": [
+  "fort",
+  "millions",
+  "francs",
+  "bonaparte",
+  "rochefort",
+  "vauban",
+  "irréalisable",
+  "tempêtes",
+  "brûlots",
+  "anglais",
+  "abandon",
+  "artillerie",
+  "inutile",
+  "prussiens",
+  "communards",
+  "enchères",
+  "télévisé",
+  "immortel"
+ ],
+ "hook": [
+  "8 MILLIONS DE FRANCS",
+  "POUR UN FORT EN MER…",
+  "DÉJÀ INUTILE"
+ ],
+ "header": "FORT BOYARD · 1801-1857",
+ "end_title": "FORT BOYARD",
+ "images": {
+  "napo": "File:Gros - First Consul Bonaparte.png",
+  "maq": "File:079 - Maquette du fort Boyard musée de la Marine - Rochefort.jpg",
+  "brul": "File:L'attaque des brûlots contre le Regulus.jpg",
+  "aix": "File:Aix Roads 1809.jpg",
+  "carte": "File:Carte générale des Isles de Ré et d'Oléron, dressée pour demonstrer les Costes, de ces Isles, qu'on peut aborder et les rades ou l'on peut moüiller. - btv1b53052870c.jpg",
+  "fort": "File:Fort boyard aout 2006-1.JPG",
+  "vigie": "File:Vigie fort boyard2.JPG",
+  "roch": "File:Henri Rochefort.jpg",
+  "air": "File:Fort Boyard - Août 2014.jpg"
+ },
+ "shots": [
+  {
+   "from": 0,
+   "to": "L1",
+   "image": "fort",
+   "keys": [
+    [
+     0,
+     0.55,
+     0.5,
+     0.9
+    ],
+    [
+     1,
+     0.65,
+     0.45,
+     0.55
+    ]
+   ]
+  },
+  {
+   "from": "L1",
+   "to": "L2",
+   "image": "napo",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     1.0
+    ],
+    [
+     1,
+     0.5,
+     0.45,
+     0.9
+    ]
+   ],
+   "fx": {
+    "gray": 0.5
+   }
+  },
+  {
+   "from": "L2",
+   "to": "L3",
+   "image": "carte",
+   "keys": [
+    [
+     0,
+     0.7,
+     0.2,
+     1.0
+    ],
+    [
+     1,
+     0.5,
+     0.4,
+     0.55
+    ]
+   ],
+   "fx": {
+    "gray": 0.4
+   }
+  },
+  {
+   "from": "L3",
+   "to": "L4",
+   "image": "maq",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     0.9
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     0.6
+    ]
+   ]
+  },
+  {
+   "from": "L4",
+   "to": "L5",
+   "image": "brul",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     0.9
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     0.6
+    ]
+   ],
+   "fx": {
+    "shake": 0.5
+   }
+  },
+  {
+   "from": "L5",
+   "to": "L6",
+   "image": "aix",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     1.0
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     0.7
+    ]
+   ],
+   "fx": {
+    "gray": 1,
+    "dark": 0.2
+   }
+  },
+  {
+   "from": "L6",
+   "to": "L7",
+   "image": "air",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     1.0
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     0.65
+    ]
+   ]
+  },
+  {
+   "from": "L7",
+   "to": "L8",
+   "type": "fog"
+  },
+  {
+   "from": "L8",
+   "to": "L9",
+   "image": "vigie",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     0.9
+    ],
+    [
+     1,
+     0.5,
+     0.4,
+     0.6
+    ]
+   ],
+   "fx": {
+    "gray": 1,
+    "dark": 0.2
+   }
+  },
+  {
+   "from": "L9",
+   "to": "L10",
+   "image": "roch",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     1.0
+    ],
+    [
+     1,
+     0.5,
+     0.45,
+     0.9
+    ]
+   ]
+  },
+  {
+   "from": "L10",
+   "to": "L11",
+   "image": "fort",
+   "keys": [
+    [
+     0,
+     0.3,
+     0.5,
+     0.7
+    ],
+    [
+     1,
+     0.7,
+     0.5,
+     0.6
+    ]
+   ],
+   "fx": {
+    "gray": 1
+   }
+  },
+  {
+   "from": "L11",
+   "to": "L12",
+   "image": "maq",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     0.6
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     1.0
+    ]
+   ]
+  },
+  {
+   "from": "L12",
+   "to": "L13",
+   "image": "air",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     0.8
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     1.0
+    ]
+   ]
+  },
+  {
+   "from": "L13",
+   "to": "fin",
+   "image": "fort",
+   "keys": [
+    [
+     0,
+     0.5,
+     0.5,
+     1.0
+    ],
+    [
+     1,
+     0.5,
+     0.5,
+     0.7
+    ]
+   ]
+  }
+ ],
+ "stamps": [
+  {
+   "text": "DÉJÀ INUTILE",
+   "at": "L8@0.3",
+   "until": "L9",
+   "size": 120,
+   "y": 1000
+  },
+  {
+   "text": "28 000 FRANCS",
+   "at": "L11",
+   "until": "L12",
+   "size": 110,
+   "y": 1000
+  }
+ ],
+ "labels": [
+  {
+   "text": "1801 · BONAPARTE",
+   "from": "L1+0.3",
+   "to": "L2-0.2"
+  },
+  {
+   "text": "11 AVRIL 1809 · LES BRÛLOTS",
+   "from": "L4+0.3",
+   "to": "L5-0.2"
+  },
+  {
+   "text": "1857 · FIN DES TRAVAUX",
+   "from": "L6+0.3",
+   "to": "L7-0.2"
+  },
+  {
+   "text": "HENRI ROCHEFORT · COMMUNARD",
+   "from": "L9+1",
+   "to": "L10-0.2"
+  }
+ ],
+ "flash": [
+  "L7"
+ ],
+ "music": {
+  "sections": [
+   [
+    0,
+    "L7",
+    "Am",
+    4.5
+   ],
+   [
+    "L8",
+    "L12",
+    "Dm",
+    3.5
+   ],
+   [
+    "L12",
+    "fin",
+    "Dmaj",
+    3.5
+   ]
+  ],
+  "pulse": [
+   [
+    "L3",
+    "L7",
+    0.9,
+    33
+   ]
+  ],
+  "rise": [
+   [
+    "L3",
+    "L7"
+   ]
+  ],
+  "drone": [
+   [
+    "L7",
+    "L9+1"
+   ]
+  ],
+  "hits": [
+   [
+    "L7",
+    0.9
+   ],
+   [
+    "L12",
+    0.6
+   ]
+  ]
+ }
+}
