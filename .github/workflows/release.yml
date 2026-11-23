@@ -24,7 +24,7 @@ jobs:
       - name: Use Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: 22   # LTS (23 is an odd, short-lived release)
+          node-version: 26   # LTS (23 is an odd, short-lived release)
 
       # uv is needed by @semantic-release/exec to refresh uv.lock after bumping pyproject.toml
       - name: Install uv
