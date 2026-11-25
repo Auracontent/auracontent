@@ -42,3 +42,10 @@ episodes/archive/*/voice/*.wav
 episodes/archive/*/voice/lines/
 episodes/archive/*/build/
 episodes/archive/*/out/
+
+# Shorts « L'éco du jour » (finance) : seuls plan.json, stills.jpg et voice/timing.json sont versionnés
+episodes/finance/*/voice/*.wav
+episodes/finance/*/voice/edge/
+episodes/finance/*/voice/lines/
+episodes/finance/*/build/
+episodes/finance/*/out/

@@ -1,0 +1,367 @@
+{
+ "slug": "dette-france-119-pib",
+ "date": "2026-11-25",
+ "title": "La dette française a doublé en 25 ans : ce que ça change pour toi",
+ "caption": "3 595 milliards d'euros, 119 % du PIB : la dette publique n'a jamais été aussi haute. Pourquoi ce sont surtout les intérêts qui posent problème. #economie #dette #france #finance #argent",
+ "header": "DETTE PUBLIQUE · NOV. 2026",
+ "mood": "tension",
+ "keywords": [
+  "dette",
+  "intérêts",
+  "Covid",
+  "PIB"
+ ],
+ "sources": {
+  "insee_t2": {
+   "name": "Insee, dette trimestrielle T2 2026 (29/09/2026)",
+   "url": "https://www.insee.fr/fr/statistiques/9053525"
+  },
+  "insee_serie": {
+   "name": "Insee, dette de Maastricht en points de PIB",
+   "url": "https://www.insee.fr/fr/statistiques/8955019"
+  },
+  "insee_pop": {
+   "name": "Insee, population au 1er janvier 2026",
+   "url": "https://www.insee.fr/fr/statistiques/5225246"
+  },
+  "an_interets": {
+   "name": "Assemblée nationale, rapport d'information n° 3006",
+   "url": "https://www.assemblee-nationale.fr/dyn/17/rapports/cion_fin/l17b3006_rapport-information.pdf"
+  },
+  "an_ministre": {
+   "name": "Assemblée nationale, commission des finances (2026)",
+   "url": "https://www.assemblee-nationale.fr/dyn/17/comptes-rendus/cion_fin/l17cion_fin2526083_compte-rendu.pdf"
+  },
+  "belga_prevision": {
+   "name": "Belga / Insee, 29/09/2026 (prévision du gouvernement)",
+   "url": "https://www.dhnet.be/dernieres-depeches/2026/09/29/france-la-dette-publique-a-atteint-119-du-pib-au-deuxieme-trimestre-4PZGCYVLTJFHFL4T3II5CXZKPU"
+  }
+ },
+ "voice": {
+  "name": "fr-FR-RemyMultilingualNeural",
+  "rate": "-6%",
+  "pause": 0.3
+ },
+ "lines": [
+  {
+   "text": "La France doit 3 595 milliards d'euros.",
+   "say": "La France doit trois mille cinq cent quatre-vingt-quinze milliards d'euros.",
+   "source": "insee_t2",
+   "pause": 0.5
+  },
+  {
+   "text": "En 2000, elle pesait 60 % du PIB.",
+   "say": "En deux mille, elle pesait soixante pour cent du PIB.",
+   "source": "insee_serie"
+  },
+  {
+   "text": "Puis la crise de 2008 l'a fait bondir.",
+   "say": "Puis la crise de deux mille huit l'a fait bondir.",
+   "source": "insee_serie"
+  },
+  {
+   "text": "Le Covid, encore plus.",
+   "pause": 0.5
+  },
+  {
+   "text": "Fin juin 2026 : 119 %.",
+   "say": "Fin juin deux mille vingt-six : cent dix-neuf pour cent.",
+   "source": "insee_t2"
+  },
+  {
+   "text": "Presque le double de la limite européenne.",
+   "pause": 0.6
+  },
+  {
+   "text": "Mais le vrai problème, ce sont les intérêts."
+  },
+  {
+   "text": "44 milliards payés en 2017.",
+   "say": "Quarante-quatre milliards payés en deux mille dix-sept.",
+   "source": "an_interets"
+  },
+  {
+   "text": "Près de 65 milliards en 2025.",
+   "say": "Près de soixante-cinq milliards en deux mille vingt-cinq.",
+   "source": "an_interets"
+  },
+  {
+   "text": "Rien que pour l'État, 64 milliards cette année.",
+   "say": "Rien que pour l'État, soixante-quatre milliards cette année.",
+   "source": "an_ministre"
+  },
+  {
+   "text": "Plus que le budget de l'Éducation nationale, selon le gouvernement.",
+   "pause": 0.6
+  },
+  {
+   "text": "Partagée entre tous, environ 52 000 euros par habitant.",
+   "say": "Partagée entre tous, environ cinquante-deux mille euros par habitant.",
+   "calc": "3 595,5 Md€ (insee_t2) / 69 082 000 habitants (insee_pop) = 52 047 €"
+  },
+  {
+   "text": "Bébés compris.",
+   "pause": 0.6
+  },
+  {
+   "text": "Chaque euro d'intérêts, c'est un euro en moins pour l'école ou l'hôpital."
+  },
+  {
+   "text": "Il faudra couper des dépenses, ou trouver des recettes."
+  },
+  {
+   "text": "Et l'an prochain, 121,7 % sont prévus.",
+   "say": "Et l'an prochain, le gouvernement prévoit cent vingt et un virgule sept pour cent.",
+   "source": "belga_prevision",
+   "pause": 0.6
+  },
+  {
+   "text": "Demain : à qui la France doit-elle tout cet argent ?"
+  }
+ ],
+ "scenes": [
+  {
+   "type": "titre",
+   "from": 0,
+   "title": "La France doit",
+   "number": "3 595 MD€",
+   "sub": "Et ça te concerne.",
+   "pose": "choc",
+   "source": "insee_t2"
+  },
+  {
+   "type": "courbe",
+   "from": "L1",
+   "title": "En 25 ans, elle a doublé.",
+   "chart_title": "Dette publique, en % du PIB",
+   "unit": " %",
+   "y_range": [
+    40,
+    130
+   ],
+   "highlight_from": 2019,
+   "x_ticks": [
+    2000,
+    2008,
+    2016,
+    2024
+   ],
+   "points": [
+    [
+     2000,
+     59.7
+    ],
+    [
+     2001,
+     59.3
+    ],
+    [
+     2002,
+     61.3
+    ],
+    [
+     2003,
+     65.4
+    ],
+    [
+     2004,
+     66.9
+    ],
+    [
+     2005,
+     68.2
+    ],
+    [
+     2006,
+     65.4
+    ],
+    [
+     2007,
+     65.5
+    ],
+    [
+     2008,
+     69.8
+    ],
+    [
+     2009,
+     84.1
+    ],
+    [
+     2010,
+     86.3
+    ],
+    [
+     2011,
+     88.7
+    ],
+    [
+     2012,
+     91.7
+    ],
+    [
+     2013,
+     94.6
+    ],
+    [
+     2014,
+     96.2
+    ],
+    [
+     2015,
+     97.0
+    ],
+    [
+     2016,
+     98.1
+    ],
+    [
+     2017,
+     98.8
+    ],
+    [
+     2018,
+     98.5
+    ],
+    [
+     2019,
+     98.2
+    ],
+    [
+     2020,
+     114.9
+    ],
+    [
+     2021,
+     112.8
+    ],
+    [
+     2022,
+     111.4
+    ],
+    [
+     2023,
+     109.5
+    ],
+    [
+     2024,
+     112.6
+    ],
+    [
+     2025,
+     115.6
+    ],
+    [
+     2026.5,
+     119.0
+    ]
+   ],
+   "annotations": [
+    {
+     "x": 2009,
+     "label": "Crise 2008",
+     "dx": 110,
+     "dy": 40
+    },
+    {
+     "x": 2020,
+     "label": "Covid",
+     "dx": -95,
+     "dy": 0
+    }
+   ],
+   "ref_line": {
+    "y": 60,
+    "label": "Limite européenne : 60 %"
+   },
+   "end_label": "119 %",
+   "source": "insee_serie",
+   "sync": [
+    {
+     "x": 2007,
+     "at": "L2"
+    },
+    {
+     "x": 2010,
+     "at": "L2.end"
+    },
+    {
+     "x": 2019,
+     "at": "L3"
+    },
+    {
+     "x": 2021,
+     "at": "L3.end"
+    },
+    {
+     "x": 2026.5,
+     "at": "L4@0.6"
+    }
+   ]
+  },
+  {
+   "type": "barres",
+   "from": "L6",
+   "title": "Le vrai problème : les intérêts.",
+   "chart_title": "Intérêts payés par an (administrations publiques)",
+   "bars": [
+    {
+     "label": "2017",
+     "value": 44.4,
+     "text": "44,4 Md€"
+    },
+    {
+     "label": "2025",
+     "value": 64.7,
+     "text": "64,7 Md€"
+    }
+   ],
+   "highlight": 1,
+   "delta": "+46 %",
+   "source": "an_interets"
+  },
+  {
+   "type": "chiffre",
+   "from": "L9",
+   "title": "Rien que pour l'État en 2026",
+   "value": 64,
+   "format": "{n} MD€",
+   "caption": "PLUS QUE L'ÉDUCATION NATIONALE",
+   "count_at": "L9@0.3",
+   "source": "an_ministre"
+  },
+  {
+   "type": "chiffre",
+   "from": "L11",
+   "title": "Partagée entre tous…",
+   "calc": "3 595 Md€ ÷ 69,1 millions d'habitants",
+   "value": 52000,
+   "format": "≈ {n} €",
+   "caption": "PAR HABITANT, BÉBÉS COMPRIS",
+   "count_at": "w:52@L11",
+   "pose": "choc",
+   "source": "insee_pop"
+  },
+  {
+   "type": "points",
+   "from": "L13",
+   "title": "Et pour toi, ça change quoi ?",
+   "items": [
+    "Chaque euro d'intérêts = un euro en moins pour l'école, l'hôpital…",
+    "Il faudra couper des dépenses… ou trouver des recettes",
+    "Prévu l'an prochain : 121,7 % du PIB"
+   ],
+   "at": [
+    "L13",
+    "L14",
+    "L15"
+   ]
+  },
+  {
+   "type": "fin",
+   "from": "L16",
+   "kicker": "DEMAIN",
+   "next": "À qui la France doit-elle tout cet argent ?"
+  }
+ ]
+}
