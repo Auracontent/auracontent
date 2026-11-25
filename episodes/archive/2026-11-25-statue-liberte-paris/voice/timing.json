@@ -1,0 +1,55 @@
+{
+ "duration": 53.74,
+ "lines": [
+  {
+   "t0": 0.0,
+   "t1": 3.55,
+   "text": "La statue de la Liberté a d'abord été debout à Paris."
+  },
+  {
+   "t0": 4.05,
+   "t1": 10.45,
+   "text": "En 1878, sa tête est exposée au Champ-de-Mars, en pleine Exposition universelle."
+  },
+  {
+   "t0": 10.8,
+   "t1": 17.8,
+   "text": "De 1881 à 1884, dans un atelier de la rue de Chazelles, elle prend forme, plaque de cuivre après plaque de cuivre."
+  },
+  {
+   "t0": 18.2,
+   "t1": 27.01,
+   "text": "Le 4 juillet 1884, la France l'offre officiellement aux États-Unis."
+  },
+  {
+   "t0": 27.46,
+   "t1": 32.09,
+   "text": "Puis on la démonte, en 350 pièces rangées dans 214 caisses."
+  },
+  {
+   "t0": 32.49,
+   "t1": 36.7,
+   "text": "Le bateau, L'Isère, arrive à New York en juin 1885."
+  },
+  {
+   "t0": 37.5,
+   "t1": 38.46,
+   "text": "Sauf que…"
+  },
+  {
+   "t0": 39.26,
+   "t1": 40.92,
+   "text": "Le piédestal n'est pas terminé. Il manque de l'argent."
+  },
+  {
+   "t0": 41.32,
+   "t1": 47.5,
+   "text": "Les caisses attendent des mois. Le socle n'est fini qu'en avril 1886."
+  },
+  {
+   "t0": 47.9,
+   "t1": 53.74,
+   "text": "Inauguration le 28 octobre 1886. Paris avait vu la statue la première."
+  }
+ ]
+}
