@@ -1,0 +1,91 @@
+{
+ "duration": 62.553,
+ "lines": [
+  {
+   "t0": 0.0,
+   "t1": 3.846,
+   "text": "La France doit 3 595 milliards d'euros."
+  },
+  {
+   "t0": 4.346,
+   "t1": 8.192,
+   "text": "En 2000, elle pesait 60 % du PIB."
+  },
+  {
+   "t0": 8.492,
+   "t1": 12.338,
+   "text": "Puis la crise de 2008 l'a fait bondir."
+  },
+  {
+   "t0": 12.638,
+   "t1": 14.177,
+   "text": "Le Covid, encore plus."
+  },
+  {
+   "t0": 14.677,
+   "t1": 18.138,
+   "text": "Fin juin 2026 : 119 %."
+  },
+  {
+   "t0": 18.438,
+   "t1": 21.131,
+   "text": "Presque le double de la limite européenne."
+  },
+  {
+   "t0": 21.731,
+   "t1": 24.808,
+   "text": "Mais le vrai problème, ce sont les intérêts."
+  },
+  {
+   "t0": 25.108,
+   "t1": 27.8,
+   "text": "44 milliards payés en 2017."
+  },
+  {
+   "t0": 28.1,
+   "t1": 31.177,
+   "text": "Près de 65 milliards en 2025."
+  },
+  {
+   "t0": 31.477,
+   "t1": 34.554,
+   "text": "Rien que pour l'État, 64 milliards cette année."
+  },
+  {
+   "t0": 34.854,
+   "t1": 38.7,
+   "text": "Plus que le budget de l'Éducation nationale, selon le gouvernement."
+  },
+  {
+   "t0": 39.3,
+   "t1": 42.761,
+   "text": "Partagée entre tous, environ 52 000 euros par habitant."
+  },
+  {
+   "t0": 43.061,
+   "t1": 43.83,
+   "text": "Bébés compris."
+  },
+  {
+   "t0": 44.43,
+   "t1": 49.046,
+   "text": "Chaque euro d'intérêts, c'est un euro en moins pour l'école ou l'hôpital."
+  },
+  {
+   "t0": 49.346,
+   "t1": 52.807,
+   "text": "Il faudra couper des dépenses, ou trouver des recettes."
+  },
+  {
+   "t0": 53.107,
+   "t1": 58.492,
+   "text": "Et l'an prochain, 121,7 % sont prévus."
+  },
+  {
+   "t0": 59.092,
+   "t1": 62.553,
+   "text": "Demain : à qui la France doit-elle tout cet argent ?"
+  }
+ ],
+ "source": "estimée"
+}
