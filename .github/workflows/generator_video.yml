@@ -116,7 +116,7 @@ jobs:
           grep -vE '^\s*(#|$)' packages.txt | xargs sudo apt-get install -y
 
       - name: ⚡ Installer uv
-        uses: astral-sh/setup-uv@v10.1.0
+        uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -219,7 +219,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           grep -vE '^\s*(#|$)' packages.txt | xargs sudo apt-get install -y -qq
-      - uses: astral-sh/setup-uv@v10.1.0
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
@@ -317,7 +317,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           grep -vE '^\s*(#|$)' packages.txt | xargs sudo apt-get install -y -qq
-      - uses: astral-sh/setup-uv@v10.1.0
+      - uses: astral-sh/setup-uv@v10.4.0
         with:
           enable-cache: true
           cache-dependency-glob: "uv.lock"
