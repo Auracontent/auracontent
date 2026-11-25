@@ -1,0 +1,302 @@
+{
+ "slug": "livret-a-decollecte",
+ "date": "2026-11-25",
+ "title": "Livret A : 9,5 milliards retirés, du jamais vu depuis 2009",
+ "caption": "Les Français ont retiré plus de 9,5 milliards d'euros du Livret A en dix mois, alors que l'inflation (3,4 %) dépasse deux fois son taux (1,7 %). #economie #finance #livreta #epargne #inflation",
+ "header": "LIVRET A · NOV. 2026",
+ "mood": "tension",
+ "keywords": [
+  "Livret A",
+  "retirés",
+  "inflation",
+  "LDDS"
+ ],
+ "sources": {
+  "cdc_oct": {
+   "name": "Caisse des Dépôts, collecte Livret A/LDDS/LEP d'octobre 2026 (24/11/2026)",
+   "url": "https://www.caissedesdepots.fr/presse/epargne-reglementee-collecte-mensuelle-en-octobre-2026-du-livret-et-du-ldds-ainsi-que-du-lep"
+  },
+  "insee_ipc": {
+   "name": "Insee, indice des prix à la consommation d'octobre 2026 (13/11/2026)",
+   "url": "https://www.insee.fr/fr/statistiques/9131332"
+  },
+  "sp_taux": {
+   "name": "Service-public.fr, taux du Livret A au 1er août 2026",
+   "url": "https://www.service-public.gouv.fr/particuliers/actualites/A15818"
+  }
+ },
+ "voice": {
+  "name": "fr-FR-RemyMultilingualNeural",
+  "rate": "-6%",
+  "pause": 0.3
+ },
+ "lines": [
+  {
+   "text": "Plus de 9,5 milliards retirés du Livret A en dix mois.",
+   "say": "Plus de neuf virgule cinq milliards retirés du Livret A en dix mois.",
+   "source": "cdc_oct",
+   "pause": 0.5
+  },
+  {
+   "text": "Plus de retraits que de dépôts."
+  },
+  {
+   "text": "Depuis janvier, 8 mois sur 10 sont dans le rouge.",
+   "say": "Depuis janvier, huit mois sur dix sont dans le rouge.",
+   "source": "cdc_oct"
+  },
+  {
+   "text": "Aucune année complète n'avait fait pire depuis 2009.",
+   "say": "Aucune année complète n'avait fait pire depuis deux mille neuf.",
+   "source": "cdc_oct",
+   "pause": 0.5
+  },
+  {
+   "text": "En 2020, le Livret A avait collecté plus de 26 milliards.",
+   "say": "En deux mille vingt, le Livret A avait collecté plus de vingt-six milliards.",
+   "source": "cdc_oct"
+  },
+  {
+   "text": "En 2025, premier recul depuis 2015.",
+   "say": "En deux mille vingt-cinq, premier recul depuis deux mille quinze.",
+   "source": "cdc_oct"
+  },
+  {
+   "text": "Cette année, c'est déjà plus de quatre fois plus.",
+   "calc": "9,54 Md€ retirés en 10 mois en 2026 (cdc_oct) / 2,12 Md€ retirés en 2025 (cdc_oct) = 4,5",
+   "source": "cdc_oct",
+   "pause": 0.6
+  },
+  {
+   "text": "Mais le vrai problème, c'est l'inflation."
+  },
+  {
+   "text": "Les prix grimpent de 3,4 % sur un an.",
+   "say": "Les prix grimpent de trois virgule quatre pour cent sur un an.",
+   "source": "insee_ipc"
+  },
+  {
+   "text": "Le Livret A, lui, rapporte 1,7 %.",
+   "say": "Le Livret A, lui, rapporte un virgule sept pour cent.",
+   "source": "sp_taux"
+  },
+  {
+   "text": "Les prix montent deux fois plus vite que les intérêts.",
+   "calc": "3,4 % d'inflation (insee_ipc) / 1,7 % de taux (sp_taux) = 2,0",
+   "source": "insee_ipc",
+   "pause": 0.6
+  },
+  {
+   "text": "Ton épargne perd du pouvoir d'achat."
+  },
+  {
+   "text": "Le LDDS recule aussi : plus de 2,5 milliards.",
+   "say": "Le LDDS recule aussi : plus de deux virgule cinq milliards.",
+   "source": "cdc_oct"
+  },
+  {
+   "text": "Rien qu'en octobre, près de 3,6 milliards sont partis.",
+   "say": "Rien qu'en octobre, près de trois virgule six milliards sont partis.",
+   "source": "cdc_oct",
+   "pause": 0.6
+  },
+  {
+   "text": "Demain : où va l'argent qui quitte le Livret A ?"
+  }
+ ],
+ "scenes": [
+  {
+   "type": "titre",
+   "from": 0,
+   "title": "Le Livret A se vide",
+   "number": "9,5 MD€",
+   "sub": "retirés en 10 mois",
+   "pose": "choc",
+   "source": "cdc_oct"
+  },
+  {
+   "type": "courbe",
+   "from": "L3",
+   "title": "2026 : pire que toute année complète.",
+   "chart_title": "Livret A, collecte nette par an",
+   "unit": " Md€",
+   "y_range": [
+    -14,
+    32
+   ],
+   "highlight_from": 2025,
+   "x_ticks": [
+    2009,
+    2014,
+    2020,
+    2025
+   ],
+   "points": [
+    [
+     2009,
+     16.55
+    ],
+    [
+     2010,
+     7.8
+    ],
+    [
+     2011,
+     17.38
+    ],
+    [
+     2012,
+     28.16
+    ],
+    [
+     2013,
+     12.14
+    ],
+    [
+     2014,
+     -6.13
+    ],
+    [
+     2015,
+     -9.29
+    ],
+    [
+     2016,
+     1.75
+    ],
+    [
+     2017,
+     10.24
+    ],
+    [
+     2018,
+     10.08
+    ],
+    [
+     2019,
+     12.64
+    ],
+    [
+     2020,
+     26.39
+    ],
+    [
+     2021,
+     15.17
+    ],
+    [
+     2022,
+     27.23
+    ],
+    [
+     2023,
+     28.68
+    ],
+    [
+     2024,
+     14.87
+    ],
+    [
+     2025,
+     -2.12
+    ],
+    [
+     2026.8,
+     -9.54
+    ]
+   ],
+   "annotations": [
+    {
+     "x": 2020,
+     "label": "2020 : +26,4",
+     "dx": -125,
+     "dy": -8
+    },
+    {
+     "x": 2026.8,
+     "label": "2026 : −9,5",
+     "dx": -40,
+     "dy": 45
+    }
+   ],
+   "ref_line": {
+    "y": 0,
+    "label": "Zéro"
+   },
+   "end_label": "",
+   "source": "cdc_oct",
+   "sync": [
+    {
+     "x": 2009,
+     "at": "L3"
+    },
+    {
+     "x": 2011,
+     "at": "L3.end"
+    },
+    {
+     "x": 2019,
+     "at": "L4"
+    },
+    {
+     "x": 2020,
+     "at": "L4@1.0"
+    },
+    {
+     "x": 2024,
+     "at": "L5"
+    },
+    {
+     "x": 2025,
+     "at": "L5@1.5"
+    },
+    {
+     "x": 2026.8,
+     "at": "L6@0.8"
+    }
+   ]
+  },
+  {
+   "type": "barres",
+   "from": "L7",
+   "title": "Le vrai problème : l'inflation.",
+   "chart_title": "Octobre 2026, % sur un an",
+   "bars": [
+    {
+     "label": "Livret A",
+     "value": 1.7,
+     "text": "1,7 %"
+    },
+    {
+     "label": "Prix",
+     "value": 3.4,
+     "text": "3,4 %"
+    }
+   ],
+   "highlight": 1,
+   "delta": "×2",
+   "source": "insee_ipc"
+  },
+  {
+   "type": "points",
+   "from": "L11",
+   "title": "Et pour toi, ça change quoi ?",
+   "items": [
+    "Les prix montent 2 fois plus vite que le taux du Livret A",
+    "LDDS : plus de 2,5 Md€ retirés depuis janvier",
+    "Octobre : près de 3,6 Md€ sortis des deux livrets"
+   ],
+   "at": [
+    "L11",
+    "L12",
+    "L13"
+   ]
+  },
+  {
+   "type": "fin",
+   "from": "L14",
+   "kicker": "DEMAIN",
+   "next": "Où va l'argent qui quitte le Livret A ?"
+  }
+ ]
+}

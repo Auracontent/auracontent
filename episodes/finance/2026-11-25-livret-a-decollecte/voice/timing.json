@@ -1,0 +1,81 @@
+{
+ "duration": 49.51,
+ "lines": [
+  {
+   "t0": 0.0,
+   "t1": 3.59,
+   "text": "Plus de 9,5 milliards retirés du Livret A en dix mois."
+  },
+  {
+   "t0": 4.09,
+   "t1": 5.69,
+   "text": "Plus de retraits que de dépôts."
+  },
+  {
+   "t0": 5.99,
+   "t1": 8.91,
+   "text": "Depuis janvier, 8 mois sur 10 sont dans le rouge."
+  },
+  {
+   "t0": 9.21,
+   "t1": 11.98,
+   "text": "Aucune année complète n'avait fait pire depuis 2009."
+  },
+  {
+   "t0": 12.48,
+   "t1": 16.23,
+   "text": "En 2020, le Livret A avait collecté plus de 26 milliards."
+  },
+  {
+   "t0": 16.53,
+   "t1": 19.86,
+   "text": "En 2025, premier recul depuis 2015."
+  },
+  {
+   "t0": 20.16,
+   "t1": 22.96,
+   "text": "Cette année, c'est déjà plus de quatre fois plus."
+  },
+  {
+   "t0": 23.56,
+   "t1": 25.93,
+   "text": "Mais le vrai problème, c'est l'inflation."
+  },
+  {
+   "t0": 26.23,
+   "t1": 29.14,
+   "text": "Les prix grimpent de 3,4 % sur un an."
+  },
+  {
+   "t0": 29.44,
+   "t1": 32.98,
+   "text": "Le Livret A, lui, rapporte 1,7 %."
+  },
+  {
+   "t0": 33.28,
+   "t1": 35.74,
+   "text": "Les prix montent deux fois plus vite que les intérêts."
+  },
+  {
+   "t0": 36.34,
+   "t1": 38.28,
+   "text": "Ton épargne perd du pouvoir d'achat."
+  },
+  {
+   "t0": 38.58,
+   "t1": 42.36,
+   "text": "Le LDDS recule aussi : plus de 2,5 milliards."
+  },
+  {
+   "t0": 42.66,
+   "t1": 46.24,
+   "text": "Rien qu'en octobre, près de 3,6 milliards sont partis."
+  },
+  {
+   "t0": 46.84,
+   "t1": 49.51,
+   "text": "Demain : où va l'argent qui quitte le Livret A ?"
+  }
+ ],
+ "source": "edge"
+}
