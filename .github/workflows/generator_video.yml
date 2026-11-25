@@ -75,7 +75,7 @@ jobs:
     permissions:
       contents: read
       models: read   # GitHub Models
-    runs-on: ubuntu-24.04   # image figée : ubuntu-latest change de version sans prévenir
+    runs-on: ubuntu-26.04   # image figée : ubuntu-latest change de version sans prévenir
     timeout-minutes: 45
     env:
       CHANNEL: ${{ github.event.inputs.channel || github.event.client_payload.channel || 'all' }}
@@ -202,7 +202,7 @@ jobs:
     concurrency:
       group: director-mystery
       cancel-in-progress: false
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 75
     permissions:
       contents: write
@@ -302,7 +302,7 @@ jobs:
     concurrency:
       group: director-finance
       cancel-in-progress: false
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 75
     permissions:
       contents: write
