@@ -1,0 +1,81 @@
+{
+ "duration": 52.54,
+ "lines": [
+  {
+   "t0": 0.0,
+   "t1": 3.65,
+   "text": "Les prix de l'industrie bondissent de 9,6 % en un an."
+  },
+  {
+   "t0": 4.15,
+   "t1": 8.18,
+   "text": "Les prix de production, c'est ce que facturent les usines, avant les rayons."
+  },
+  {
+   "t0": 8.48,
+   "t1": 11.61,
+   "text": "Octobre 2025 : 116,9."
+  },
+  {
+   "t0": 11.91,
+   "t1": 15.13,
+   "text": "Octobre 2026 : 128,1."
+  },
+  {
+   "t0": 15.63,
+   "t1": 17.76,
+   "text": "Et depuis juin, ça monte chaque mois."
+  },
+  {
+   "t0": 18.06,
+   "t1": 21.06,
+   "text": "Le coupable : l'énergie, selon l'Insee."
+  },
+  {
+   "t0": 21.66,
+   "t1": 25.32,
+   "text": "Le raffinage a presque doublé : plus 99 %."
+  },
+  {
+   "t0": 25.62,
+   "t1": 28.56,
+   "text": "Le gaz grimpe de 32,5 %."
+  },
+  {
+   "t0": 28.86,
+   "t1": 31.86,
+   "text": "L'électricité : plus 13,2 %."
+  },
+  {
+   "t0": 32.46,
+   "t1": 34.54,
+   "text": "Mais le vrai problème, c'est la suite."
+  },
+  {
+   "t0": 34.84,
+   "t1": 38.74,
+   "text": "Hors énergie, les prix montent aussi : 3,4 %."
+  },
+  {
+   "t0": 39.04,
+   "t1": 42.5,
+   "text": "Les produits importés : plus 14,5 %."
+  },
+  {
+   "t0": 43.0,
+   "t1": 45.54,
+   "text": "Ces coûts peuvent finir dans tes courses et tes factures."
+  },
+  {
+   "t0": 45.84,
+   "t1": 48.74,
+   "text": "Ce n'est pas encore l'inflation, mais c'est un signal."
+  },
+  {
+   "t0": 49.34,
+   "t1": 52.54,
+   "text": "Demain : l'inflation de novembre va-t-elle repartir ?"
+  }
+ ],
+ "source": "edge"
+}

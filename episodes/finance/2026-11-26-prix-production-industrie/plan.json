@@ -1,0 +1,289 @@
+{
+ "slug": "prix-production-industrie",
+ "date": "2026-11-26",
+ "title": "Prix de l'industrie : +9,6 % en un an, ce que ça change pour toi",
+ "caption": "Les prix de production de l'industrie ont grimpé de 9,6 % en un an en octobre, tirés par le raffinage et le gaz. Ce que ça peut changer dans tes prix. #economie #finance #inflation #energie #france",
+ "header": "PRIX DE L'INDUSTRIE · OCT. 2026",
+ "mood": "tension",
+ "keywords": [
+  "9,6 %",
+  "énergie",
+  "raffinage",
+  "gaz",
+  "importés"
+ ],
+ "sources": {
+  "insee_ipp": {
+   "name": "Insee, prix de production de l'industrie, octobre 2026 (26/11/2026)",
+   "url": "https://www.insee.fr/fr/statistiques/9164695"
+  }
+ },
+ "voice": {
+  "name": "fr-FR-RemyMultilingualNeural",
+  "rate": "-6%",
+  "pause": 0.3
+ },
+ "lines": [
+  {
+   "text": "Les prix de l'industrie bondissent de 9,6 % en un an.",
+   "say": "Les prix de l'industrie bondissent de neuf virgule six pour cent en un an.",
+   "source": "insee_ipp",
+   "pause": 0.5
+  },
+  {
+   "text": "Les prix de production, c'est ce que facturent les usines, avant les rayons."
+  },
+  {
+   "text": "Octobre 2025 : 116,9.",
+   "say": "Octobre deux mille vingt-cinq : cent seize virgule neuf.",
+   "source": "insee_ipp"
+  },
+  {
+   "text": "Octobre 2026 : 128,1.",
+   "say": "Octobre deux mille vingt-six : cent vingt-huit virgule un.",
+   "source": "insee_ipp",
+   "pause": 0.5
+  },
+  {
+   "text": "Et depuis juin, ça monte chaque mois.",
+   "source": "insee_ipp"
+  },
+  {
+   "text": "Le coupable : l'énergie, selon l'Insee.",
+   "pause": 0.6
+  },
+  {
+   "text": "Le raffinage a presque doublé : plus 99 %.",
+   "say": "Le raffinage a presque doublé : plus quatre-vingt-dix-neuf pour cent.",
+   "source": "insee_ipp"
+  },
+  {
+   "text": "Le gaz grimpe de 32,5 %.",
+   "say": "Le gaz grimpe de trente-deux virgule cinq pour cent.",
+   "source": "insee_ipp"
+  },
+  {
+   "text": "L'électricité : plus 13,2 %.",
+   "say": "L'électricité : plus treize virgule deux pour cent.",
+   "source": "insee_ipp",
+   "pause": 0.6
+  },
+  {
+   "text": "Mais le vrai problème, c'est la suite."
+  },
+  {
+   "text": "Hors énergie, les prix montent aussi : 3,4 %.",
+   "say": "Hors énergie, les prix montent aussi : trois virgule quatre pour cent.",
+   "source": "insee_ipp"
+  },
+  {
+   "text": "Les produits importés : plus 14,5 %.",
+   "say": "Les produits importés : plus quatorze virgule cinq pour cent.",
+   "source": "insee_ipp",
+   "pause": 0.5
+  },
+  {
+   "text": "Ces coûts peuvent finir dans tes courses et tes factures."
+  },
+  {
+   "text": "Ce n'est pas encore l'inflation, mais c'est un signal.",
+   "pause": 0.6
+  },
+  {
+   "text": "Demain : l'inflation de novembre va-t-elle repartir ?"
+  }
+ ],
+ "scenes": [
+  {
+   "type": "titre",
+   "from": 0,
+   "title": "Les prix des usines s'envolent",
+   "number": "+9,6 %",
+   "sub": "En un an, selon l'Insee.",
+   "pose": "choc",
+   "source": "insee_ipp"
+  },
+  {
+   "type": "courbe",
+   "from": "L2",
+   "title": "Un an de hausse, surtout depuis l'été.",
+   "chart_title": "Prix de production de l'industrie (indice, base 2021 = 100)",
+   "unit": "",
+   "y_range": [
+    110,
+    130
+   ],
+   "highlight_from": 2026.0,
+   "x_ticks": [
+    2025,
+    2026
+   ],
+   "points": [
+    [
+     2025.0,
+     123.6
+    ],
+    [
+     2025.083,
+     123.6
+    ],
+    [
+     2025.167,
+     122.2
+    ],
+    [
+     2025.25,
+     117.5
+    ],
+    [
+     2025.333,
+     116.5
+    ],
+    [
+     2025.417,
+     116.6
+    ],
+    [
+     2025.5,
+     117.3
+    ],
+    [
+     2025.583,
+     116.8
+    ],
+    [
+     2025.667,
+     116.5
+    ],
+    [
+     2025.75,
+     116.9
+    ],
+    [
+     2025.833,
+     119.6
+    ],
+    [
+     2025.917,
+     119.9
+    ],
+    [
+     2026.0,
+     121.3
+    ],
+    [
+     2026.083,
+     119.8
+    ],
+    [
+     2026.167,
+     122.5
+    ],
+    [
+     2026.25,
+     120.1
+    ],
+    [
+     2026.333,
+     120.4
+    ],
+    [
+     2026.417,
+     120.8
+    ],
+    [
+     2026.5,
+     122.4
+    ],
+    [
+     2026.583,
+     124.0
+    ],
+    [
+     2026.667,
+     126.2
+    ],
+    [
+     2026.75,
+     128.1
+    ]
+   ],
+   "annotations": [],
+   "end_label": "128,1",
+   "source": "insee_ipp",
+   "sync": [
+    {
+     "x": 2025.0,
+     "at": "L2"
+    },
+    {
+     "x": 2025.75,
+     "at": "L2.end"
+    },
+    {
+     "x": 2026.0,
+     "at": "L3"
+    },
+    {
+     "x": 2026.75,
+     "at": "L3.end"
+    }
+   ]
+  },
+  {
+   "type": "barres",
+   "from": "L5",
+   "title": "Le coupable : l'énergie",
+   "chart_title": "Hausse sur un an, marché français (%)",
+   "bars": [
+    {
+     "label": "Électricité",
+     "value": 13.2,
+     "text": "+13,2 %"
+    },
+    {
+     "label": "Gaz",
+     "value": 32.5,
+     "text": "+32,5 %"
+    },
+    {
+     "label": "Raffinage",
+     "value": 99.0,
+     "text": "+99 %"
+    }
+   ],
+   "highlight": 2,
+   "source": "insee_ipp"
+  },
+  {
+   "type": "titre",
+   "from": "L10",
+   "title": "Hors énergie aussi",
+   "number": "+3,4 %",
+   "sub": "Hors énergie, sur un an.",
+   "pose": "montre",
+   "source": "insee_ipp"
+  },
+  {
+   "type": "points",
+   "from": "L12",
+   "title": "Et pour toi, ça change quoi ?",
+   "items": [
+    "Importés : +14,5 % sur un an",
+    "Ces coûts peuvent finir dans tes prix",
+    "Pas encore l'inflation, mais un signal"
+   ],
+   "at": [
+    "L11",
+    "L12",
+    "L13"
+   ]
+  },
+  {
+   "type": "fin",
+   "from": "L14",
+   "kicker": "DEMAIN",
+   "next": "L'inflation de novembre va-t-elle repartir ?"
+  }
+ ]
+}
