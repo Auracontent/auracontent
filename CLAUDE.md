@@ -20,3 +20,14 @@ Modèle : `episodes/archive/_exemple/plan.json`. Moteur : `auracontent/archive/`
 - Le contrôle de la planche `stills.jpg` est obligatoire : lis-la, corrige le plan, recommence jusqu'à ce qu'elle soit propre.
 - Si quelque chose bloque (pas assez d'archives, voix Gemini indisponible, faits invérifiables), écris le problème dans
   `PROBLEME.md` dans le dossier de l'épisode, commite et arrête-toi : ne publie jamais un short au rabais.
+
+## Shorts « expliqué par un bonhomme » (chaîne finance)
+Quand on te demande un short « bonhomme » pour Capital Simple (tâche `direct_bonhomme` du workflow `generator_video.yml`,
+variable `FINANCE_MODE=bonhomme` ou case « finance_bonhomme », ou à la main), suis **docs/finance_bonhomme.md** à la lettre.
+Modèle : `episodes/bonhomme/_exemple/plan.json`. Moteur : `auracontent/bonhomme/` (CLI `python -m auracontent.bonhomme.cli`).
+
+- Chaque chiffre de la voix porte `source`, `calc` ou `exemple` (montant fictif dit comme un exemple) ; jamais d'ordre
+  d'investir, de produit recommandé ni d'« abonne-toi ».
+- Le bonhomme (blanc, écharpe verte) est le personnage de Capital Simple : ne copie jamais le personnage d'une autre chaîne.
+- Le contrôle de la planche `stills.jpg` est obligatoire, comme pour les autres formats réalisés.
+- Ce format ne touche à rien de la chaîne mystery (ni `auracontent/archive/`, ni `episodes/archive/`, ni `config/channels/mystery.yaml`).

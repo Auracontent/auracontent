@@ -49,3 +49,10 @@ episodes/finance/*/voice/edge/
 episodes/finance/*/voice/lines/
 episodes/finance/*/build/
 episodes/finance/*/out/
+
+# Format « expliqué par un bonhomme » (finance) : seuls plan.json, stills.jpg et voice/timing.json sont versionnés
+episodes/bonhomme/*/voice/*.wav
+episodes/bonhomme/*/voice/edge/
+episodes/bonhomme/*/voice/lines/
+episodes/bonhomme/*/build/
+episodes/bonhomme/*/out/

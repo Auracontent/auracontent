@@ -1,0 +1,96 @@
+{
+ "duration": 63.807,
+ "lines": [
+  {
+   "t0": 0.0,
+   "t1": 3.462,
+   "text": "T'es à découvert, et pourtant tu gagnes ta vie."
+  },
+  {
+   "t0": 3.962,
+   "t1": 9.346,
+   "text": "Imagine : ton salaire de 1 850 € tombe le premier du mois."
+  },
+  {
+   "t0": 9.646,
+   "t1": 11.185,
+   "text": "Tu te sens riche."
+  },
+  {
+   "t0": 11.585,
+   "t1": 13.508,
+   "text": "Puis les petites dépenses arrivent."
+  },
+  {
+   "t0": 13.808,
+   "t1": 16.115,
+   "text": "Une livraison, un abonnement, une promo."
+  },
+  {
+   "t0": 16.415,
+   "t1": 18.723,
+   "text": "Rien de grave, une par une."
+  },
+  {
+   "t0": 19.023,
+   "t1": 22.869,
+   "text": "Sauf que le 15, il te reste 112 €."
+  },
+  {
+   "t0": 23.469,
+   "t1": 26.161,
+   "text": "Le problème, ce n'est pas ton salaire."
+  },
+  {
+   "t0": 26.461,
+   "t1": 27.615,
+   "text": "C'est ton cerveau."
+  },
+  {
+   "t0": 28.115,
+   "t1": 32.346,
+   "text": "Il préfère 10 € maintenant à 100 € dans un an."
+  },
+  {
+   "t0": 32.646,
+   "t1": 35.723,
+   "text": "Les économistes appellent ça le biais du présent."
+  },
+  {
+   "t0": 36.123,
+   "t1": 39.2,
+   "text": "Chaque petit achat fait plaisir tout de suite."
+  },
+  {
+   "t0": 39.5,
+   "t1": 42.192,
+   "text": "L'épargne, elle, ne fait rien ressentir aujourd'hui."
+  },
+  {
+   "t0": 42.692,
+   "t1": 46.538,
+   "text": "Alors l'astuce, c'est de ne pas lui laisser le choix."
+  },
+  {
+   "t0": 46.838,
+   "t1": 52.992,
+   "text": "Le jour de la paie, 10 % partent tout seuls sur un compte à part."
+  },
+  {
+   "t0": 53.292,
+   "t1": 55.6,
+   "text": "Tu dépenses seulement ce qui reste."
+  },
+  {
+   "t0": 55.9,
+   "t1": 59.746,
+   "text": "Ce que tu ne vois pas, tu le dépenses moins."
+  },
+  {
+   "t0": 60.346,
+   "t1": 63.807,
+   "text": "La suite : comment tenir jusqu'au 30 sans te priver."
+  }
+ ],
+ "source": "estimée"
+}

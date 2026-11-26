@@ -43,6 +43,14 @@ on:
         description: "Short « L'éco du jour » : déposer sur Hugging Face pour le Publisher (décocher pour un essai)"
         type: boolean
         default: true
+      finance_bonhomme:
+        description: "finance : short « expliqué par un bonhomme » réalisé par Claude (même sans FINANCE_MODE=bonhomme)"
+        type: boolean
+        default: false
+      bonhomme_upload:
+        description: "Short « bonhomme » : déposer sur Hugging Face pour le Publisher (décocher pour un essai)"
+        type: boolean
+        default: true
   repository_dispatch:
     types: [trigger-videos]
 
@@ -60,13 +68,16 @@ on:
 #
 # Capital Simple, même principe : la variable de dépôt FINANCE_MODE=actu (ou la case « finance_actu ») remplace le
 # format automatique par la tâche direct_finance (short « L'éco du jour » réalisé par Claude, docs/finance_actu.md).
+# FINANCE_MODE=bonhomme (ou la case « finance_bonhomme », prioritaire) le remplace par la tâche direct_bonhomme
+# (short « expliqué par un bonhomme », docs/finance_bonhomme.md). mystery n'est jamais concerné par ces deux modes.
 
 jobs:
   generate:
     if: >-
       ${{ !((github.event.inputs.channel || github.event.client_payload.channel || 'all') == 'mystery' && inputs.mystery_archive == true)
        && !((github.event.inputs.channel || github.event.client_payload.channel || 'all') == 'finance'
-            && (inputs.finance_actu == true || vars.FINANCE_MODE == 'actu')) }}
+            && (inputs.finance_actu == true || vars.FINANCE_MODE == 'actu'
+                || inputs.finance_bonhomme == true || vars.FINANCE_MODE == 'bonhomme')) }}
     # L'historique (sujets, hooks) est un état partagé sur HF : deux runs en parallèle
     # s'écraseraient. Les runs sont donc mis en file d'attente, sans annuler celui en cours.
     concurrency:
@@ -104,7 +115,7 @@ jobs:
       REFINE_ANGLE: ${{ github.event.inputs.refine_angle || 'true' }}
       USE_HOOK_VARIANTS: ${{ github.event.inputs.use_hook_variants || 'true' }}
       MYSTERY_MODE: ${{ inputs.mystery_archive == true && 'archive' || vars.MYSTERY_MODE }}   # `archive` : mystery est réalisé par la tâche direct
-      FINANCE_MODE: ${{ inputs.finance_actu == true && 'actu' || vars.FINANCE_MODE }}   # `actu` : finance est réalisé par la tâche direct_finance
+      FINANCE_MODE: ${{ inputs.finance_bonhomme == true && 'bonhomme' || inputs.finance_actu == true && 'actu' || vars.FINANCE_MODE }}   # `actu` / `bonhomme` : finance est réalisé par direct_finance / direct_bonhomme
 
     steps:
       - name: 📥 Cloner le dépôt
@@ -142,9 +153,9 @@ jobs:
           else
             CHANNELS="$CHANNEL"
           fi
-          if [ "$CHANNEL" = "all" ] && [ "$FINANCE_MODE" = "actu" ]; then
-            CHANNELS="${CHANNELS/finance/}"   # finance : tâche direct_finance (« L'éco du jour »)
-            echo "finance est réalisé par la tâche Réalisateur finance (FINANCE_MODE=actu)."
+          if [ "$CHANNEL" = "all" ] && { [ "$FINANCE_MODE" = "actu" ] || [ "$FINANCE_MODE" = "bonhomme" ]; }; then
+            CHANNELS="${CHANNELS/finance/}"   # finance : tâche direct_finance (« L'éco du jour ») ou direct_bonhomme
+            echo "finance est réalisé par la tâche Réalisateur finance (FINANCE_MODE=$FINANCE_MODE)."
           fi
           if [ -z "${CHANNELS// /}" ]; then echo "Aucune chaîne automatique à générer."; exit 0; fi
 
@@ -298,7 +309,8 @@ jobs:
   direct_finance:
     if: >-
       ${{ contains(fromJSON('["all","finance"]'), github.event.inputs.channel || github.event.client_payload.channel || 'all')
-       && (vars.FINANCE_MODE == 'actu' || inputs.finance_actu == true) }}
+       && (vars.FINANCE_MODE == 'actu' || inputs.finance_actu == true)
+       && inputs.finance_bonhomme != true }}
     concurrency:
       group: director-finance
       cancel-in-progress: false
@@ -388,4 +400,101 @@ jobs:
           path: |
             episodes/finance/*/out/*.mp4
             episodes/finance/*/stills.jpg
+          if-no-files-found: warn
+
+  # Réalisateur finance, format « expliqué par un bonhomme » : Claude écrit le plan (docs/finance_bonhomme.md), la vidéo
+  # est rendue (voix de Rémy, bonhomme dessiné, musique) et déposée sur Hugging Face ; le Publisher la publie.
+  direct_bonhomme:
+    if: >-
+      ${{ contains(fromJSON('["all","finance"]'), github.event.inputs.channel || github.event.client_payload.channel || 'all')
+       && (inputs.finance_bonhomme == true || (vars.FINANCE_MODE == 'bonhomme' && inputs.finance_actu != true)) }}
+    concurrency:
+      group: director-finance
+      cancel-in-progress: false
+    runs-on: ubuntu-26.04
+    timeout-minutes: 75
+    permissions:
+      contents: write
+      id-token: write
+    env:
+      HF_TOKEN: ${{ secrets.HF_TOKEN }}
+      TOPIC: ${{ github.event.inputs.topic || '' }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Paquets système et Python
+        run: |
+          sudo apt-get update -qq
+          grep -vE '^\s*(#|$)' packages.txt | xargs sudo apt-get install -y -qq
+      - uses: astral-sh/setup-uv@v10.4.0
+        with:
+          enable-cache: true
+          cache-dependency-glob: "uv.lock"
+      - run: uv python install 3.12 && uv sync --locked --group default --group media
+
+      - name: Dossier de l'épisode
+        id: ep
+        run: |
+          D=$(TZ=Europe/Paris date +%Y-%m-%d)
+          echo "date=$D" >> "$GITHUB_OUTPUT"
+
+      - name: Claude réalise le short
+        uses: anthropics/claude-code-action@v1
+        with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          allowed_bots: "github-actions,github-actions[bot]"
+          claude_args: "--max-turns 200 --allowedTools Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch"
+          prompt: |
+            Tu es le réalisateur de « Capital Simple », format « expliqué par un bonhomme ». Nous sommes le ${{ steps.ep.outputs.date }}.
+            Lis CLAUDE.md puis docs/finance_bonhomme.md en entier, et le modèle episodes/bonhomme/_exemple/plan.json.
+            ${{ github.event.inputs.topic != '' && format('Sujet imposé : « {0} ».', github.event.inputs.topic) || 'Choisis toi-même le sujet (section 1), sans reprendre un sujet de episodes/bonhomme/.' }}
+
+            Crée le dossier episodes/bonhomme/${{ steps.ep.outputs.date }}-<slug court>/ et réalise le short :
+            recherche et vérification de chaque fait (WebSearch, WebFetch), plan.json complet (voix avec « say »,
+            scènes, réactions du bonhomme, légende), puis :
+              uv run python -m auracontent.bonhomme.cli <dossier> check
+              uv run python -m auracontent.bonhomme.cli <dossier> voice      (une seule fois si elle réussit)
+              uv run python -m auracontent.bonhomme.cli <dossier> stills
+            Lis stills.jpg, corrige plan.json et relance stills jusqu'à ce que la planche soit propre (section 6).
+            Ne relance « voice » que si tu as changé le texte d'une phrase.
+            Ne lance PAS « render » ni « upload » : l'étape suivante du workflow s'en charge.
+            Termine par : git add <dossier> ; git commit -m "feat(finance): bonhomme <slug>" ; git pull --rebase ; git push.
+            Si quelque chose bloque (fait invérifiable, voix indisponible), écris <dossier>/PROBLEME.md,
+            commite-le et arrête-toi : jamais de vidéo au rabais.
+
+      - name: Retrouver l'épisode réalisé
+        id: done
+        run: |
+          git pull -q --rebase || git pull -q
+          E=$(ls -d episodes/bonhomme/${{ steps.ep.outputs.date }}-*/ 2>/dev/null | sort | tail -n 1)
+          E=${E%/}
+          [ -n "$E" ] || { echo "::error::Aucun épisode créé aujourd'hui."; exit 1; }
+          if [ -f "$E/PROBLEME.md" ]; then echo "::error::Le réalisateur s'est arrêté :"; cat "$E/PROBLEME.md"; exit 1; fi
+          for f in plan.json stills.jpg voice/timing.json voice/voice.wav; do
+            [ -f "$E/$f" ] || { echo "::error::manque $E/$f"; exit 1; }
+          done
+          uv run python -m auracontent.bonhomme.cli "$E" check
+          echo "dir=$E" >> "$GITHUB_OUTPUT"
+
+      - name: Rendu
+        run: uv run python -m auracontent.bonhomme.cli "${{ steps.done.outputs.dir }}" render
+
+      - name: Vérifier le niveau sonore
+        run: |
+          V=$(ls "${{ steps.done.outputs.dir }}"/out/*.mp4 | head -n 1)
+          ffmpeg -i "$V" -af ebur128 -f null - 2>&1 | grep -A1 "Integrated" | tail -n 1
+
+      # Dépôt sauf essai manuel (case bonhomme_upload décochée) ; le cron et `trigger-videos` déposent toujours
+      - name: Déposer sur Hugging Face
+        if: ${{ github.event_name != 'workflow_dispatch' || inputs.bonhomme_upload != false }}
+        run: uv run python -m auracontent.bonhomme.cli "${{ steps.done.outputs.dir }}" upload --channel finance
+
+      - name: Sauvegarder la vidéo
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: bonhomme-${{ github.run_id }}
+          path: |
+            episodes/bonhomme/*/out/*.mp4
+            episodes/bonhomme/*/stills.jpg
           if-no-files-found: warn
