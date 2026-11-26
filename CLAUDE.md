@@ -28,6 +28,8 @@ Modèle : `episodes/bonhomme/_exemple/plan.json`. Moteur : `auracontent/bonhomme
 
 - Chaque chiffre de la voix porte `source`, `calc` ou `exemple` (montant fictif dit comme un exemple) ; jamais d'ordre
   d'investir, de produit recommandé ni d'« abonne-toi ».
+- Chaque épisode tient la suite annoncée par le précédent (`cli episodes/bonhomme suite`, champ `suite_de`) ;
+  un sujet imposé est `hors_suite` et réannonce la même suite.
 - Le bonhomme (blanc, écharpe verte) est le personnage de Capital Simple : ne copie jamais le personnage d'une autre chaîne.
 - Le contrôle de la planche `stills.jpg` est obligatoire, comme pour les autres formats réalisés.
 - Ce format ne touche à rien de la chaîne mystery (ni `auracontent/archive/`, ni `episodes/archive/`, ni `config/channels/mystery.yaml`).

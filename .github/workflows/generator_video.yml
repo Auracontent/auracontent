@@ -447,7 +447,8 @@ jobs:
           prompt: |
             Tu es le réalisateur de « Capital Simple », format « expliqué par un bonhomme ». Nous sommes le ${{ steps.ep.outputs.date }}.
             Lis CLAUDE.md puis docs/finance_bonhomme.md en entier, et le modèle episodes/bonhomme/_exemple/plan.json.
-            ${{ github.event.inputs.topic != '' && format('Sujet imposé : « {0} ».', github.event.inputs.topic) || 'Choisis toi-même le sujet (section 1), sans reprendre un sujet de episodes/bonhomme/.' }}
+            Lance d'abord : uv run python -m auracontent.bonhomme.cli episodes/bonhomme suite
+            ${{ github.event.inputs.topic != '' && format('Sujet imposé : « {0} ». L''épisode est hors suite : mets "hors_suite": "sujet imposé" et réannonce à la fin la suite promise s''il y en a une (section 1).', github.event.inputs.topic) || 'S''il affiche une suite promise, c''est ton sujet (avec "suite_de") ; sinon choisis le sujet toi-même (section 1).' }}
 
             Crée le dossier episodes/bonhomme/${{ steps.ep.outputs.date }}-<slug court>/ et réalise le short :
             recherche et vérification de chaque fait (WebSearch, WebFetch), plan.json complet (voix avec « say »,
@@ -488,6 +489,18 @@ jobs:
       - name: Déposer sur Hugging Face
         if: ${{ github.event_name != 'workflow_dispatch' || inputs.bonhomme_upload != false }}
         run: uv run python -m auracontent.bonhomme.cli "${{ steps.done.outputs.dir }}" upload --channel finance
+
+      # Essai non publié : l'épisode ne compte pas dans la série (sa « suite » n'est pas due au suivant)
+      - name: Marquer l'essai
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.bonhomme_upload == false }}
+        run: |
+          E="${{ steps.done.outputs.dir }}"
+          echo "Essai non publié (case bonhomme_upload décochée) : ignoré pour la suite des épisodes." > "$E/ESSAI.md"
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add "$E/ESSAI.md"
+          git commit -m "chore(finance): essai bonhomme $(basename "$E") non publié"
+          git pull -q --rebase && git push
 
       - name: Sauvegarder la vidéo
         if: always()

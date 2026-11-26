@@ -1,6 +1,7 @@
 """Épisode « expliqué par un bonhomme » (Capital Simple), de plan.json à la vidéo finale.
 
-    uv run python -m auracontent.bonhomme.cli <épisode> check              # contrôle du plan (et des repères de temps)
+    uv run python -m auracontent.bonhomme.cli episodes/bonhomme suite      # la suite promise par le dernier épisode
+    uv run python -m auracontent.bonhomme.cli <épisode> check              # contrôle du plan, des repères, de la suite
     uv run python -m auracontent.bonhomme.cli <épisode> voice              # voix de Rémy (Edge TTS) -> voice/
     uv run python -m auracontent.bonhomme.cli <épisode> voice --preview    # minutage estimé, sans réseau (jamais publié)
     uv run python -m auracontent.bonhomme.cli <épisode> stills             # planche de contrôle -> stills.jpg
@@ -42,9 +43,27 @@ def _timeline(ep: Path):
     return tl, Renderer(ep, tl)
 
 
+def _in_series(ep: Path) -> bool:
+    return ep.parent.name == "bonhomme" and ep.name != "_exemple"
+
+
+def suite(root: Path) -> str:
+    pending = plan_mod.pending_promise(root)
+    if not pending:
+        msg = "   aucune suite promise : sujet libre"
+    else:
+        msg = f"   suite promise par {pending[0]} : « {pending[1]} »  ->  \"suite_de\": \"{pending[0]}\""
+    print(msg)
+    return msg
+
+
 def check(ep: Path) -> None:
     plan = _load_plan(ep)
     plan_mod.validate(plan)
+    if _in_series(ep):
+        errs = plan_mod.check_suite(plan, ep.parent, ep.name)
+        if errs:
+            raise plan_mod.PlanError("suite des épisodes :\n  - " + "\n  - ".join(errs))
     if (ep / "voice" / "timing.json").exists():
         tl, _r = _timeline(ep)
         errs = plan_mod.check_refs(plan, tl)
@@ -179,12 +198,15 @@ def upload(ep: Path, channel: str = "finance") -> str:
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("episode", type=Path)
-    ap.add_argument("step", choices=["check", "voice", "stills", "render", "upload"])
+    ap.add_argument("step", choices=["suite", "check", "voice", "stills", "render", "upload"])
     ap.add_argument("--preview", action="store_true", help="voice : minutage estimé, sans réseau (jamais publié)")
     ap.add_argument("--workers", type=int, default=None)
     ap.add_argument("--channel", default="finance", help="chaîne dont la section publish sert à l'upload")
     a = ap.parse_args(argv)
     ep = a.episode.resolve()
+    if a.step == "suite":
+        suite(ep)
+        return 0
     if not (ep / "plan.json").exists():
         print(f"plan.json introuvable dans {ep}", file=sys.stderr)
         return 2

@@ -36,12 +36,25 @@ Modèle complet : `episodes/bonhomme/_exemple/plan.json`.
 
 ## 1. Choisir le sujet
 
+**D'abord, la suite promise.** Chaque épisode finit en annonçant le suivant (« la suite : comment tenir jusqu'au 30 »).
+Cette promesse est tenue : lance `uv run python -m auracontent.bonhomme.cli episodes/bonhomme suite`.
+- S'il affiche une suite promise, **c'est le sujet de l'épisode**, et `plan.json` porte `"suite_de": "<dossier qui l'a annoncée>"`.
+- Si un sujet est imposé (tâche lancée avec un sujet), l'épisode est hors suite : `"hors_suite": "sujet imposé"`, et sa
+  carte de fin **réannonce la même suite** (même `next`, même dernière phrase de voix) ; elle reste due à l'épisode suivant.
+- Un épisode en échec (`PROBLEME.md`) ou un essai non publié (`ESSAI.md`, posé par le workflow) ne compte pas :
+  sa promesse n'existe pas.
+- `check` refuse un plan qui ne respecte pas ces règles. La suite que tu annonces à ton tour doit être un sujet que tu
+  sais pouvoir traiter et sourcer demain (pas de promesse vague comme « un secret incroyable »).
+
+S'il n'y a aucune suite promise (premier épisode), choisis librement :
+
 - **Un problème d'argent que le spectateur vit lui-même** : être à découvert, ne pas arriver à épargner, les
   abonnements oubliés, les achats d'impulsion, le paiement en plusieurs fois, les soldes, la carte sans contact,
   le crédit renouvelable, la comparaison aux autres, l'argent et le stress, les frais bancaires...
 - Le cœur de la vidéo est **un mécanisme** qu'on peut dessiner : un biais (biais du présent, ancrage, aversion
   à la perte, effet de dotation...), une technique commerciale, un calcul qui surprend.
-- Pas de doublon : lis les `plan.json` de `episodes/bonhomme/` et évite le même sujet que les 10 derniers.
+- Pas de doublon : lis les `plan.json` de `episodes/bonhomme/` et évite le même sujet que les 10 derniers
+  (la suite promise n'est pas un doublon : elle prolonge l'épisode d'avant sous un autre angle).
 
 ## 2. Vérifier les faits
 
@@ -76,7 +89,8 @@ Modèle complet : `episodes/bonhomme/_exemple/plan.json`.
   2. **la situation** en 3 à 5 phrases, avec un exemple chiffré qu'on voit (salaire, dépenses) ;
   3. **le retournement** : « Le problème, ce n'est pas X. C'est Y. » puis le mécanisme en 2 ou 3 phrases ;
   4. **l'astuce** : une habitude concrète, montrée ;
-  5. **la suite** : le sujet du prochain épisode (« La suite : comment tenir jusqu'au 30 sans te priver. »).
+  5. **la suite** : le sujet du prochain épisode (« La suite : comment tenir jusqu'au 30 sans te priver. »), le même que
+     le `next` de la carte de fin. Ce sera le sujet obligatoire de l'épisode suivant (section 1).
 - Chiffres en chiffres dans `text`, **`say` obligatoire dès qu'il y a un chiffre** (la phrase telle que Rémy la lit).
 - `"pause"` : silence après la phrase (défaut 0,3 s) ; 0,5 à 0,6 s après l'accroche, avant le retournement et avant la suite.
 
