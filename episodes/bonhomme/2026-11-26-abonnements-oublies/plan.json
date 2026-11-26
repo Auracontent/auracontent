@@ -1,0 +1,63 @@
+{
+ "slug": "abonnements-oublies",
+ "format": "vertical",
+ "title": "Pourquoi tu paies des abonnements oubliés (expliqué par un bonhomme)",
+ "caption": "Un abonnement qui tombe tout seul, tu ne le sens plus passer. Le tour du relevé suffit souvent à le retrouver. #finance #argent #abonnements #budget #psychologie",
+ "mood": "calme",
+ "sources": {
+  "sharesub": {
+   "name": "Sondage Ipsos pour Sharesub (14 janvier 2026), relayé par Économie Matin",
+   "url": "https://www.economiematin.fr/abonnements-depenses-budget-francais"
+  },
+  "prelec": {
+   "name": "Prelec & Loewenstein, The Red and the Black: Mental Accounting of Savings and Debt (Marketing Science, 1998)",
+   "url": "https://pubsonline.informs.org/doi/fpi/10.1287/mksc.17.1.4"
+  }
+ },
+ "voice": {"name": "fr-FR-RemyMultilingualNeural", "rate": "-6%", "pause": 0.3},
+ "lines": [
+  {"text": "Tu paies des trucs que tu n'utilises plus.", "pause": 0.5},
+  {"text": "En moyenne, les Français dépensent 54 € par mois en abonnements de loisirs.",
+   "say": "En moyenne, les Français dépensent cinquante-quatre euros par mois en abonnements de loisirs.", "source": "sharesub"},
+  {"text": "Ça fait 648 € par an.", "say": "Ça fait six cent quarante-huit euros par an.", "calc": "54 x 12 = 648", "pause": 0.4},
+  {"text": "Et 44 % ont déjà oublié d'en résilier un.", "say": "Et quarante-quatre pour cent ont déjà oublié d'en résilier un.", "source": "sharesub", "pause": 0.4},
+  {"text": "Disons un abonnement à 9 € par mois.", "say": "Disons un abonnement à neuf euros par mois.", "exemple": true},
+  {"text": "Tu ne le sens pas."},
+  {"text": "Il tombe tout seul, chaque mois.", "pause": 0.6},
+  {"text": "Le problème, ce n'est pas le prix."},
+  {"text": "C'est que payer ne fait plus mal.", "pause": 0.4},
+  {"text": "Les chercheurs parlent de la douleur de payer.", "source": "prelec"},
+  {"text": "Un prélèvement automatique, tu ne le vois même pas passer.", "pause": 0.6},
+  {"text": "Alors l'astuce : fais le tour de ton relevé."},
+  {"text": "Cherche les petites lignes qui reviennent chaque mois."},
+  {"text": "Pour chacune, demande-toi : je l'ai utilisée ce mois-ci ?"},
+  {"text": "Si non, elle part.", "pause": 0.6},
+  {"text": "La suite : comment résilier en trois clics."}
+ ],
+ "scenes": [
+  {"type": "accroche", "from": 0, "title": "tu paies pour rien", "sous_titre": "(et tu ne le sais même pas)",
+   "sous_titre_at": "L0@0.7", "pluie": true, "bonhomme": {"expr": "triste"}},
+  {"type": "compteur", "from": "L1", "title": "Loisirs numériques, en moyenne", "value": 54,
+   "format": "{n} € / mois", "count_at": "L1@0.5", "pieces": "fuite", "title2": "= 648 € par an",
+   "title2_color": "rouge", "title2_at": "L2@0.3",
+   "bonhomme": {"expr": "neutre", "reactions": [{"at": "L2", "expr": "choc", "hop": true}]}},
+  {"type": "compteur", "from": "L3", "title": "ont déjà oublié d'en résilier un", "value": 44,
+   "format": "{n} %", "count_at": "L3@0.2", "color": "rouge",
+   "bonhomme": {"expr": "stresse", "reactions": [{"at": "L3@0.6", "arms": "tete"}]}},
+  {"type": "notifications", "from": "L4", "title": "Un prélèvement, ça tombe tout seul.",
+   "items": ["Streaming -9 € (janv.)", "Streaming -9 € (fév.)", "Streaming -9 € (mars)"],
+   "at": ["L4@0.5", "L5", "L6"],
+   "bonhomme": {"expr": "neutre", "reactions": [{"at": "L5", "expr": "pense", "arms": "menton"}, {"at": "L6", "expr": "triste"}]}},
+  {"type": "choix", "from": "L7", "title": "Le problème ? Pas le prix.", "title2": "la douleur de payer",
+   "title2_at": "L9",
+   "left": {"label": "À LA CAISSE", "value": "ça pique", "at": "L8@0.3"},
+   "right": {"label": "PRÉLÈVEMENT", "value": "ça passe", "at": "L8@0.8"},
+   "pick": 1, "pick_at": "L10@0.5", "pick_label": "tu ne sens rien",
+   "bonhomme": {"expr": "pense", "arms": "menton", "reactions": [{"at": "L9", "expr": "neutre", "arms": "bas"}, {"at": "L10", "expr": "stresse"}]}},
+  {"type": "liste", "from": "L11", "title": "L'astuce : le tour du relevé", "title_color": "jaune",
+   "items": ["Repère les lignes qui reviennent", "Utilisé ce mois-ci ?", "Si non : elle part"],
+   "at": ["L12", "L13", "L14"],
+   "bonhomme": {"expr": "content", "arms": "montre", "reactions": [{"at": "L14", "expr": "fier", "arms": "pouce"}]}},
+  {"type": "fin", "from": "L15", "kicker": "la suite :", "next": "comment résilier en trois clics"}
+ ]
+}

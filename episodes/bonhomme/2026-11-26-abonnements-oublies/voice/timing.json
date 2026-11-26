@@ -1,0 +1,86 @@
+{
+ "duration": 44.16,
+ "lines": [
+  {
+   "t0": 0.0,
+   "t1": 1.96,
+   "text": "Tu paies des trucs que tu n'utilises plus."
+  },
+  {
+   "t0": 2.46,
+   "t1": 7.0,
+   "text": "En moyenne, les Français dépensent 54 € par mois en abonnements de loisirs."
+  },
+  {
+   "t0": 7.3,
+   "t1": 9.45,
+   "text": "Ça fait 648 € par an."
+  },
+  {
+   "t0": 9.85,
+   "t1": 12.94,
+   "text": "Et 44 % ont déjà oublié d'en résilier un."
+  },
+  {
+   "t0": 13.34,
+   "t1": 15.61,
+   "text": "Disons un abonnement à 9 € par mois."
+  },
+  {
+   "t0": 15.91,
+   "t1": 16.84,
+   "text": "Tu ne le sens pas."
+  },
+  {
+   "t0": 17.14,
+   "t1": 19.08,
+   "text": "Il tombe tout seul, chaque mois."
+  },
+  {
+   "t0": 19.68,
+   "t1": 21.67,
+   "text": "Le problème, ce n'est pas le prix."
+  },
+  {
+   "t0": 21.97,
+   "t1": 23.44,
+   "text": "C'est que payer ne fait plus mal."
+  },
+  {
+   "t0": 23.84,
+   "t1": 26.19,
+   "text": "Les chercheurs parlent de la douleur de payer."
+  },
+  {
+   "t0": 26.49,
+   "t1": 29.61,
+   "text": "Un prélèvement automatique, tu ne le vois même pas passer."
+  },
+  {
+   "t0": 30.21,
+   "t1": 32.87,
+   "text": "Alors l'astuce : fais le tour de ton relevé."
+  },
+  {
+   "t0": 33.17,
+   "t1": 35.63,
+   "text": "Cherche les petites lignes qui reviennent chaque mois."
+  },
+  {
+   "t0": 35.93,
+   "t1": 39.36,
+   "text": "Pour chacune, demande-toi : je l'ai utilisée ce mois-ci ?"
+  },
+  {
+   "t0": 39.66,
+   "t1": 40.92,
+   "text": "Si non, elle part."
+  },
+  {
+   "t0": 41.52,
+   "t1": 44.16,
+   "text": "La suite : comment résilier en trois clics."
+  }
+ ],
+ "source": "edge"
+}
