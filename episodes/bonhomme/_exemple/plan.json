@@ -1,0 +1,70 @@
+{
+ "slug": "toujours-a-decouvert",
+ "format": "vertical",
+ "title": "Pourquoi t'es toujours à découvert (expliqué par un bonhomme)",
+ "caption": "Tu gagnes ta vie mais le 15 du mois il ne reste rien ? C'est souvent ton cerveau, pas ton salaire. #finance #argent #budget #epargne #psychologie",
+ "mood": "calme",
+ "sources": {
+  "hal_biais": {
+   "name": "Bringing present bias back to the present (HAL, archive ouverte)",
+   "url": "https://hal.archives-ouvertes.fr/hal-02133525v2"
+  },
+  "osc_present": {
+   "name": "Gérez mieux votre argent (Commission des valeurs mobilières de l'Ontario), la distorsion du présent",
+   "url": "https://www.gerezmieuxvotreargent.ca/chemin-dapprentissage/science-du-comportement-et-investissement/vivre-pour-aujourdhui-au-detriment-de-demain"
+  }
+ },
+ "voice": {"name": "fr-FR-RemyMultilingualNeural", "rate": "-6%", "pause": 0.3},
+ "lines": [
+  {"text": "T'es à découvert, et pourtant tu gagnes ta vie.", "pause": 0.5},
+  {"text": "Imagine : ton salaire de 1 850 € tombe le premier du mois.",
+   "say": "Imagine : ton salaire de mille huit cent cinquante euros tombe le premier du mois.", "exemple": true},
+  {"text": "Tu te sens riche.", "pause": 0.4},
+  {"text": "Puis les petites dépenses arrivent."},
+  {"text": "Une livraison, un abonnement, une promo."},
+  {"text": "Rien de grave, une par une."},
+  {"text": "Sauf que le 15, il te reste 112 €.", "say": "Sauf que le quinze, il te reste cent douze euros.",
+   "exemple": true, "pause": 0.6},
+  {"text": "Le problème, ce n'est pas ton salaire."},
+  {"text": "C'est ton cerveau.", "pause": 0.5},
+  {"text": "Il préfère 10 € maintenant à 100 € dans un an.",
+   "say": "Il préfère dix euros maintenant à cent euros dans un an.", "exemple": true},
+  {"text": "Les économistes appellent ça le biais du présent.", "source": "hal_biais", "pause": 0.4},
+  {"text": "Chaque petit achat fait plaisir tout de suite.", "source": "osc_present"},
+  {"text": "L'épargne, elle, ne fait rien ressentir aujourd'hui.", "pause": 0.5},
+  {"text": "Alors l'astuce, c'est de ne pas lui laisser le choix."},
+  {"text": "Le jour de la paie, 10 % partent tout seuls sur un compte à part.",
+   "say": "Le jour de la paie, dix pour cent partent tout seuls sur un compte à part.", "exemple": true},
+  {"text": "Tu dépenses seulement ce qui reste."},
+  {"text": "Ce que tu ne vois pas, tu le dépenses moins.", "pause": 0.6},
+  {"text": "La suite : comment tenir jusqu'au 30 sans te priver.",
+   "say": "La suite : comment tenir jusqu'au trente sans te priver.", "exemple": true}
+ ],
+ "scenes": [
+  {"type": "accroche", "from": 0, "title": "t'es à découvert", "carte": "-312 €", "carte_at": "L0@0.6",
+   "sous_titre": "(et c'est pas une question de salaire)", "sous_titre_at": "L0@0.7", "pluie": true,
+   "bonhomme": {"expr": "triste"}},
+  {"type": "compteur", "from": "L1", "title": "Le 1er du mois : ton salaire tombe.", "value": 1850,
+   "format": "{n} €", "count_at": "L1@0.35", "pieces": "pile",
+   "bonhomme": {"expr": "content", "reactions": [{"at": "L2", "arms": "haut", "hop": true}]}},
+  {"type": "notifications", "from": "L3", "title": "Puis les petites dépenses arrivent…",
+   "items": ["Livraison -24 €", "Abonnement -13 €", "Promo !! -59 €", "Livraison -31 €", "Appli -9 €"],
+   "at": ["w:livraison@L4", "w:abonnement@L4", "w:promo@L4", "L5", "L5@0.6"],
+   "compteur": {"start": 1850, "value": 112, "format": "{n} €"},
+   "title2": "le 15 : il reste 112 €", "title2_color": "rouge", "title2_at": "L6@0.3",
+   "bonhomme": {"expr": "neutre", "reactions": [{"at": "L5", "expr": "stresse"}, {"at": "L6@0.5", "arms": "tete"}]}},
+  {"type": "choix", "from": "L7", "title": "Le problème ? Ton cerveau.", "title2": "le biais du présent",
+   "title2_at": "L10",
+   "left": {"label": "MAINTENANT", "value": "10 €", "at": "w:10@L9"},
+   "right": {"label": "DANS 1 AN", "value": "100 €", "at": "w:100@L9"},
+   "pick": 0, "pick_at": "L9.end", "pick_label": "presque toujours",
+   "bonhomme": {"expr": "pense", "arms": "menton", "reactions": [{"at": "L11", "expr": "content", "arms": "bas"},
+                                                                 {"at": "L12", "expr": "neutre"}]}},
+  {"type": "repartition", "from": "L13", "title": "L'astuce : paie-toi en premier.", "title_color": "jaune",
+   "source_label": "salaire",
+   "parts": [{"label": "épargne : 10 %", "bocal": true, "fill": 0.35, "at": "L14@0.3", "couleur": "vert"},
+             {"label": "le reste = tes dépenses", "at": "L15", "couleur": "gris"}],
+   "bonhomme": {"expr": "content", "arms": "montre", "reactions": [{"at": "L16", "expr": "fier", "arms": "pouce"}]}},
+  {"type": "fin", "from": "L17", "kicker": "la suite :", "next": "comment tenir jusqu'au 30"}
+ ]
+}
