@@ -1,0 +1,244 @@
+{
+ "slug": "resilier-trois-clics",
+ "format": "vertical",
+ "suite_de": "2026-11-26-abonnements-oublies",
+ "title": "Résilier un abonnement en trois clics, c'est la loi (par un bonhomme)",
+ "caption": "Un abonnement pris en ligne se résilie en ligne : bouton, récapitulatif, notification. Pas de lettre, pas de hotline. #finance #argent #abonnements #budget #resiliation",
+ "mood": "calme",
+ "sources": {
+  "sp": {
+   "name": "service-public.gouv.fr : Contrat en ligne, résilier en quelques clics (loi du 16 août 2022, décret du 31 mai 2023)",
+   "url": "https://www.service-public.gouv.fr/particuliers/actualites/A16599?lang=fr"
+  }
+ },
+ "voice": {
+  "name": "fr-FR-RemyMultilingualNeural",
+  "rate": "-6%",
+  "pause": 0.3
+ },
+ "lines": [
+  {
+   "text": "Ton abonnement, tu peux le couper en trois clics.",
+   "pause": 0.5
+  },
+  {
+   "text": "Un contrat qu'on peut prendre en ligne se résilie en ligne.",
+   "source": "sp"
+  },
+  {
+   "text": "C'est la loi.",
+   "source": "sp",
+   "pause": 0.3
+  },
+  {
+   "text": "Premier clic : le bouton « résiliez votre contrat ».",
+   "source": "sp"
+  },
+  {
+   "text": "Deuxième clic : tu vérifies le récapitulatif.",
+   "source": "sp"
+  },
+  {
+   "text": "Troisième clic : « notification de la résiliation ».",
+   "source": "sp",
+   "pause": 0.5
+  },
+  {
+   "text": "Ensuite, l'entreprise doit te confirmer qu'elle l'a reçue.",
+   "source": "sp"
+  },
+  {
+   "text": "Et te dire quand le contrat s'arrête.",
+   "source": "sp",
+   "pause": 0.6
+  },
+  {
+   "text": "Le problème, ce n'est pas la loi."
+  },
+  {
+   "text": "C'est que ton cerveau remet toujours ça à demain.",
+   "pause": 0.5
+  },
+  {
+   "text": "Alors l'astuce : résilie tout de suite, pendant que t'y es."
+  },
+  {
+   "text": "Garde la confirmation, en capture d'écran."
+  },
+  {
+   "text": "Et si le bouton n'existe pas, c'est le site qui est en tort.",
+   "source": "sp",
+   "pause": 0.6
+  },
+  {
+   "text": "La suite : les frais bancaires que ta banque te fait payer."
+  }
+ ],
+ "scenes": [
+  {
+   "type": "accroche",
+   "from": 0,
+   "title": "résilie en trois clics",
+   "sous_titre": "(et c'est la loi)",
+   "sous_titre_at": "L0@0.7",
+   "bonhomme": {
+    "expr": "choc",
+    "arms": "tete"
+   }
+  },
+  {
+   "type": "liste",
+   "from": "L1",
+   "title": "Pris en ligne = résilié en ligne",
+   "title_color": "or",
+   "items": [
+    "Pris en ligne",
+    "Résilié en ligne"
+   ],
+   "at": [
+    "L1@0.3",
+    "L2"
+   ],
+   "bonhomme": {
+    "expr": "content",
+    "arms": "montre",
+    "reactions": [
+     {
+      "at": "L2",
+      "expr": "fier",
+      "arms": "pouce",
+      "hop": true
+     }
+    ]
+   }
+  },
+  {
+   "type": "liste",
+   "from": "L3",
+   "title": "Les trois clics",
+   "title_color": "or",
+   "items": [
+    "Résiliez votre contrat",
+    "Vérifie le récapitulatif",
+    "Notification de la résiliation"
+   ],
+   "at": [
+    "L3",
+    "L4",
+    "L5"
+   ],
+   "bonhomme": {
+    "expr": "content",
+    "arms": "haut",
+    "reactions": [
+     {
+      "at": "L4",
+      "expr": "pense",
+      "arms": "menton"
+     },
+     {
+      "at": "L5",
+      "expr": "fier",
+      "arms": "piece",
+      "hop": true
+     }
+    ]
+   }
+  },
+  {
+   "type": "liste",
+   "from": "L6",
+   "title": "Ensuite, l'entreprise doit…",
+   "items": [
+    "Confirmer la réception",
+    "Dire quand ça s'arrête"
+   ],
+   "at": [
+    "L6",
+    "L7"
+   ],
+   "bonhomme": {
+    "expr": "neutre",
+    "reactions": [
+     {
+      "at": "L6",
+      "expr": "content",
+      "hop": true
+     },
+     {
+      "at": "L7",
+      "arms": "pouce"
+     }
+    ]
+   }
+  },
+  {
+   "type": "choix",
+   "from": "L8",
+   "title": "Le problème ? Pas la loi.",
+   "title2": "remettre à demain",
+   "title2_at": "L9",
+   "left": {
+    "label": "AUJOURD'HUI",
+    "value": "un petit effort",
+    "at": "L9@0.3"
+   },
+   "right": {
+    "label": "DEMAIN",
+    "value": "ça coûte encore",
+    "at": "L9@0.9"
+   },
+   "pick": 1,
+   "pick_at": "L9.end",
+   "pick_label": "le cerveau choisit demain",
+   "bonhomme": {
+    "expr": "pense",
+    "arms": "menton",
+    "reactions": [
+     {
+      "at": "L9",
+      "expr": "stresse",
+      "hop": true
+     }
+    ]
+   }
+  },
+  {
+   "type": "liste",
+   "from": "L10",
+   "title": "L'astuce : résilie maintenant",
+   "title_color": "jaune",
+   "items": [
+    "Pendant que t'y es",
+    "Garde la confirmation",
+    "Pas de bouton : le site est en tort"
+   ],
+   "at": [
+    "L10",
+    "L11",
+    "L12"
+   ],
+   "bonhomme": {
+    "expr": "content",
+    "arms": "montre",
+    "reactions": [
+     {
+      "at": "L11",
+      "arms": "pouce"
+     },
+     {
+      "at": "L12",
+      "expr": "malin",
+      "hop": true
+     }
+    ]
+   }
+  },
+  {
+   "type": "fin",
+   "from": "L13",
+   "kicker": "la suite :",
+   "next": "les frais bancaires que ta banque te fait payer"
+  }
+ ]
+}

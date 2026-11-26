@@ -1,0 +1,76 @@
+{
+ "duration": 42.35,
+ "lines": [
+  {
+   "t0": 0.0,
+   "t1": 2.48,
+   "text": "Ton abonnement, tu peux le couper en trois clics."
+  },
+  {
+   "t0": 2.98,
+   "t1": 5.78,
+   "text": "Un contrat qu'on peut prendre en ligne se résilie en ligne."
+  },
+  {
+   "t0": 6.08,
+   "t1": 6.79,
+   "text": "C'est la loi."
+  },
+  {
+   "t0": 7.09,
+   "t1": 10.3,
+   "text": "Premier clic : le bouton « résiliez votre contrat »."
+  },
+  {
+   "t0": 10.6,
+   "t1": 13.71,
+   "text": "Deuxième clic : tu vérifies le récapitulatif."
+  },
+  {
+   "t0": 14.01,
+   "t1": 17.25,
+   "text": "Troisième clic : « notification de la résiliation »."
+  },
+  {
+   "t0": 17.75,
+   "t1": 21.05,
+   "text": "Ensuite, l'entreprise doit te confirmer qu'elle l'a reçue."
+  },
+  {
+   "t0": 21.35,
+   "t1": 23.02,
+   "text": "Et te dire quand le contrat s'arrête."
+  },
+  {
+   "t0": 23.62,
+   "t1": 25.6,
+   "text": "Le problème, ce n'est pas la loi."
+  },
+  {
+   "t0": 25.9,
+   "t1": 28.02,
+   "text": "C'est que ton cerveau remet toujours ça à demain."
+  },
+  {
+   "t0": 28.52,
+   "t1": 32.02,
+   "text": "Alors l'astuce : résilie tout de suite, pendant que t'y es."
+  },
+  {
+   "t0": 32.32,
+   "t1": 35.15,
+   "text": "Garde la confirmation, en capture d'écran."
+  },
+  {
+   "t0": 35.45,
+   "t1": 38.56,
+   "text": "Et si le bouton n'existe pas, c'est le site qui est en tort."
+  },
+  {
+   "t0": 39.16,
+   "t1": 42.35,
+   "text": "La suite : les frais bancaires que ta banque te fait payer."
+  }
+ ],
+ "source": "edge"
+}
