@@ -5,18 +5,23 @@ présenté comme un exemple : « imagine que tu gagnes 1 850 € ») ; jamais d'
 """
 from __future__ import annotations
 
+import json
 import re
+from typing import TYPE_CHECKING
 
 from auracontent.actu.plan import IMPERATIVES, PROMISES, PlanError, spoken_words
 
 from . import draw as D
+
+if TYPE_CHECKING:
+    from pathlib import Path
 
 SCENE_TYPES = ("accroche", "compteur", "notifications", "choix", "repartition", "liste", "fin")
 FORMATS = ("vertical", "paysage")
 # mots prononcés : Short de 40 à 65 s ; vidéo longue de 3 à 12 min
 WORDS = {"vertical": (90, 165), "paysage": (400, 1700)}
 
-__all__ = ["PlanError", "check", "check_refs", "validate"]
+__all__ = ["PlanError", "check", "check_refs", "check_suite", "pending_promise", "validate"]
 
 
 def _num(line: dict) -> bool:
@@ -144,6 +149,54 @@ def check_refs(plan: dict, tl) -> list[str]:
         for r in (sc.get("bonhomme") or {}).get("reactions", []):
             ref(j, "reactions.at", r.get("at"))
     return errs
+
+
+# ---------- la suite promise ----------
+def _episodes(root: Path) -> list[tuple[str, dict]]:
+    """Épisodes publiés (dossiers datés avec plan.json, sans PROBLEME.md ni ESSAI.md), dans l'ordre."""
+    out = []
+    for d in sorted(p for p in root.iterdir() if p.is_dir() and re.match(r"\d{4}-\d{2}-\d{2}-", p.name)):
+        if (d / "plan.json").exists() and not (d / "PROBLEME.md").exists() and not (d / "ESSAI.md").exists():
+            out.append((d.name, json.loads((d / "plan.json").read_text(encoding="utf-8"))))
+    return out
+
+
+def _promise(plan: dict) -> str:
+    fin = (plan.get("scenes") or [{}])[-1]
+    return str(fin.get("next", "")).strip() if fin.get("type") == "fin" else ""
+
+
+def pending_promise(root: Path, before: str | None = None) -> tuple[str, str] | None:
+    """(dossier, sujet) de la dernière « suite » annoncée et pas encore tenue, parmi les épisodes antérieurs à `before`.
+
+    Un épisode tient la promesse quand son plan porte "suite_de": "<dossier qui l'a annoncée>". Un épisode hors suite
+    (sujet imposé) porte "hors_suite": "<raison>" et réannonce la même suite : la promesse reste due au suivant.
+    """
+    pending = None
+    for name, plan in _episodes(root):
+        if before and name >= before:
+            break
+        if pending and plan.get("hors_suite"):
+            continue                                   # la promesse en attente reste due
+        promise = _promise(plan)
+        pending = (name, promise) if promise else None
+    return pending
+
+
+def check_suite(plan: dict, root: Path, name: str) -> list[str]:
+    """L'épisode `name` tient-il la suite promise par l'épisode précédent ?"""
+    pending = pending_promise(root, before=name)
+    if not pending:
+        return []
+    src, promise = pending
+    if plan.get("suite_de") == src:
+        return []
+    if plan.get("hors_suite"):
+        if _promise(plan).lower() != promise.lower():
+            return [f"épisode hors suite : la carte de fin doit réannoncer la suite promise « {promise} » (next)"]
+        return []
+    return [f"l'épisode {src} a promis « {promise} » : traite ce sujet et mets \"suite_de\": \"{src}\" "
+            "(ou, si le sujet est imposé, \"hors_suite\": \"<raison>\" et réannonce cette suite à la fin)"]
 
 
 def validate(plan: dict) -> None:

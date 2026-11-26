@@ -128,3 +128,53 @@ def test_legende_finance():
 def test_upload_refuse_voix_estimee(episode: Path):
     with pytest.raises(RuntimeError, match="voix estimée"):
         cli.upload(episode)
+
+
+# ---------- la suite promise d'un épisode à l'autre ----------
+def _serie(tmp_path: Path, *episodes: tuple[str, dict]) -> Path:
+    root = tmp_path / "bonhomme"
+    for name, extra in episodes:
+        d = root / name
+        d.mkdir(parents=True)
+        p = _plan()
+        p["scenes"][-1]["next"] = extra.pop("next", p["scenes"][-1]["next"])
+        p.update(extra)
+        (d / "plan.json").write_text(json.dumps(p, ensure_ascii=False), encoding="utf-8")
+    return root
+
+
+def test_suite_promise_a_tenir(tmp_path: Path):
+    root = _serie(tmp_path, ("2026-11-27-decouvert", {"next": "comment tenir jusqu'au 30"}),
+                  ("2026-11-28-autre", {}))
+    assert plan.pending_promise(root, "2026-11-28-autre") == ("2026-11-27-decouvert", "comment tenir jusqu'au 30")
+    p = _plan()
+    assert any("a promis « comment tenir jusqu'au 30 »" in e for e in plan.check_suite(p, root, "2026-11-28-autre"))
+    p["suite_de"] = "2026-11-27-decouvert"
+    assert plan.check_suite(p, root, "2026-11-28-autre") == []
+
+
+def test_hors_suite_reannonce_la_promesse(tmp_path: Path):
+    root = _serie(tmp_path, ("2026-11-27-decouvert", {"next": "comment tenir jusqu'au 30"}),
+                  ("2026-11-28-impose", {"hors_suite": "sujet imposé", "next": "comment tenir jusqu'au 30"}))
+    # la promesse du 27 reste due après l'épisode hors suite du 28
+    assert plan.pending_promise(root) == ("2026-11-27-decouvert", "comment tenir jusqu'au 30")
+    p = _plan()
+    p["hors_suite"] = "sujet imposé"
+    p["scenes"][-1]["next"] = "autre chose"
+    assert any("réannoncer" in e for e in plan.check_suite(p, root, "2026-11-29-x"))
+
+
+def test_episode_en_echec_ignore(tmp_path: Path):
+    root = _serie(tmp_path, ("2026-11-27-decouvert", {"next": "comment tenir jusqu'au 30"}),
+                  ("2026-11-28-rate", {"next": "autre promesse"}))
+    (root / "2026-11-28-rate" / "PROBLEME.md").write_text("voix indisponible")
+    assert plan.pending_promise(root) == ("2026-11-27-decouvert", "comment tenir jusqu'au 30")
+    (root / "2026-11-27-decouvert" / "ESSAI.md").write_text("essai non publié")
+    assert plan.pending_promise(root) is None
+
+
+def test_premier_episode_sujet_libre(tmp_path: Path):
+    root = tmp_path / "bonhomme"
+    root.mkdir()
+    assert plan.pending_promise(root) is None
+    assert "sujet libre" in cli.suite(root)
