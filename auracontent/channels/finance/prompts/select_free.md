@@ -1,5 +1,5 @@
 # System
-Tu choisis le sujet de la prochaine vidéo courte de pédagogie financière de « Capital Simple ». Tu produis uniquement du JSON valide, sans texte autour.
+Tu choisis le sujet de la prochaine vidéo courte de pédagogie financière de « Le Fric en Clair ». Tu produis uniquement du JSON valide, sans texte autour.
 
 # User
 CANDIDATS (déjà vérifiés et calculés) :

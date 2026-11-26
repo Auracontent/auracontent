@@ -1,11 +1,17 @@
-# Shorts « expliqué par un bonhomme » réalisés (Capital Simple)
+# Shorts « expliqué par un bonhomme » réalisés (Le Fric en Clair)
 
 Format inspiré des chaînes d'explication à bonhomme : **un problème d'argent du quotidien que tout le monde vit,
 expliqué par un bonhomme blanc sur fond noir**, avec une accroche qui pique, le mécanisme (souvent psychologique)
 et une astuce concrète. 45 à 60 s en Short vertical ; le même plan peut sortir en vidéo longue 16:9 (`"format": "paysage"`).
 
-Le personnage est **original** : bonhomme blanc à tête ronde, **écharpe verte** (couleur de Capital Simple). Ne jamais
-reprendre le personnage, les miniatures ni les titres d'une autre chaîne : on reprend un format, pas une identité.
+**La chaîne s'appelle « Le Fric en Clair » : « L'argent, sans langue de bois. »** Le personnage est celui du logo :
+bonhomme blanc à grosse tête ronde, corps plein, sourcils qui parlent, « ?! » au-dessus de la tête quand il ne comprend
+pas, **la pièce d'or** qu'il brandit quand il a compris. Les couleurs : noir, blanc, **or**. Le lettrage du logo (Anton,
+majuscules, blanc puis or) sert à l'accroche, aux chiffres et à la carte de fin ; l'écriture à la main au reste.
+Ne jamais reprendre le personnage, les miniatures ni les titres d'une autre chaîne : on reprend un format, pas une identité.
+
+**Le ton : sans langue de bois.** Franc, direct, un peu insolent, jamais méprisant : on dit les choses comme elles sont
+(« Ta banque se gave sur ton découvert. »), on tutoie, on ne fait pas la leçon. Pas de jargon, pas de « il convient de ».
 
 Le réalisateur (Claude, dans la tâche `direct_bonhomme` du workflow `generator_video.yml`) choisit le sujet, vérifie
 les faits et écrit `plan.json` ; le moteur `auracontent/bonhomme` fait le reste (voix de Rémy, dessin, musique).
@@ -85,7 +91,9 @@ S'il n'y a aucune suite promise (premier épisode), choisis librement :
   Vidéo longue (`paysage`) : 400 à 1 700 mots.
 - Une entrée = une phrase de 3 à 15 mots, tutoiement, ton de grand frère, un peu d'humour, aucun jargon.
 - Structure :
-  1. **accroche** (phrase 0) : un constat qui pique, adressé au spectateur (« T'es à découvert, et pourtant tu gagnes ta vie. ») ;
+  1. **accroche** (phrase 0, **10 mots au plus**, `check` le vérifie) : une vérité qui pique, dite cash, adressée au
+     spectateur, qui donne envie de savoir pourquoi (« Tu paies des trucs que tu n'utilises plus. », « Ta banque gagne
+     de l'argent quand t'es à découvert. »). Jamais d'introduction (« Aujourd'hui on parle de… »), jamais de question molle ;
   2. **la situation** en 3 à 5 phrases, avec un exemple chiffré qu'on voit (salaire, dépenses) ;
   3. **le retournement** : « Le problème, ce n'est pas X. C'est Y. » puis le mécanisme en 2 ou 3 phrases ;
   4. **l'astuce** : une habitude concrète, montrée ;
@@ -103,15 +111,17 @@ Champs communs :
 - `title` : la phrase clé écrite à la main en haut (60 caractères au plus ; c'est aussi ce que lit un spectateur sans
   le son, donc elle résume la voix) ; `title_color` (`blanc`, `rouge`, `jaune`, `vert`, `or`, `gris`) ; `title_at`.
 - `title2` : une 2e ligne qui arrive plus tard (jaune par défaut), `title2_at`, `title2_color`.
-- `bonhomme` : `expr` (`neutre`, `content`, `triste`, `choc`, `stresse`, `pense`, `fier`), `arms` (`bas`, `haut`,
-  `tete`, `montre`, `pouce`, `salut`, `menton`), `pos` (`gauche`, `centre`, `droite` ; vertical seulement), `cache`,
-  et **`reactions`** : `[{"at": "L5", "expr": "stresse"}, {"at": "L6@0.5", "arms": "tete", "hop": true}]`.
-  `stresse` ajoute une goutte de sueur ; `hop` le fait sauter (avec un bruitage).
-- `pluie` : pluie grise sur toute l'image (coup dur).
+- `bonhomme` : `expr` (`neutre`, `content`, `triste`, `choc`, `stresse`, `pense`, `fier`, `malin`, `colere`), `arms`
+  (`bas`, `haut`, `tete`, `montre`, `pouce`, `salut`, `menton`, `piece` (il brandit la pièce d'or du logo), `hanches`),
+  `pos` (`gauche`, `centre`, `droite` ; vertical seulement), `cache`, et **`reactions`** :
+  `[{"at": "L5", "expr": "stresse"}, {"at": "L6@0.5", "arms": "tete", "hop": true}]`.
+  `choc` affiche « ! », `pense` « ? », `stresse` « ?! » et une goutte de sueur. `hop` le fait sauter ; `choc`, `colere`,
+  `hop` ou `"zoom": true` donnent un coup de zoom et un tremblement de caméra avec un impact sonore.
+- `pluie` : pluie grise sur toute l'image (coup dur ; pas dans l'accroche, qu'elle rend triste au lieu de choquante).
 
 | Type | Champs | Usage |
 |---|---|---|
-| `accroche` | `title` (en rouge, énorme), `carte` (« -312 € » sur une carte bancaire), `carte_at`, `sous_titre`, `sous_titre_at` | la 1re image : le problème |
+| `accroche` | `title` (30 caractères au plus : 2 lignes énormes, blanc puis or), `chiffre` (un montant qui claque en or, avec `chiffre_at`), `carte` (« -312 € » sur une carte bancaire), `carte_at`, `sous_titre`, `sous_titre_at` | la 1re image : le problème |
 | `compteur` | `value`, `start`, `format` (« {n} € »), `count_at`, `count_seconds`, `color`, `legende`, `pieces` (`pile` ou `fuite`) | un montant qui monte ou qui fond |
 | `notifications` | `items` (1 à 5, « Livraison -24 € »), `at` (une référence par notification), `compteur` {`start`, `value`, `format`, `fuite`} | les petites dépenses qui s'accumulent |
 | `choix` | `left` / `right` {`label`, `value`, `at`, `couleur`}, `cerveau` (bulle avec un cerveau, oui par défaut), `pick` (0 ou 1), `pick_at`, `pick_label` | deux options, le cerveau choisit |
@@ -123,6 +133,19 @@ Champs communs :
   `pick_at` sur le mot exact avec `w:mot@Lx`). Le bonhomme **réagit** au moins une fois par scène.
 - Un montant affiché (carte, compteur, notifications, boîtes) est le même que celui dit dans la voix.
 - `"mood"` : `calme` ou `tension` (musique) ; `"format"` : `vertical` (défaut) ou `paysage`.
+
+## 5 bis. Une accroche explosive (les 2 premières secondes décident de tout)
+
+Le moteur fait déjà sa part : à l'image 0 le titre est **déjà écrit en entier** (énorme, au lettrage du logo), la caméra
+arrive en coup de zoom avec un tremblement, des rayons dorés jaillissent, un impact sonore part, et chaque scène suivante
+entre avec un whoosh et un petit coup de zoom. À toi de faire le reste :
+- le titre de l'accroche dit le problème en 2 à 5 mots, au présent, à la 2e personne (« TU PAIES POUR RIEN »,
+  « T'ES À DÉCOUVERT »), et la voix le dit en même temps (phrase 0 de 10 mots au plus) ;
+- le bonhomme est en `choc` ou `stresse`, bras `tete`, dès l'image 0 (jamais `neutre`) ;
+- s'il y a un chiffre choc vrai et sourcé, mets-le en `chiffre` avec `chiffre_at` sur le mot exact ;
+- **une scène nouvelle toutes les 3 à 6 s** et au moins une réaction forte (`choc`, `hop`, `zoom`) par scène :
+  quand rien ne bouge, le pouce swipe ;
+- la première image doit faire une bonne miniature : lis l'image 0 de la planche comme si c'était une miniature.
 
 ## 6. Contrôle de la planche (obligatoire)
 
@@ -136,6 +159,6 @@ Après `voice` puis `stills`, lis `stills.jpg` (temps dans `stills_times.json`),
 
 ## 7. Légende et métadonnées
 
-- `"title"` : 70 caractères au plus, au format « Pourquoi t'es toujours à découvert (expliqué par un bonhomme) ».
+- `"title"` : 70 caractères au plus, franc et direct (« Pourquoi t'es toujours à découvert (expliqué par un bonhomme) »).
 - `"caption"` : 1 ou 2 phrases, puis 4 à 6 hashtags (`#finance #argent` + le sujet). Les sources, la mention
-  « pas un conseil » et `#capitalsimple` sont ajoutées à l'upload.
+  « pas un conseil » et `#lefricenclair` sont ajoutées à l'upload.

@@ -1,1 +1,1 @@
-"""Format « expliqué par un bonhomme » de Capital Simple (voir docs/finance_bonhomme.md)."""
+"""Format « expliqué par un bonhomme » de Le Fric en Clair (voir docs/finance_bonhomme.md)."""

@@ -51,6 +51,10 @@ on:
         description: "Short « bonhomme » : déposer sur Hugging Face pour le Publisher (décocher pour un essai)"
         type: boolean
         default: true
+      bonhomme_episode:
+        description: "Short « bonhomme » : refaire le rendu d'un épisode existant (ex. 2026-11-26-abonnements-oublies), sans le réécrire"
+        required: false
+        default: ""
   repository_dispatch:
     types: [trigger-videos]
 
@@ -66,7 +70,7 @@ on:
 #  mystery   | variable seule             | mystery (ancien mode, secours) | -
 #  finance   | -                          | finance               | -
 #
-# Capital Simple, même principe : la variable de dépôt FINANCE_MODE=actu (ou la case « finance_actu ») remplace le
+# Le Fric en Clair (chaîne finance, ex-Capital Simple), même principe : la variable de dépôt FINANCE_MODE=actu (ou la case « finance_actu ») remplace le
 # format automatique par la tâche direct_finance (short « L'éco du jour » réalisé par Claude, docs/finance_actu.md).
 # FINANCE_MODE=bonhomme (ou la case « finance_bonhomme », prioritaire) le remplace par la tâche direct_bonhomme
 # (short « expliqué par un bonhomme », docs/finance_bonhomme.md). mystery n'est jamais concerné par ces deux modes.
@@ -348,7 +352,7 @@ jobs:
           allowed_bots: "github-actions,github-actions[bot]"
           claude_args: "--max-turns 200 --allowedTools Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch"
           prompt: |
-            Tu es le réalisateur de « Capital Simple », format « L'éco du jour ». Nous sommes le ${{ steps.ep.outputs.date }}.
+            Tu es le réalisateur de « Le Fric en Clair » (ex-Capital Simple), format « L'éco du jour ». Nous sommes le ${{ steps.ep.outputs.date }}.
             Lis CLAUDE.md puis docs/finance_actu.md en entier, et le modèle episodes/finance/_exemple/plan.json.
             ${{ github.event.inputs.topic != '' && format('Sujet imposé : « {0} ».', github.event.inputs.topic) || 'Choisis toi-même l''actualité économique du jour (section 1), sans reprendre un sujet récent de episodes/finance/.' }}
 
@@ -439,13 +443,14 @@ jobs:
           echo "date=$D" >> "$GITHUB_OUTPUT"
 
       - name: Claude réalise le short
+        if: ${{ inputs.bonhomme_episode == '' || inputs.bonhomme_episode == null }}
         uses: anthropics/claude-code-action@v1
         with:
           claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           allowed_bots: "github-actions,github-actions[bot]"
           claude_args: "--max-turns 200 --allowedTools Bash,Read,Write,Edit,Glob,Grep,WebSearch,WebFetch"
           prompt: |
-            Tu es le réalisateur de « Capital Simple », format « expliqué par un bonhomme ». Nous sommes le ${{ steps.ep.outputs.date }}.
+            Tu es le réalisateur de « Le Fric en Clair » (ex-Capital Simple), format « expliqué par un bonhomme ». Nous sommes le ${{ steps.ep.outputs.date }}.
             Lis CLAUDE.md puis docs/finance_bonhomme.md en entier, et le modèle episodes/bonhomme/_exemple/plan.json.
             Lance d'abord : uv run python -m auracontent.bonhomme.cli episodes/bonhomme suite
             ${{ github.event.inputs.topic != '' && format('Sujet imposé : « {0} ». L''épisode est hors suite : mets "hors_suite": "sujet imposé" et réannonce à la fin la suite promise s''il y en a une (section 1).', github.event.inputs.topic) || 'S''il affiche une suite promise, c''est ton sujet (avec "suite_de") ; sinon choisis le sujet toi-même (section 1).' }}
@@ -465,10 +470,20 @@ jobs:
 
       - name: Retrouver l'épisode réalisé
         id: done
+        env:
+          REDO: ${{ inputs.bonhomme_episode }}
         run: |
           git pull -q --rebase || git pull -q
-          E=$(ls -d episodes/bonhomme/${{ steps.ep.outputs.date }}-*/ 2>/dev/null | sort | tail -n 1)
-          E=${E%/}
+          if [ -n "$REDO" ]; then
+            E="episodes/bonhomme/${REDO#episodes/bonhomme/}"; E=${E%/}
+            [ -f "$E/plan.json" ] || { echo "::error::$E/plan.json introuvable"; exit 1; }
+            # nouveau rendu d'un épisode existant : la voix (non versionnée) est refaite à l'identique
+            uv run python -m auracontent.bonhomme.cli "$E" voice
+            uv run python -m auracontent.bonhomme.cli "$E" stills
+          else
+            E=$(ls -d episodes/bonhomme/${{ steps.ep.outputs.date }}-*/ 2>/dev/null | sort | tail -n 1)
+            E=${E%/}
+          fi
           [ -n "$E" ] || { echo "::error::Aucun épisode créé aujourd'hui."; exit 1; }
           if [ -f "$E/PROBLEME.md" ]; then echo "::error::Le réalisateur s'est arrêté :"; cat "$E/PROBLEME.md"; exit 1; fi
           for f in plan.json stills.jpg voice/timing.json voice/voice.wav; do

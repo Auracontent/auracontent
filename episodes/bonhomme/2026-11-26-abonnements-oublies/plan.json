@@ -36,7 +36,7 @@
  ],
  "scenes": [
   {"type": "accroche", "from": 0, "title": "tu paies pour rien", "sous_titre": "(et tu ne le sais même pas)",
-   "sous_titre_at": "L0@0.7", "pluie": true, "bonhomme": {"expr": "triste"}},
+   "sous_titre_at": "L0@0.7", "bonhomme": {"expr": "choc", "arms": "tete"}},
   {"type": "compteur", "from": "L1", "title": "Loisirs numériques, en moyenne", "value": 54,
    "format": "{n} € / mois", "count_at": "L1@0.5", "pieces": "fuite", "title2": "= 648 € par an",
    "title2_color": "rouge", "title2_at": "L2@0.3",

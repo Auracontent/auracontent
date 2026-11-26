@@ -2,7 +2,7 @@ channel_name: "finance"
 # Activée : produite et publiée seulement quand un déclenchement la nomme (client_payload.channel = finance,
 # ou « finance » dans les chaînes du Publisher). Les déclenchements de mystery ne la lancent pas.
 enabled: true
-description: "Capital Simple : les chiffres, sans jargon. Épargne, intérêts composés, inflation : un mécanisme, des chiffres calculés, en moins d'une minute."
+description: "Le Fric en Clair : l'argent, sans langue de bois. Épargne, intérêts composés, inflation : un mécanisme, des chiffres calculés, en moins d'une minute."
 
 # Historiques propres à la chaîne (assets/shared/state/finance/, meta/finance/ sur Hugging Face) :
 # jamais mélangés à ceux de mystery.
@@ -389,9 +389,9 @@ publish:
     platform: null
     account_envs: [TIKTOK_ACCOUNT_ID_FINANCE, YOUTUBE_ACCOUNT_ID_FINANCE]
     limit: 20
-  fallback_hashtags: "#finance #epargne #argent #capitalsimple"
-  brand_hashtag: "#capitalsimple"
-  caption_footer: "Une astuce chiffrée par jour sur Capital Simple.\nContenu pédagogique, pas un conseil en investissement."
+  fallback_hashtags: "#finance #epargne #argent #lefricenclair"
+  brand_hashtag: "#lefricenclair"
+  caption_footer: "Une astuce chiffrée par jour sur Le Fric en Clair.\nContenu pédagogique, pas un conseil en investissement."
 
 # Tendances YouTube Shorts de la niche (service partagé, secret YOUTUBE_API_KEY ; sans clé : rien ne change).
 # Elles inspirent les sujets de la génération libre ; les chiffres viennent toujours de calc.py.

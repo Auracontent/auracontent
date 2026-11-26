@@ -44,7 +44,7 @@ def test_registry_and_config():
     pub = cfg["publish"]
     assert pub["zernio_key_env"] == "ZERNIO_API_KEY_FINANCE"
     assert {p["account_env"] for p in pub["platforms"]} == {"TIKTOK_ACCOUNT_ID_FINANCE", "YOUTUBE_ACCOUNT_ID_FINANCE"}
-    assert pub["brand_hashtag"] == "#capitalsimple" and pub["hf_folder"] == "finance"
+    assert pub["brand_hashtag"] == "#lefricenclair" and pub["hf_folder"] == "finance"
     assert pub["caption_footer"].endswith("Contenu pédagogique, pas un conseil en investissement.")
     assert "astuce chiffrée par jour" in pub["caption_footer"]
     assert "Montserrat" not in json.dumps(cfg["video_composer"])        # réservée à mystery

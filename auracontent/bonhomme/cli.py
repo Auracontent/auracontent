@@ -1,4 +1,4 @@
-"""Épisode « expliqué par un bonhomme » (Capital Simple), de plan.json à la vidéo finale.
+"""Épisode « expliqué par un bonhomme » (Le Fric en Clair), de plan.json à la vidéo finale.
 
     uv run python -m auracontent.bonhomme.cli episodes/bonhomme suite      # la suite promise par le dernier épisode
     uv run python -m auracontent.bonhomme.cli <épisode> check              # contrôle du plan, des repères, de la suite
@@ -9,7 +9,7 @@
     uv run python -m auracontent.bonhomme.cli <épisode> upload             # vidéo + légende -> Hugging Face (publisher)
 
 <épisode> est un dossier qui contient plan.json (voir docs/finance_bonhomme.md et episodes/bonhomme/_exemple/).
-La voix (auracontent.actu.voice), la musique (auracontent.actu.score) et la publication sont celles de Capital Simple.
+La voix (auracontent.actu.voice), la musique (auracontent.actu.score) et la publication sont celles de la chaîne finance.
 """
 from __future__ import annotations
 
@@ -104,14 +104,16 @@ def _render_part(args):
 
 
 def cues(r: Renderer) -> list[tuple[float, str, float]]:
-    """Bruitages : papier à chaque scène, pop sur chaque élément qui arrive, pièces sur les compteurs."""
-    tl, out = r.tl, []
+    """Bruitages : impact à l'image 0, whoosh à chaque scène, pop sur chaque élément, pièces sur les compteurs."""
+    tl, out = r.tl, [(0.0, "boom.wav", 0.5)]                       # l'accroche démarre sur un impact
     for i, s in enumerate(r.scenes):
         if i:
-            out.append((s["t0"], "paper.wav", 0.25))
+            out.append((max(0.0, s["t0"] - 0.12), "whoosh.wav", 0.3))
         typ = s["type"]
         if typ == "accroche" and s.get("carte"):
             out.append((r.at(s, s.get("carte_at"), 1.2), "pop.wav", 0.3))
+        if typ == "accroche" and s.get("chiffre"):
+            out.append((r.at(s, s.get("chiffre_at"), 0.9), "hit.wav", 0.45))
         elif typ == "compteur":
             out.append((r.at(s, s.get("count_at"), 0.4), "coins.wav", 0.3))
         elif typ in ("notifications", "liste"):
@@ -131,6 +133,8 @@ def cues(r: Renderer) -> list[tuple[float, str, float]]:
         for re_ in (s.get("bonhomme") or {}).get("reactions", []):
             if re_.get("hop"):
                 out.append((tl.t(re_["at"]), "boing.wav", 0.2))
+            elif re_.get("expr") in ("choc", "colere") or re_.get("zoom"):
+                out.append((tl.t(re_["at"]), "hit.wav", 0.3))
     return out
 
 

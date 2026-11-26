@@ -276,7 +276,7 @@ uv run python -m auracontent.archive.cli episodes/archive/<episode> all      # f
 3. Register it in `auracontent/channels/registry.py`.
 4. Add its assets under `assets/<name>/`.
 
-Currently registered: **`mystery`** and **`finance`** (« Capital Simple », in progress).
+Currently registered: **`mystery`** and **`finance`** (« Le Fric en Clair », formerly « Capital Simple »).
 
 A channel can keep its own history files on Hugging Face (`meta/<channel>/`) with `state: {isolated: true}` in its YAML; channels without it keep the shared files.
 
