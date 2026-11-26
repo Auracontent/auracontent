@@ -1,4 +1,4 @@
-"""Dessin du format « expliqué par un bonhomme » : fond noir, trait blanc, écriture à la main, bonhomme à écharpe verte.
+"""Dessin du format « expliqué par un bonhomme » de Le Fric en Clair : fond noir, bonhomme blanc du logo, or, écriture à la main.
 
 Tout est dessiné avec PIL sur une toile suréchantillonnée (SS) puis réduite : traits lisses, aucune image externe.
 Les coordonnées passées aux fonctions sont en pixels de sortie ; `Box` convertit les coordonnées virtuelles des
@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parents[2]
 FONTS = {
     "main": ROOT / "assets" / "finance" / "fonts" / "GochiHand-Regular.ttf",
     "petit": ROOT / "assets" / "finance" / "fonts" / "PatrickHand-Regular.ttf",
+    "titre": ROOT / "assets" / "finance" / "fonts" / "Anton-Regular.ttf",     # le lettrage du logo
 }
 SS = 2                      # suréchantillonnage
 
@@ -23,8 +24,8 @@ BLACK = (8, 8, 10)
 WHITE = (245, 245, 240)
 RED = (235, 45, 50)
 YELLOW = (255, 214, 60)
-GREEN = (40, 170, 110)      # l'écharpe et la marque Capital Simple
-GOLD = (240, 185, 40)
+GREEN = (40, 170, 110)      # épargne, ce qui va bien
+GOLD = (246, 184, 28)       # l'or du logo « Le Fric en Clair »
 GOLD_DARK = (150, 105, 10)
 GREY = (120, 120, 125)
 BLUE = (90, 150, 255)
@@ -91,8 +92,19 @@ class Pen:
         self.im = Image.new("RGB", (w * SS, h * SS), BLACK)
         self.d = ImageDraw.Draw(self.im)
 
-    def image(self) -> Image.Image:
-        return self.im.resize((self.w, self.h), Image.LANCZOS)
+    def image(self, zoom: float = 1.0, cx: float | None = None, cy: float | None = None,
+              dx: float = 0.0, dy: float = 0.0) -> Image.Image:
+        """Image finale ; zoom > 1 recadre autour de (cx, cy) (caméra), dx/dy décalent (tremblement)."""
+        if zoom <= 1.0001 and not dx and not dy:
+            return self.im.resize((self.w, self.h), Image.LANCZOS)
+        zoom = max(1.0, zoom)
+        cx = self.w / 2 if cx is None else cx
+        cy = self.h / 2 if cy is None else cy
+        w, h = self.w / zoom, self.h / zoom
+        x0 = min(max(0.0, cx - w / 2 - dx), self.w - w)
+        y0 = min(max(0.0, cy - h / 2 - dy), self.h - h)
+        box = tuple(round(v * SS) for v in (x0, y0, x0 + w, y0 + h))
+        return self.im.resize((self.w, self.h), Image.LANCZOS, box=box)
 
     @staticmethod
     def _p(x, y):
@@ -168,89 +180,127 @@ class Box:
         return v * self.k
 
 
-# ---------- le bonhomme ----------
-EXPRS = ("neutre", "content", "triste", "choc", "stresse", "pense", "fier")
-ARMS = ("bas", "haut", "tete", "montre", "pouce", "salut", "menton")
+# ---------- le bonhomme (personnage du logo « Le Fric en Clair ») ----------
+EXPRS = ("neutre", "content", "triste", "choc", "stresse", "pense", "fier", "malin", "colere")
+ARMS = ("bas", "haut", "tete", "montre", "pouce", "salut", "menton", "piece", "hanches")
+MARKS = {"pense": "?", "choc": "!", "stresse": "?!", "colere": "!"}
 
 
 def figure(pen: Pen, x: float, y: float, s: float = 1.0, expr: str = "neutre", arms: str = "bas", t: float = 0.0,
-           hop: float = 0.0, look: float = 0.0, flip: bool = False) -> tuple[float, float, float]:
-    """Bonhomme blanc à tête ronde et écharpe verte ; (x, y) = entre les pieds ; hauteur ~ 520 * s.
-    Renvoie (x, y, rayon) de la tête. flip : montre vers la gauche au lieu de la droite."""
+           hop: float = 0.0, look: float = 0.0, flip: bool = False, marks: bool = True) -> tuple[float, float, float]:
+    """Bonhomme blanc du logo : grosse tête ronde, corps plein, membres épais ; (x, y) = entre les pieds ;
+    hauteur ~ 520 * s. `piece` : il brandit la pièce d'or du logo. Renvoie (x, y, rayon) de la tête."""
     y = y - hop
     sd = -1 if flip else 1
-    hr = 95 * s
+    hr = 100 * s
     hx, hy = x, y - 520 * s + hr
-    neck, hip = (x, hy + hr), (x, y - 200 * s)
-    pen.line([hip, (x - 55 * s, y)], WHITE, 16 * s)
-    pen.line([hip, (x + 55 * s, y)], WHITE, 16 * s)
-    pen.line([neck, hip], WHITE, 18 * s)
-    sh = (x, hy + hr + 40 * s)
+    sh_y = hy + hr + 22 * s                      # épaules
+    hip_y = y - 205 * s
+    lw = 30 * s                                  # épaisseur des membres
+    # jambes
+    pen.line([(x - 26 * s, hip_y), (x - 58 * s, y)], WHITE, lw)
+    pen.line([(x + 26 * s, hip_y), (x + 58 * s, y)], WHITE, lw)
+    # corps plein (forme de haricot, plus large aux épaules)
+    pen.poly([(x - 62 * s, sh_y), (x + 62 * s, sh_y), (x + 50 * s, hip_y + 8 * s), (x - 50 * s, hip_y + 8 * s)], fill=WHITE)
+    pen.circ(x - 40 * s, sh_y + 10 * s, 26 * s, fill=WHITE)
+    pen.circ(x + 40 * s, sh_y + 10 * s, 26 * s, fill=WHITE)
+    pen.rect(x - 52 * s, hip_y - 30 * s, x + 52 * s, hip_y + 18 * s, fill=WHITE, rad=22 * s)
+    # bras
     sw = math.sin(t * 6) * 8 * s
-    down = (x - 70 * s, sh[1] + 120 * s + sw)
+    L0, R0 = (x - 55 * s, sh_y + 12 * s), (x + 55 * s, sh_y + 12 * s)
+    down_l = [(x - 92 * s, sh_y + 90 * s), (x - 100 * s, sh_y + 170 * s + sw)]
+    down_r = [(x + 92 * s, sh_y + 90 * s), (x + 100 * s, sh_y + 170 * s - sw)]
+    coin_at = None
     if arms == "haut":
-        a = [(x - 90 * s, sh[1] - 40 * s), (x - 120 * s, sh[1] - 150 * s + sw)]
-        b = [(x + 90 * s, sh[1] - 40 * s), (x + 120 * s, sh[1] - 150 * s - sw)]
+        a = [(x - 120 * s, sh_y - 40 * s), (x - 140 * s, sh_y - 150 * s + sw)]
+        b = [(x + 120 * s, sh_y - 40 * s), (x + 140 * s, sh_y - 150 * s - sw)]
     elif arms == "tete":
-        a = [(x - 110 * s, sh[1] - 30 * s), (x - 70 * s, hy - 20 * s)]
-        b = [(x + 110 * s, sh[1] - 30 * s), (x + 70 * s, hy - 20 * s)]
-    elif arms == "montre":
-        a = [down]
-        b = [(x + sd * 120 * s, sh[1] - 10 * s), (x + sd * 230 * s, sh[1] - 60 * s + sw)]
-    elif arms == "pouce":
-        a = [down]
-        b = [(x + sd * 110 * s, sh[1] + 40 * s), (x + sd * 150 * s, sh[1] - 40 * s)]
-    elif arms == "salut":
-        a = [down]
-        b = [(x + sd * 100 * s, sh[1] - 30 * s), (x + sd * (120 * s + math.sin(t * 14) * 40 * s), sh[1] - 150 * s)]
-    elif arms == "menton":
-        a = [down]
-        b = [(x + sd * 80 * s, sh[1] + 60 * s), (x + sd * 30 * s, hy + hr * 0.75)]
+        a = [(x - 135 * s, sh_y - 20 * s), (x - 85 * s, hy - 30 * s)]
+        b = [(x + 135 * s, sh_y - 20 * s), (x + 85 * s, hy - 30 * s)]
+    elif arms == "hanches":
+        a = [(x - 115 * s, sh_y + 70 * s), (x - 52 * s, hip_y - 20 * s)]
+        b = [(x + 115 * s, sh_y + 70 * s), (x + 52 * s, hip_y - 20 * s)]
     else:
-        a = [down]
-        b = [(x + 70 * s, sh[1] + 120 * s - sw)]
-    pen.line([sh, *a], WHITE, 14 * s)
-    pen.line([sh, *b], WHITE, 14 * s)
+        a = down_l
+        if arms == "montre":
+            b = [(x + sd * 140 * s, sh_y - 10 * s), (x + sd * 250 * s, sh_y - 70 * s + sw)]
+        elif arms == "pouce":
+            b = [(x + sd * 125 * s, sh_y + 50 * s), (x + sd * 165 * s, sh_y - 35 * s)]
+        elif arms == "salut":
+            b = [(x + sd * 125 * s, sh_y - 30 * s), (x + sd * (140 * s + math.sin(t * 14) * 40 * s), sh_y - 160 * s)]
+        elif arms == "menton":
+            b = [(x + sd * 105 * s, sh_y + 70 * s), (x + sd * 38 * s, hy + hr * 0.8)]
+        elif arms == "piece":
+            b = [(x + sd * 130 * s, sh_y - 20 * s), (x + sd * 150 * s, sh_y - 140 * s + sw * 0.5)]
+            coin_at = b[-1]
+        else:
+            b = down_r
+    pen.line([L0, *a], WHITE, lw)
+    pen.line([R0, *b], WHITE, lw)
+    for hand in (a[-1], b[-1]):
+        pen.circ(*hand, lw * 0.75, fill=WHITE)
     if arms == "pouce":
-        tx, ty = x + sd * 150 * s, sh[1] - 40 * s
-        pen.line([(tx, ty), (tx, ty - 45 * s)], WHITE, 14 * s)
+        tx, ty = b[-1]
+        pen.line([(tx, ty), (tx, ty - 48 * s)], WHITE, lw * 0.7)
+    # tête
     pen.circ(hx, hy, hr, fill=WHITE)
-    # écharpe : la marque du personnage
-    pen.poly([(hx - hr * 0.75, hy + hr * 0.82), (hx + hr * 0.75, hy + hr * 0.82),
-              (hx + hr * 0.6, hy + hr * 1.15), (hx - hr * 0.6, hy + hr * 1.15)], fill=GREEN)
-    pen.poly([(hx + hr * 0.25, hy + hr * 1.05), (hx + hr * 0.55, hy + hr * 1.05),
-              (hx + hr * 0.7, hy + hr * 1.75), (hx + hr * 0.4, hy + hr * 1.7)], fill=GREEN)
     _face(pen, hx, hy, hr, s, expr, t, look)
+    if coin_at:
+        R = 62 * s
+        cx, cy = coin_at[0] + sd * 10 * s, coin_at[1] - R * 0.7
+        pen.circ(cx, cy, R, fill=GOLD, out=GOLD_DARK, w=6 * s)
+        pen.circ(cx, cy, R * 0.78, out=GOLD_DARK, w=3 * s)
+        pen.text(cx, cy + R * 0.04, "€", R * 1.15, GOLD_DARK, "titre")
+    mark = MARKS.get(expr) if marks else None
+    if mark:
+        bob = math.sin(t * 9) * 6 * s
+        mx, my = hx - hr * 0.95, hy - hr * 1.05 + bob
+        for i, ch in enumerate(mark):
+            pen.text(mx + i * 44 * s, my - (12 * s if i else 0), ch, 86 * s, RED if ch == "!" else WHITE, "titre")
     return hx, hy, hr
 
 
+def _brow(pen, cx, cy, s, tilt, w=6.5):
+    """Sourcil épais : tilt > 0 = intérieur relevé (inquiet), < 0 = froncé (colère / malin)."""
+    pen.line([(cx - 22 * s, cy + tilt * s), (cx + 22 * s, cy - tilt * s)], BLACK, w * s)
+
+
 def _face(pen: Pen, hx, hy, hr, s, expr, t, look):
-    ex, ey, lk = hr * 0.36, hy - hr * 0.08, look * hr * 0.12
-    blink = (t % 3.1) < 0.08
+    ex, ey, lk = hr * 0.36, hy - hr * 0.05, look * hr * 0.12
+    blink = ((t + 1.3) % 3.1) < 0.08          # jamais à l'image 0 (miniature)
     for sx in (-1, 1):
         cx = hx + sx * ex + lk
         if blink:
-            pen.line([(cx - 10 * s, ey), (cx + 10 * s, ey)], BLACK, 6 * s)
+            pen.line([(cx - 11 * s, ey), (cx + 11 * s, ey)], BLACK, 6 * s)
         elif expr == "choc":
-            pen.circ(cx, ey, 17 * s, out=BLACK, w=6 * s)
-            pen.circ(cx, ey, 6 * s, fill=BLACK)
+            pen.circ(cx, ey, 18 * s, out=BLACK, w=6 * s)
+            pen.circ(cx, ey, 7 * s, fill=BLACK)
         else:
-            pen.circ(cx, ey, 9 * s, fill=BLACK)
-        if expr == "triste":
-            pen.line([(cx + 18 * s * sx, ey - 30 * s), (cx - 14 * s * sx, ey - 40 * s)], BLACK, 6 * s)
-        elif expr == "stresse":
-            pen.line([(cx - 16 * s, ey - 36 * s + sx * 4 * s), (cx + 16 * s, ey - 36 * s - sx * 4 * s)], BLACK, 6 * s)
-        elif expr == "pense" and sx == 1:
-            pen.line([(cx - 16 * s, ey - 42 * s), (cx + 16 * s, ey - 34 * s)], BLACK, 6 * s)
-        elif expr == "fier":
-            pen.arc(cx, ey + 4 * s, 12 * s, 200, 340, BLACK, 5 * s)
-    my = hy + hr * 0.42
+            pen.circ(cx, ey, 11 * s, fill=BLACK)
+        by = ey - 34 * s
+        if expr in ("triste", "stresse"):
+            _brow(pen, cx, by, s, -7 * sx)            # intérieur relevé
+        elif expr in ("colere", "pense"):
+            _brow(pen, cx, by + 4 * s, s, 8 * sx)     # froncé
+        elif expr == "malin":
+            _brow(pen, cx, by - (8 * s if sx == 1 else 0), s, 6 if sx == -1 else -3)
+        elif expr == "choc":
+            _brow(pen, cx, by - 14 * s, s, 0)
+        elif expr in ("content", "fier"):
+            pen.arc(cx, by + 12 * s, 18 * s, 205, 335, BLACK, 6 * s)
+        else:
+            _brow(pen, cx, by, s, 0, 5.5)
+    my = hy + hr * 0.45
     if expr in ("content", "fier"):
-        pen.arc(hx + lk, my - 22 * s, 30 * s, 20, 160, BLACK, 7 * s)
+        pen.d.chord([pen._p(hx - 34 * s + lk, my - 36 * s), pen._p(hx + 34 * s + lk, my + 24 * s)], 0, 180, fill=BLACK)
+    elif expr == "malin":
+        pen.arc(hx + 8 * s + lk, my - 22 * s, 28 * s, 25, 120, BLACK, 7 * s)
     elif expr == "triste":
-        pen.arc(hx + lk, my + 20 * s, 26 * s, 205, 335, BLACK, 7 * s)
+        pen.arc(hx + lk, my + 22 * s, 26 * s, 205, 335, BLACK, 7 * s)
     elif expr == "choc":
-        pen.circ(hx + lk, my, 16 * s, fill=BLACK)
+        pen.circ(hx + lk, my + 4 * s, 18 * s, fill=BLACK)
+    elif expr == "colere":
+        pen.line([(hx - 24 * s + lk, my + 4 * s), (hx + 24 * s + lk, my - 2 * s)], BLACK, 7 * s)
     elif expr == "stresse":
         pen.line([(hx - 28 * s + lk, my), (hx - 10 * s + lk, my - 8 * s), (hx + 8 * s + lk, my),
                   (hx + 26 * s + lk, my - 8 * s)], BLACK, 6 * s)
@@ -373,6 +423,30 @@ def jar(pen: Pen, b: Box, cx, cy, fill, col=GREEN, size=1.0):
         fx0, fy0 = b.p(cx - w / 2 + 12, cy + h / 2 - 12 - (h - 24) * clamp(fill))
         fx1, fy1 = b.p(cx + w / 2 - 12, cy + h / 2 - 12)
         pen.rect(fx0, fy0, fx1, fy1, fill=col, rad=b.s(22 * size))
+
+
+def rays(pen: Pen, cx: float, cy: float, k: float, n: int = 14, r0: float = 160, r1: float = 900, rot: float = 0.0):
+    """Rayons dorés du logo, qui jaillissent derrière l'accroche (k : 0 -> 1)."""
+    if k <= 0:
+        return
+    for i in range(n):
+        a = rot + i * 2 * math.pi / n
+        ra, rb = r0 * (0.6 + 0.4 * k), r0 + (r1 - r0) * k
+        w = 0.07
+        pts = [(cx + ra * math.cos(a - w * 0.4), cy + ra * math.sin(a - w * 0.4)),
+               (cx + rb * math.cos(a - w), cy + rb * math.sin(a - w)),
+               (cx + rb * math.cos(a + w), cy + rb * math.sin(a + w)),
+               (cx + ra * math.cos(a + w * 0.4), cy + ra * math.sin(a + w * 0.4))]
+        pen.poly(pts, fill=(64, 48, 10) if i % 2 else (40, 31, 8))
+
+
+def swoosh(pen: Pen, x0: float, x1: float, y: float, k: float, col=GOLD, w: float = 14):
+    """Trait de pinceau doré sous un mot (k : 0 -> 1)."""
+    if k <= 0:
+        return
+    pts = [(x0 + (x1 - x0) * i / 20, y + math.sin(i / 20 * math.pi) * 10) for i in range(int(20 * clamp(k)) + 1)]
+    if len(pts) > 1:
+        pen.line(pts, col, w)
 
 
 def rain(pen: Pen, t: float, dens: int = 60):

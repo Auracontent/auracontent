@@ -17,7 +17,7 @@ from auracontent.services.visuals.linework.layout import Zones, check_layout
 ASSETS = Path(__file__).resolve().parents[3] / "assets" / "finance"
 ASSET_DIRS = [ASSETS / "characters", ASSETS / "props", ASSETS / "images"]
 FONTS = {"hand": ASSETS / "fonts" / "Caveat.ttf", "ui": ASSETS / "fonts" / "Poppins-Bold.ttf"}
-NAME, BASELINE = "Capital Simple", "Les chiffres, sans jargon."
+NAME, BASELINE = "Le Fric en Clair", "L'argent, sans langue de bois."
 MENTION = "Contenu pédagogique, pas un conseil en investissement."
 PROMISE = "Une astuce chiffrée par jour."           # carte de fin : la valeur promise, pour donner envie de suivre
 SUBSCRIBE = "Abonne-toi pour la prochaine."

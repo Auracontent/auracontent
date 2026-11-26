@@ -27,22 +27,24 @@ NNBSP = "\u202f"          # espace fine insécable entre les milliers
 
 LAYOUTS = {
     "vertical": {
-        "size": (1080, 1920), "props": (60, 440, 930, 950), "fig_y": 1435, "fig_s": 1.0,
+        "size": (1080, 1920), "props": (60, 430, 930, 905), "fig_y": 1500, "fig_s": 1.12,
         "fig_x": {"gauche": 300, "centre": 495, "droite": 690}, "fig_default": "centre",
-        "title_y": 295, "title_size": 78, "title_w": 860, "title_lines": 2, "title2_y": 405, "title2_size": 58,
-        "hook_size": 112, "look": 0.0,
+        "title_y": 278, "title_size": 86, "title_w": 860, "title_lines": 2, "title2_y": 418, "title2_size": 64,
+        "hook_size": 150, "hook_y": 330, "focus": (495, 800), "look": 0.0,
     },
     "paysage": {
         "size": (1920, 1080), "props": (820, 230, 1870, 1010), "fig_y": 1045, "fig_s": 1.31,
         "fig_x": {"gauche": 400, "centre": 400, "droite": 400}, "fig_default": "gauche",
-        "title_y": 100, "title_size": 78, "title_w": 1780, "title_lines": 1, "title2_y": 188, "title2_size": 64,
-        "hook_size": 150, "look": 0.7,
+        "title_y": 100, "title_size": 80, "title_w": 1780, "title_lines": 1, "title2_y": 188, "title2_size": 64,
+        "hook_size": 170, "hook_y": 150, "focus": (960, 520), "look": 0.7,
     },
 }
 DISCLAIMER = "Contenu pédagogique, pas un conseil en investissement."
-DEFAULT_POSE = {"accroche": ("triste", "bas"), "compteur": ("content", "bas"), "notifications": ("stresse", "bas"),
+BRAND = ("LE FRIC", "EN CLAIR")
+TAGLINE = "L'argent, sans langue de bois."
+DEFAULT_POSE = {"accroche": ("choc", "tete"), "compteur": ("content", "bas"), "notifications": ("stresse", "bas"),
                 "choix": ("pense", "menton"), "repartition": ("content", "montre"), "liste": ("content", "montre"),
-                "fin": ("content", "salut")}
+                "fin": ("malin", "piece")}
 
 
 class Renderer:
@@ -76,28 +78,72 @@ class Renderer:
         sc = self.scene_at(t)
         pen = D.Pen(self.W, self.H)
         u = t - sc["t0"]
+        if sc["type"] == "accroche":
+            hx, hy = self.W / 2, self.L["hook_y"] + 40
+            D.rays(pen, hx, hy, (0.55 + 0.45 * D.ease(u / 0.35)) * (1 - 0.35 * D.ease((u - 1.2) / 1.0)), rot=t * 0.25,
+                   r1=self.W * 0.9)
         if sc.get("pluie"):
             D.rain(pen, t)
         getattr(self, "_" + sc["type"])(pen, sc, t, u)
         self._titles(pen, sc, t)
         self._figure(pen, sc, t)
-        return np.asarray(pen.image())
+        z, dx, dy = self.camera(sc, t)
+        fx, fy = self.L["focus"]
+        return np.asarray(pen.image(z, fx, fy, dx, dy))
+
+    # ---------- caméra : coup de zoom à chaque scène, sur les chocs, et tremblement ----------
+    def camera(self, sc: dict, t: float) -> tuple[float, float, float]:
+        u = t - sc["t0"]
+        dur = max(0.5, sc["t1"] - sc["t0"])
+        hook = sc["type"] == "accroche"
+        z = 1.0 + 0.03 * D.clamp(u / dur)                                  # lente poussée, l'image vit
+        punch = 0.20 if hook else 0.07
+        z += punch * (1 - D.ease(u / (0.32 if hook else 0.3)))            # arrive « dans la figure »
+        shake = 18 * max(0.0, 1 - u / 0.45) if hook else 0.0
+        hits = [self.tl.t(r["at"]) for r in (sc.get("bonhomme") or {}).get("reactions", [])
+                if r.get("hop") or r.get("zoom") or r.get("expr") in ("choc", "colere")]
+        if hook and sc.get("chiffre"):
+            hits.append(self.at(sc, sc.get("chiffre_at"), 0.9))
+        for ha in hits:
+            if 0 <= t - ha < 0.35:
+                k = 1 - (t - ha) / 0.35
+                z += 0.06 * k
+                shake = max(shake, 12 * k)
+        dx = shake * math.sin(t * 91.0)
+        dy = shake * math.cos(t * 77.0)
+        return z, dx, dy
 
     def _titles(self, pen: D.Pen, sc: dict, t: float):
         L = self.L
         hook = sc["type"] == "accroche"
-        if sc.get("title"):
-            t0 = self.at(sc, sc.get("title_at"), 0.05)
+        if hook and sc.get("title"):
+            self._hook_title(pen, sc, t)
+        elif sc.get("title"):
+            t0 = self.at(sc, sc.get("title_at"), 0.0)
             size0 = L["hook_size"] if hook else L["title_size"]
             col = D.color(sc.get("title_color"), D.RED if hook else D.WHITE)
             size, lines = D.fit(sc["title"], size0, L["title_w"], L["title_lines"] if not hook else 2)
             y = L["title_y"] + ((30 if self.fmt == "vertical" else 40) if hook else 0)
-            pen.block(self.W / 2, y, lines, size, col, reveal=(t - t0) / (1.4 if hook else 0.9))
+            pen.block(self.W / 2, y, lines, size, col, reveal=(t - t0) / 0.45)
         if sc.get("title2"):
             t0 = self.at(sc, sc.get("title2_at"), 1.5)
             size, lines = D.fit(sc["title2"], L["title2_size"], L["title_w"], 1)
             y = L["title2_y"] + (40 if hook and self.fmt == "vertical" else 0)
-            pen.block(self.W / 2, y, lines, size, D.color(sc.get("title2_color"), D.YELLOW), reveal=(t - t0) / 0.8)
+            pen.block(self.W / 2, y, lines, size, D.color(sc.get("title2_color"), D.YELLOW), reveal=(t - t0) / 0.45)
+
+    def _hook_title(self, pen: D.Pen, sc: dict, t: float):
+        """Accroche au lettrage du logo : MAJUSCULES, blanc puis or, visible dès l'image 0 (pas d'écriture lente)."""
+        L = self.L
+        size, lines = D.fit(sc["title"].upper(), L["hook_size"], L["title_w"], 2, "titre", min_size=60)
+        lh = size * 1.02
+        y0 = L["hook_y"] - lh * (len(lines) - 1) / 2
+        last = D.color(sc.get("title_color"), D.GOLD)
+        for i, ln in enumerate(lines):
+            col = last if i == len(lines) - 1 else D.WHITE
+            pen.text(self.W / 2, y0 + i * lh, ln, size, col, "titre")
+        w = D.font(size, "titre").getlength(lines[-1]) / D.SS
+        D.swoosh(pen, self.W / 2 - w / 2, self.W / 2 + w / 2, y0 + (len(lines) - 1) * lh + size * 0.62,
+                 D.ease((t - sc["t0"] - 0.25) / 0.35), D.RED, size * 0.09)
 
     def _figure(self, pen: D.Pen, sc: dict, t: float):
         bh = sc.get("bonhomme") or {}
@@ -120,12 +166,19 @@ class Renderer:
     # ---------- scènes (coordonnées virtuelles 1000 x 560) ----------
     def _accroche(self, pen, sc, t, u):
         b = self.box
+        if sc.get("chiffre"):
+            c0 = self.at(sc, sc.get("chiffre_at"), 0.9)
+            k = D.clamp((t - c0) / 0.18)
+            if t >= c0:
+                size, lines = D.fit(sc["chiffre"], b.s(200), b.s(980), 1, "titre", min_size=20)
+                size *= 1 + 0.5 * (1 - D.ease(k))
+                pen.text(*b.p(500, 200), lines[0], size, D.color(sc.get("chiffre_color"), D.GOLD), "titre")
         if sc.get("carte"):
             D.bank_card(pen, b, 500, 200, sc["carte"], D.back((t - self.at(sc, sc.get("carte_at"), 1.2)) / 0.5))
         if sc.get("sous_titre"):
             t0 = self.at(sc, sc.get("sous_titre_at"), 2.5)
-            size, lines = D.fit(sc["sous_titre"], b.s(66), b.s(980), 2)
-            pen.block(*b.p(500, 420), lines, size, D.YELLOW, reveal=(t - t0) / 0.9)
+            size, lines = D.fit(sc["sous_titre"], b.s(66), b.s(980), 1, min_size=20)
+            pen.block(*b.p(500, 445), lines, size, D.YELLOW, reveal=(t - t0) / 0.5)
 
     def _compteur(self, pen, sc, t, u):
         b = self.box
@@ -135,8 +188,8 @@ class Renderer:
         val = start + (end - start) * k
         txt = sc.get("format", "{n} €").replace("{n}", f"{round(val):,}".replace(",", NNBSP))
         col = D.color(sc.get("color"), D.GOLD if end >= start else D.RED)
-        size, lines = D.fit(txt, b.s(130), b.s(960), 1)
-        pen.text(*b.p(500, 110), lines[0], size, col)
+        size, lines = D.fit(txt, b.s(170), b.s(960), 1, "titre")
+        pen.text(*b.p(500, 115), lines[0], size, col, "titre")
         if sc.get("legende"):
             size, lines = D.fit(sc["legende"], b.s(46), b.s(960), 1, min_size=10)
             pen.text(*b.p(500, 215), lines[0], size, D.WHITE, reveal=(t - c0) / 0.8)
@@ -168,8 +221,8 @@ class Renderer:
             val = start + (end - start) * k
             txt = cp.get("format", "{n} €").replace("{n}", f"{round(val):,}".replace(",", NNBSP))
             col = D.RED if end < start and k > 0.6 else D.WHITE
-            size, lines = D.fit(txt, b.s(100), b.s(420), 1)
-            pen.text(*b.p(230, 200), lines[0], size, col)
+            size, lines = D.fit(txt, b.s(120), b.s(420), 1, "titre")
+            pen.text(*b.p(230, 200), lines[0], size, col, "titre")
             if cp.get("fuite", True):
                 self._leak(pen, t, ats[0] + 0.2, len(items) + 3, (230, 300))
 
@@ -235,11 +288,21 @@ class Renderer:
 
     def _fin(self, pen, sc, t, u):
         b = self.box
-        pen.text(*b.p(500, 80), sc.get("kicker", "la suite :"), b.s(64), D.WHITE, reveal=u / 0.5)
-        size, lines = D.fit(sc["next"], b.s(86), b.s(960), 2)
-        pen.block(*b.p(500, 230), lines, size, D.YELLOW, reveal=(u - 0.4) / 1.0)
-        pen.text(*b.p(500, 370), "Capital Simple", b.s(54), D.GREEN, "petit")
-        pen.text(*b.p(500, 445), DISCLAIMER, b.s(32), D.GREY, "petit")
+        # le logo en lettres : LE FRIC (blanc) EN CLAIR (or)
+        f = D.font(b.s(110), "titre")
+        w1, w2 = (f.getlength(x + " ") / D.SS for x in BRAND)
+        x0 = b.p(500, 0)[0] - (w1 + w2) / 2
+        y = b.p(0, 75)[1]
+        k = D.back(u / 0.35)
+        if k > 0:
+            sz = b.s(110) * k
+            pen.text(x0 + w1 / 2, y, BRAND[0], sz, D.WHITE, "titre")
+            pen.text(x0 + w1 + w2 / 2, y, BRAND[1], sz, D.GOLD, "titre")
+        pen.text(*b.p(500, 165), TAGLINE, b.s(46), D.WHITE, reveal=(u - 0.3) / 0.5)
+        pen.text(*b.p(500, 265), sc.get("kicker", "la suite :"), b.s(56), D.GREY, reveal=(u - 0.6) / 0.3)
+        size, lines = D.fit(sc["next"], b.s(80), b.s(960), 2)
+        pen.block(*b.p(500, 375), lines, size, D.YELLOW, reveal=(u - 0.8) / 0.6)
+        pen.text(*b.p(500, 525), DISCLAIMER, b.s(28), D.GREY, "petit")
 
 
 def stills_times(r: Renderer) -> list[float]:

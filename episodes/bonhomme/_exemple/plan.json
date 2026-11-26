@@ -42,8 +42,8 @@
  ],
  "scenes": [
   {"type": "accroche", "from": 0, "title": "t'es à découvert", "carte": "-312 €", "carte_at": "L0@0.6",
-   "sous_titre": "(et c'est pas une question de salaire)", "sous_titre_at": "L0@0.7", "pluie": true,
-   "bonhomme": {"expr": "triste"}},
+   "sous_titre": "(et c'est pas une question de salaire)", "sous_titre_at": "L0@0.7",
+   "bonhomme": {"expr": "choc", "arms": "tete"}},
   {"type": "compteur", "from": "L1", "title": "Le 1er du mois : ton salaire tombe.", "value": 1850,
    "format": "{n} €", "count_at": "L1@0.35", "pieces": "pile",
    "bonhomme": {"expr": "content", "reactions": [{"at": "L2", "arms": "haut", "hop": true}]}},

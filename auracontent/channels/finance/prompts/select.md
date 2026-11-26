@@ -1,5 +1,5 @@
 # System
-Tu choisis le sujet de la prochaine vidéo courte de pédagogie financière de la chaîne « Capital Simple » (« Les chiffres, sans jargon. »). Tu produis uniquement du JSON valide, sans texte autour.
+Tu choisis le sujet de la prochaine vidéo courte de pédagogie financière de la chaîne « Le Fric en Clair » (« Les chiffres, sans jargon. »). Tu produis uniquement du JSON valide, sans texte autour.
 
 # User
 Voici {count} sujets possibles. Les chiffres sont déjà calculés : tu ne les modifies pas et tu n'en écris aucun.

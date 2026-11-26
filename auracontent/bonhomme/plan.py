@@ -117,6 +117,10 @@ def check(plan: dict) -> list[str]:
         errs.append("la première scène commence à 0")
     if scenes and scenes[0].get("type") != "accroche":
         errs.append("la première scène est l'accroche (type « accroche »)")
+    elif scenes and len(scenes[0].get("title", "")) > 30:
+        errs.append("accroche : titre de 30 caractères au plus (2 lignes énormes, lisibles en une seconde)")
+    if lines and len(lines[0].get("text", "").split()) > 10:
+        errs.append("phrase 0 (l'accroche) : 10 mots au plus, elle doit claquer dès la 1re seconde")
     if scenes and scenes[-1].get("type") != "fin":
         errs.append("la dernière scène est la carte de fin (type « fin »)")
     if len(plan.get("title", "")) > 70:
@@ -138,7 +142,7 @@ def check_refs(plan: dict, tl) -> list[str]:
 
     for j, sc in enumerate(plan["scenes"]):
         ref(j, "from", sc.get("from"))
-        for k in ("title_at", "title2_at", "carte_at", "sous_titre_at", "count_at", "pick_at"):
+        for k in ("title_at", "title2_at", "carte_at", "chiffre_at", "sous_titre_at", "count_at", "pick_at"):
             ref(j, k, sc.get(k))
         for r in sc.get("at") or []:
             ref(j, "at", r)

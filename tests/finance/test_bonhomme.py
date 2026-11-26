@@ -121,7 +121,7 @@ def test_bruitages(episode: Path):
 
 def test_legende_finance():
     txt = cli.caption(_plan())
-    assert "Sources :" in txt and "#capitalsimple" in txt
+    assert "Sources :" in txt and "#lefricenclair" in txt
     assert "pas un conseil" in txt
 
 
@@ -178,3 +178,35 @@ def test_premier_episode_sujet_libre(tmp_path: Path):
     root.mkdir()
     assert plan.pending_promise(root) is None
     assert "sujet libre" in cli.suite(root)
+
+
+# ---------- Le Fric en Clair : accroche explosive ----------
+def test_accroche_trop_longue_refusee():
+    p = _plan()
+    p["lines"][0]["text"] = "Aujourd'hui on va parler ensemble de ton découvert et de ce que ça coûte vraiment."
+    p["scenes"][0]["title"] = "aujourd'hui on parle de ton découvert"
+    errs = plan.check(p)
+    assert any("10 mots au plus" in e for e in errs) and any("30 caractères" in e for e in errs)
+
+
+def test_camera_coup_de_zoom_a_l_image_0(episode: Path):
+    r = _renderer(episode)
+    z0, dx0, _ = r.camera(r.scenes[0], 0.0)
+    z1, _, _ = r.camera(r.scenes[0], 1.0)
+    assert z0 > 1.15 and z1 < 1.05 and dx0 == 0.0
+
+
+def test_impact_sonore_a_l_image_0(episode: Path):
+    cues = cli.cues(_renderer(episode))
+    assert cues[0] == (0.0, "boom.wav", 0.5)
+    assert sum(1 for c in cues if c[1] == "whoosh.wav") == len(_plan()["scenes"]) - 1
+    assert all((ROOT / "assets" / "finance" / "sfx" / n).exists() for _a, n, _g in cues)
+
+
+def test_personnage_du_logo_toutes_poses():
+    from auracontent.bonhomme import draw as D
+    pen = D.Pen(600, 600)
+    for e in D.EXPRS:
+        for a in D.ARMS:
+            D.figure(pen, 300, 560, 0.8, e, a, t=0.5)
+    assert pen.image().getbbox() is not None

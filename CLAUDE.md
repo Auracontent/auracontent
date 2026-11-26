@@ -1,7 +1,7 @@
 # AuraContent : consignes pour Claude
 
 Pipeline de Shorts / TikTok sans visage, en français. Deux chaînes : `mystery` (« C'est arrivé ici », patrimoine français)
-et `finance` (« Capital Simple »). Voir README.md pour l'architecture.
+et `finance` (« Le Fric en Clair », ex-« Capital Simple »). Voir README.md pour l'architecture.
 
 ## Règles du dépôt
 - Messages de commit au format **conventional commits** (`feat(mystery): …`, `fix(finance): …`, `chore: …`, `docs: …`) :
@@ -22,7 +22,7 @@ Modèle : `episodes/archive/_exemple/plan.json`. Moteur : `auracontent/archive/`
   `PROBLEME.md` dans le dossier de l'épisode, commite et arrête-toi : ne publie jamais un short au rabais.
 
 ## Shorts « expliqué par un bonhomme » (chaîne finance)
-Quand on te demande un short « bonhomme » pour Capital Simple (tâche `direct_bonhomme` du workflow `generator_video.yml`,
+Quand on te demande un short « bonhomme » pour Le Fric en Clair (tâche `direct_bonhomme` du workflow `generator_video.yml`,
 variable `FINANCE_MODE=bonhomme` ou case « finance_bonhomme », ou à la main), suis **docs/finance_bonhomme.md** à la lettre.
 Modèle : `episodes/bonhomme/_exemple/plan.json`. Moteur : `auracontent/bonhomme/` (CLI `python -m auracontent.bonhomme.cli`).
 
@@ -30,6 +30,7 @@ Modèle : `episodes/bonhomme/_exemple/plan.json`. Moteur : `auracontent/bonhomme
   d'investir, de produit recommandé ni d'« abonne-toi ».
 - Chaque épisode tient la suite annoncée par le précédent (`cli episodes/bonhomme suite`, champ `suite_de`) ;
   un sujet imposé est `hors_suite` et réannonce la même suite.
-- Le bonhomme (blanc, écharpe verte) est le personnage de Capital Simple : ne copie jamais le personnage d'une autre chaîne.
+- Le bonhomme est celui du logo de Le Fric en Clair (blanc, corps plein, pièce d'or, « ?! ») ; ton franc, « sans langue
+  de bois ». Ne copie jamais le personnage d'une autre chaîne.
 - Le contrôle de la planche `stills.jpg` est obligatoire, comme pour les autres formats réalisés.
 - Ce format ne touche à rien de la chaîne mystery (ni `auracontent/archive/`, ni `episodes/archive/`, ni `config/channels/mystery.yaml`).
